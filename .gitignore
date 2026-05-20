@@ -1,0 +1,147 @@
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================
+# Logs & temp
+# =========================
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# =========================
+# Env files
+# =========================
+.env
+.env.*
+*.env
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Python packaging
+build/
+dist/
+.eggs/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Testing / cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# =========================
+# uv / Python deps
+# =========================
+# ⚠️ uv.lock 建议提交
+# uv.lock
+
+# =========================
+# Node.js / JavaScript
+# =========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
+dist/
+build/
+.next/
+.nuxt/
+.svelte-kit/
+coverage/
+
+# Package managers
+.pnpm-store/
+.npm/
+.yarn/
+
+# =========================
+# Go
+# =========================
+bin/
+pkg/
+*.test
+*.out
+
+# Go modules（一般建议提交 go.sum）
+# go.sum
+
+# =========================
+# Rust
+# =========================
+target/
+Cargo.lock
+# ⚠️ 如果是应用（非库），建议保留 Cargo.lock
+
+# =========================
+# Java / Kotlin
+# =========================
+*.class
+*.jar
+*.war
+*.ear
+.gradle/
+build/
+out/
+
+# =========================
+# C / C++
+# =========================
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.exe
+*.out
+
+# =========================
+# Docker
+# =========================
+.dockerignore
+
+# =========================
+# IDE / Editors
+# =========================
+.vscode/
+.idea/
+*.iml
+
+# =========================
+# Terraform
+# =========================
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+
+# =========================
+# Misc
+# =========================
+.cache/
+tmp/
+temp/
