@@ -51,7 +51,7 @@ def config_bash():
 
         content = replace_or_append_alias(content, "ll", "ls -l")
         content = replace_or_append_alias(content, "la", "ls -A")
-        content = replace_or_append_alias(content, "l", "ls -lah")
+        content = replace_or_append_alias(content, "l", "ls -lahF")
 
         bashrc.write_text(content, encoding="utf-8")
 
