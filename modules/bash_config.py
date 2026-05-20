@@ -60,7 +60,7 @@ def config_bash():
 
     print()
     print("已经修改 ~/.bashrc，新的别名配置如下：")
-    print("alias ll='ls -l'")
+    print("alias ll='ls -lF'")
     print("alias la='ls -A'")
     print("alias l='ls -lah'")
     print("Bash 配置完成")
