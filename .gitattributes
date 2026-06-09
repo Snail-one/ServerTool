@@ -1,0 +1,7 @@
+* text=auto eol=lf
+
+# Keep shell scripts and text files in LF on checkout
+*.sh text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.go text eol=lf

@@ -1,0 +1,27 @@
+# Build outputs
+bin/
+dist/
+build/
+*.exe
+*.dll
+*.so
+*.dylib
+snail_tool
+snail_tool.exe
+snail_tool_linux_amd64
+snail_tool_linux_arm64
+
+# Go tooling
+*.test
+*.out
+coverage.out
+
+# Dependency and workspace caches
+vendor/
+.cache/
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
