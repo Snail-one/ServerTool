@@ -33,6 +33,19 @@ bash ./build_linux.sh
 
 默认输出到 `dist/` 目录。
 
+## 自动发布
+
+在 GitHub 上推送 `v*` 标签后，Actions 会自动交叉编译 Linux 版本并发布到仓库 Release。
+
+示例：
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+也可以在 GitHub Actions 页面手动触发，并填写 `tag_name` 后发布。
+
 ## 运行
 
 ```bash
