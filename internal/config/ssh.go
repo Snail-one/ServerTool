@@ -12,7 +12,12 @@ import (
 	"snail_tool/internal/ui"
 )
 
-const managedSSHDConfigHeader = "# Managed by setup tool"
+const (
+	managedSSHDConfigHeader = "# Managed by setup tool"
+	sshdConfigPath          = "/etc/ssh/sshd_config"
+	sshdConfigDir           = "/etc/ssh/sshd_config.d"
+	customSSHDConfigPath    = "/etc/ssh/sshd_config.d/99-custom.conf"
+)
 
 func ConfigureSSH(view *ui.UI) error {
 	account, err := system.CurrentTargetUser()
@@ -34,6 +39,10 @@ func ConfigureSSH(view *ui.UI) error {
 		}
 	}
 
+	if err := printAuthorizedKeys(account); err != nil {
+		return err
+	}
+
 	pubkey, err := view.Ask("请粘贴 SSH 公钥: ")
 	if err != nil {
 		return err
@@ -44,6 +53,22 @@ func ConfigureSSH(view *ui.UI) error {
 
 	if err := installAuthorizedKey(account, pubkey); err != nil {
 		return err
+	}
+
+	shouldWriteConfig, err := confirmSSHDConfigOverwrite(view)
+	if err != nil {
+		return err
+	}
+	if !shouldWriteConfig {
+		fmt.Println()
+		log.Info("SSH 配置完成")
+		fmt.Println()
+		fmt.Printf("用户：%s\n", account.Name)
+		fmt.Println("SSH 公钥：已确认")
+		fmt.Println("SSH 服务配置：保留现有配置，未重新加载服务")
+		fmt.Println()
+		log.Warn("请先新开一个终端测试 SSH 登录成功后，再关闭当前会话。")
+		return nil
 	}
 
 	fmt.Println()
@@ -62,31 +87,65 @@ func ConfigureSSH(view *ui.UI) error {
 		log.Warn("当前配置用户是 root：保留 root 公钥登录，不禁用 root 登录")
 	}
 
-	configChanged, err := writeSSHDConfig(view, port, permitRootLogin)
-	if err != nil {
+	if err := writeSSHDConfig(port, permitRootLogin); err != nil {
 		return err
 	}
-	if configChanged {
-		if err := reloadSSHService(); err != nil {
-			return err
-		}
+	if err := reloadSSHService(); err != nil {
+		return err
 	}
 
 	fmt.Println()
 	log.Info("SSH 配置完成")
 	fmt.Println()
 	fmt.Printf("用户：%s\n", account.Name)
-	if configChanged {
-		fmt.Printf("端口：%d\n", port)
-		fmt.Printf("PermitRootLogin：%s\n", permitRootLogin)
-		fmt.Println()
-		fmt.Println("连接方式：")
-		fmt.Printf("ssh -p %d %s@服务器IP\n", port, account.Name)
-	} else {
-		fmt.Println("SSH 服务配置：保留现有配置，未重新加载服务")
-	}
+	fmt.Printf("端口：%d\n", port)
+	fmt.Printf("PermitRootLogin：%s\n", permitRootLogin)
+	fmt.Println()
+	fmt.Println("连接方式：")
+	fmt.Printf("ssh -p %d %s@服务器IP\n", port, account.Name)
 	fmt.Println()
 	log.Warn("请先新开一个终端测试 SSH 登录成功后，再关闭当前会话。")
+	return nil
+}
+
+func confirmSSHDConfigOverwrite(view *ui.UI) (bool, error) {
+	if !system.FileExists(customSSHDConfigPath) {
+		return true, nil
+	}
+
+	existing, err := os.ReadFile(customSSHDConfigPath)
+	if err != nil {
+		return false, err
+	}
+	if !strings.Contains(string(existing), managedSSHDConfigHeader) {
+		return true, nil
+	}
+
+	printSSHDConfig(customSSHDConfigPath, string(existing))
+	return view.Confirm("检测到该 SSH 配置文件由脚本创建，是否覆盖并重新生成？(y/N): ")
+}
+
+func printAuthorizedKeys(account *system.Account) error {
+	authKeys := filepath.Join(account.Home, ".ssh", "authorized_keys")
+	if !system.FileExists(authKeys) {
+		return nil
+	}
+
+	data, err := os.ReadFile(authKeys)
+	if err != nil {
+		return err
+	}
+
+	content := strings.TrimSpace(string(data))
+	if content == "" {
+		return nil
+	}
+
+	fmt.Println("当前已存在的 SSH 公钥配置：")
+	fmt.Println("----------")
+	fmt.Println(content)
+	fmt.Println("----------")
+	fmt.Println()
 	return nil
 }
 
@@ -153,64 +212,43 @@ func chooseSSHPort(raw string) (int, error) {
 	return port, nil
 }
 
-func writeSSHDConfig(view *ui.UI, port int, permitRootLogin string) (bool, error) {
-	sshdConfig := "/etc/ssh/sshd_config"
-	sshdDir := "/etc/ssh/sshd_config.d"
-	customConf := filepath.Join(sshdDir, "99-custom.conf")
-
-	if err := os.MkdirAll(sshdDir, 0755); err != nil {
-		return false, err
+func writeSSHDConfig(port int, permitRootLogin string) error {
+	if err := os.MkdirAll(sshdConfigDir, 0755); err != nil {
+		return err
 	}
 
 	fmt.Println()
 	log.Info("检查 Include 配置...")
-	data, err := os.ReadFile(sshdConfig)
+	data, err := os.ReadFile(sshdConfigPath)
 	if err != nil {
-		return false, err
+		return err
 	}
 	includeRe := regexp.MustCompile(`(?m)^[[:space:]]*Include[[:space:]]+/etc/ssh/sshd_config\.d/\*\.conf`)
 	if !includeRe.Match(data) {
-		file, err := os.OpenFile(sshdConfig, os.O_APPEND|os.O_WRONLY, 0644)
+		file, err := os.OpenFile(sshdConfigPath, os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
-			return false, err
+			return err
 		}
 		if !strings.HasSuffix(string(data), "\n") {
 			if _, err := file.WriteString("\n"); err != nil {
 				_ = file.Close()
-				return false, err
+				return err
 			}
 		}
 		if _, err := file.WriteString("Include /etc/ssh/sshd_config.d/*.conf\n"); err != nil {
 			_ = file.Close()
-			return false, err
+			return err
 		}
 		if err := file.Close(); err != nil {
-			return false, err
+			return err
 		}
 		log.Info("已自动添加 Include 配置")
 	}
 
-	if system.FileExists(customConf) {
-		existing, err := os.ReadFile(customConf)
+	if system.FileExists(customSSHDConfigPath) {
+		backup, err := system.Backup(customSSHDConfigPath)
 		if err != nil {
-			return false, err
-		}
-		printSSHDConfig(customConf, string(existing))
-
-		if strings.Contains(string(existing), managedSSHDConfigHeader) {
-			overwrite, err := view.Confirm("检测到该 SSH 配置文件由脚本创建，是否覆盖并重新生成？(y/N): ")
-			if err != nil {
-				return false, err
-			}
-			if !overwrite {
-				log.Info("已保留现有 SSH 配置")
-				return false, nil
-			}
-		}
-
-		backup, err := system.Backup(customConf)
-		if err != nil {
-			return false, err
+			return err
 		}
 		log.Info("已备份原 SSH 自定义配置：", backup)
 	}
@@ -225,20 +263,20 @@ PermitRootLogin %s
 PubkeyAuthentication yes
 `, managedSSHDConfigHeader, port, permitRootLogin)
 
-	if err := os.WriteFile(customConf, []byte(content), 0644); err != nil {
-		return false, err
+	if err := os.WriteFile(customSSHDConfigPath, []byte(content), 0644); err != nil {
+		return err
 	}
-	if err := os.Chmod(customConf, 0644); err != nil {
-		return false, err
+	if err := os.Chmod(customSSHDConfigPath, 0644); err != nil {
+		return err
 	}
-	printSSHDConfig(customConf, content)
+	printSSHDConfig(customSSHDConfigPath, content)
 
 	fmt.Println()
 	log.Info("验证 sshd 配置...")
 	if err := system.Run("/usr/sbin/sshd", "-t"); err != nil {
-		return false, fmt.Errorf("sshd 配置校验失败: %w", err)
+		return fmt.Errorf("sshd 配置校验失败: %w", err)
 	}
-	return true, nil
+	return nil
 }
 
 func reloadSSHService() error {
