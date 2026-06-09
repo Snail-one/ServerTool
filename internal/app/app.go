@@ -6,6 +6,7 @@ import (
 
 	"snail_tool/internal/config"
 	"snail_tool/internal/log"
+	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
 )
 
@@ -20,7 +21,7 @@ func New() *App {
 func (a *App) Run() error {
 	for {
 		ui.ClearScreen()
-		showMenu()
+		showMenu(currentStatus())
 		fmt.Println()
 
 		choice, err := a.ui.Ask("输入选项: ")
@@ -44,7 +45,7 @@ func (a *App) Run() error {
 			a.runAction("代理配置失败，已返回菜单", func() error {
 				return config.ConfigureProxy(a.ui)
 			})
-		case "q", "exit":
+		case "0", "q", "exit":
 			fmt.Println("已退出")
 			return nil
 		default:
@@ -62,11 +63,27 @@ func (a *App) runAction(failureMessage string, action func() error) {
 	a.ui.Pause()
 }
 
-func showMenu() {
+func currentStatus() config.Status {
+	account, err := system.CurrentTargetUser()
+	if err != nil {
+		return config.Status{}
+	}
+	return config.DetectStatus(account)
+}
+
+func showMenu(status config.Status) {
 	fmt.Println("请选择操作：")
-	fmt.Println("1) 配置当前用户 SSH 公钥登录 + 禁用密码登录 + 随机 SSH 端口")
-	fmt.Println("2) 配置当前用户 Vim ~/.vimrc")
-	fmt.Println("3) 配置当前用户 Bash 环境")
-	fmt.Println("4) 配置当前用户 HTTP/HTTPS 代理环境变量")
+	fmt.Println("1) 配置当前用户 SSH 公钥登录 + 禁用密码登录 + 随机 SSH 端口" + statusText(status.SSH))
+	fmt.Println("2) 配置当前用户 Vim ~/.vimrc" + statusText(status.Vim))
+	fmt.Println("3) 配置当前用户 Bash 环境" + statusText(status.Bash))
+	fmt.Println("4) 配置当前用户 HTTP/HTTPS 代理环境变量" + statusText(status.Proxy))
+	fmt.Println("0) 退出")
 	fmt.Println("q) 退出")
+}
+
+func statusText(configured bool) string {
+	if configured {
+		return " [已配置]"
+	}
+	return ""
 }
