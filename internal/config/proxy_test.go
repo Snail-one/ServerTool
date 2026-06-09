@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"snail_tool/internal/system"
 )
 
 func TestMaskProxyURL(t *testing.T) {
@@ -76,5 +78,24 @@ func TestNormalizeProxyRejectsInvalidInput(t *testing.T) {
 		if _, err := normalizeProxy(raw); err == nil {
 			t.Fatalf("normalizeProxy(%q) did not return an error", raw)
 		}
+	}
+}
+
+func TestCurrentProxyURL(t *testing.T) {
+	home := t.TempDir()
+	account := &system.Account{Name: "test", Home: home}
+	bashrc := filepath.Join(home, ".bashrc")
+
+	if err := os.WriteFile(bashrc, []byte(proxyBegin+"\nexport http_proxy=\"http://admin:secret@192.168.1.1:8888\"\n"+proxyEnd+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := CurrentProxyURL(account)
+	if !ok {
+		t.Fatal("expected current proxy URL")
+	}
+	want := "http://admin:secret@192.168.1.1:8888"
+	if got != want {
+		t.Fatalf("CurrentProxyURL() = %q, want %q", got, want)
 	}
 }

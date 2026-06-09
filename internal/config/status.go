@@ -49,9 +49,8 @@ func isBashConfigured(account *system.Account) bool {
 }
 
 func isProxyConfigured(account *system.Account) bool {
-	bashrc := filepath.Join(account.Home, ".bashrc")
-	content := readFileString(bashrc)
-	return strings.Contains(content, proxyBegin) && strings.Contains(content, proxyEnd)
+	_, ok := CurrentProxyURL(account)
+	return ok
 }
 
 func fileContains(path, wanted string) bool {

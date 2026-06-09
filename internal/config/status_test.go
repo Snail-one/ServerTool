@@ -18,7 +18,7 @@ func TestDetectStatusForUserFiles(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".bashrc"), []byte(
 		bashAliasBegin+"\n"+bashAliasBlock+"\n"+bashAliasEnd+"\n\n"+
 			bashCommandBegin+"\nsnail() {\n  sudo '/usr/local/bin/snail_tool' \"$@\"\n}\n"+bashCommandEnd+"\n\n"+
-			proxyBegin+"\n"+proxyEnd+"\n",
+			proxyBegin+"\nexport http_proxy=\"http://127.0.0.1:8888\"\n"+proxyEnd+"\n",
 	), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -41,5 +41,19 @@ func TestDetectStatusForMissingUserFiles(t *testing.T) {
 
 	if status.Vim || status.Bash || status.Proxy {
 		t.Fatalf("expected missing files to be unconfigured, got %+v", status)
+	}
+}
+
+func TestDetectStatusRequiresProxyURL(t *testing.T) {
+	home := t.TempDir()
+	account := &system.Account{Name: "test", Home: home}
+
+	if err := os.WriteFile(filepath.Join(home, ".bashrc"), []byte(proxyBegin+"\n"+proxyEnd+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	status := DetectStatus(account)
+	if status.Proxy {
+		t.Fatal("expected empty proxy block to be unconfigured")
 	}
 }

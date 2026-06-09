@@ -21,6 +21,7 @@ const (
 var (
 	proxyWithAuth = regexp.MustCompile(`^([^:]+):([^@]+)@([^:]+):([0-9]+)$`)
 	proxyPlain    = regexp.MustCompile(`^([^:]+):([0-9]+)$`)
+	proxyEnvLine  = regexp.MustCompile(`(?m)^[ \t]*export[ \t]+(?:http_proxy|https_proxy|HTTP_PROXY|HTTPS_PROXY)=(?:"([^"]*)"|'([^']*)'|([^ \t\r\n;]+))`)
 )
 
 func ConfigureProxy(view *ui.UI) error {
@@ -31,6 +32,10 @@ func ConfigureProxy(view *ui.UI) error {
 
 	fmt.Println("\033[32m[INFO]\033[0m 配置代理环境变量")
 	fmt.Println()
+	if currentProxy, ok := CurrentProxyURL(account); ok {
+		fmt.Printf("当前代理服务器：%s\n", maskProxyURL(currentProxy))
+		fmt.Println()
+	}
 	fmt.Println("\033[32m[INFO]\033[0m ip:port 格式，或 username:password@ip:port 格式")
 	fmt.Println()
 
@@ -68,7 +73,30 @@ func ConfigureProxy(view *ui.UI) error {
 	return nil
 }
 
+func CurrentProxyURL(account *system.Account) (string, bool) {
+	bashrc := filepath.Join(account.Home, ".bashrc")
+	content := readFileString(bashrc)
+	block, ok := managedBlockContent(content, proxyBegin, proxyEnd)
+	if !ok {
+		return "", false
+	}
+	return proxyURLFromBlock(block)
+}
+
+func proxyURLFromBlock(block string) (string, bool) {
+	for _, match := range proxyEnvLine.FindAllStringSubmatch(block, -1) {
+		for _, value := range match[1:] {
+			value = strings.TrimSpace(value)
+			if value != "" {
+				return value, true
+			}
+		}
+	}
+	return "", false
+}
+
 func normalizeProxy(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", fmt.Errorf("错误：代理地址不能为空")
 	}

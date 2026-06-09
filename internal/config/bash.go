@@ -123,6 +123,15 @@ func removeManagedBlock(content, begin, end string) string {
 	return re.ReplaceAllString(content, "")
 }
 
+func managedBlockContent(content, begin, end string) (string, bool) {
+	re := regexp.MustCompile(`(?s)` + regexp.QuoteMeta(begin) + `(.*?)` + regexp.QuoteMeta(end))
+	match := re.FindStringSubmatch(content)
+	if match == nil {
+		return "", false
+	}
+	return match[1], true
+}
+
 func appendBlock(content, block string) string {
 	content = strings.TrimRight(content, "\n")
 	if content == "" {
