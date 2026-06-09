@@ -75,6 +75,10 @@ func ConfigureProxy(view *ui.UI) error {
 }
 
 func CurrentProxyURL(account *system.Account) (string, bool) {
+	if proxyURL, ok := currentProxyURLFromInvokerEnv(); ok {
+		return proxyURL, true
+	}
+
 	if proxyURL, ok := currentProxyURLFromEnv(); ok {
 		return proxyURL, true
 	}
@@ -88,11 +92,32 @@ func CurrentProxyURL(account *system.Account) (string, bool) {
 	return proxyURLFromBlock(block)
 }
 
+func currentProxyURLFromInvokerEnv() (string, bool) {
+	if strings.TrimSpace(os.Getenv("SUDO_USER")) == "" {
+		return "", false
+	}
+
+	data, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(os.Getppid()), "environ"))
+	if err != nil {
+		return "", false
+	}
+	return proxyURLFromEnvPairs(strings.Split(string(data), "\x00"))
+}
+
 func currentProxyURLFromEnv() (string, bool) {
+	return proxyURLFromEnvPairs(os.Environ())
+}
+
+func proxyURLFromEnvPairs(pairs []string) (string, bool) {
 	for _, name := range proxyEnvNames {
-		value := strings.TrimSpace(os.Getenv(name))
-		if value != "" {
-			return value, true
+		prefix := name + "="
+		for _, pair := range pairs {
+			if strings.HasPrefix(pair, prefix) {
+				value := strings.TrimSpace(strings.TrimPrefix(pair, prefix))
+				if value != "" {
+					return value, true
+				}
+			}
 		}
 	}
 	return "", false
@@ -160,10 +185,7 @@ export NO_PROXY="%s"
 
 func maskProxyURL(proxyURL string) string {
 	prefix := "http://"
-	raw := proxyURL
-	if strings.HasPrefix(raw, prefix) {
-		raw = strings.TrimPrefix(raw, prefix)
-	}
+	raw := strings.TrimPrefix(proxyURL, prefix)
 
 	match := proxyWithAuth.FindStringSubmatch(raw)
 	if match == nil {
