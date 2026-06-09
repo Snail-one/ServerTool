@@ -217,6 +217,13 @@ func writeSSHDConfig(port int, permitRootLogin string) error {
 		return err
 	}
 
+	content := buildSSHDConfig(port, permitRootLogin)
+	fmt.Println()
+	log.Info("验证新 SSH 配置...")
+	if err := validateSSHDConfig(content); err != nil {
+		return err
+	}
+
 	fmt.Println()
 	log.Info("检查 Include 配置...")
 	data, err := os.ReadFile(sshdConfigPath)
@@ -255,14 +262,6 @@ func writeSSHDConfig(port int, permitRootLogin string) error {
 
 	fmt.Println()
 	log.Info("写入自定义 SSH 配置...")
-	content := fmt.Sprintf(`%s
-
-Port %d
-PasswordAuthentication no
-PermitRootLogin %s
-PubkeyAuthentication yes
-`, managedSSHDConfigHeader, port, permitRootLogin)
-
 	if err := os.WriteFile(customSSHDConfigPath, []byte(content), 0644); err != nil {
 		return err
 	}
@@ -272,28 +271,70 @@ PubkeyAuthentication yes
 	printSSHDConfig(customSSHDConfigPath, content)
 
 	fmt.Println()
-	log.Info("验证 sshd 配置...")
+	log.Info("验证当前 sshd 配置...")
 	if err := system.Run("/usr/sbin/sshd", "-t"); err != nil {
 		return fmt.Errorf("sshd 配置校验失败: %w", err)
 	}
 	return nil
 }
 
+func buildSSHDConfig(port int, permitRootLogin string) string {
+	return fmt.Sprintf(`%s
+
+Port %d
+PasswordAuthentication no
+PermitRootLogin %s
+PubkeyAuthentication yes
+`, managedSSHDConfigHeader, port, permitRootLogin)
+}
+
+func validateSSHDConfig(content string) error {
+	tmp, err := os.CreateTemp("", "snail-sshd-*.conf")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+
+	if _, err := tmp.WriteString(content); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := system.Run("/usr/sbin/sshd", "-t", "-f", tmp.Name()); err != nil {
+		return fmt.Errorf("新 SSH 配置校验失败，未写入正式配置: %w", err)
+	}
+	return nil
+}
+
 func reloadSSHService() error {
 	fmt.Println()
-	log.Info("重新加载 SSH 服务...")
+	log.Info("准备重新加载 SSH 服务...")
 
 	switch {
 	case system.SystemdUnitExists("ssh.service"):
 		if err := system.Run("systemctl", "reload", "ssh"); err == nil {
+			log.Info("SSH 服务已 reload：ssh.service")
 			return nil
 		}
-		return system.Run("systemctl", "restart", "ssh")
+		log.Warn("reload ssh.service 失败，尝试 restart")
+		if err := system.Run("systemctl", "restart", "ssh"); err != nil {
+			return err
+		}
+		log.Info("SSH 服务已 restart：ssh.service")
+		return nil
 	case system.SystemdUnitExists("sshd.service"):
 		if err := system.Run("systemctl", "reload", "sshd"); err == nil {
+			log.Info("SSH 服务已 reload：sshd.service")
 			return nil
 		}
-		return system.Run("systemctl", "restart", "sshd")
+		log.Warn("reload sshd.service 失败，尝试 restart")
+		if err := system.Run("systemctl", "restart", "sshd"); err != nil {
+			return err
+		}
+		log.Info("SSH 服务已 restart：sshd.service")
+		return nil
 	default:
 		return fmt.Errorf("未找到 SSH 服务")
 	}

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
@@ -53,11 +54,14 @@ func ConfigureProxy(view *ui.UI) error {
 	if err := system.ChownPath(bashrc, account, false); err != nil {
 		return err
 	}
+	if err := os.Chmod(bashrc, 0644); err != nil {
+		return err
+	}
 
 	fmt.Println()
 	fmt.Println("代理配置完成")
 	fmt.Println()
-	fmt.Printf("代理地址：%s\n", proxyURL)
+	fmt.Printf("代理地址：%s\n", maskProxyURL(proxyURL))
 	fmt.Println()
 	fmt.Println("立即生效请执行：")
 	fmt.Println("source ~/.bashrc")
@@ -92,8 +96,7 @@ func writeProxyBlock(path, proxyURL string) error {
 		return err
 	}
 
-	re := regexp.MustCompile(`(?s)\n?` + regexp.QuoteMeta(proxyBegin) + `.*?` + regexp.QuoteMeta(proxyEnd) + `\n?`)
-	content := re.ReplaceAllString(string(data), "")
+	content := removeManagedBlock(string(data), proxyBegin, proxyEnd)
 	block := fmt.Sprintf(`
 %s
 
@@ -109,5 +112,19 @@ export NO_PROXY="%s"
 %s
 `, proxyBegin, proxyURL, proxyURL, proxyURL, proxyURL, noProxy, noProxy, proxyEnd)
 
-	return os.WriteFile(path, []byte(content+block), 0644)
+	return os.WriteFile(path, []byte(appendBlock(content, strings.TrimLeft(block, "\n"))), 0644)
+}
+
+func maskProxyURL(proxyURL string) string {
+	prefix := "http://"
+	raw := proxyURL
+	if strings.HasPrefix(raw, prefix) {
+		raw = strings.TrimPrefix(raw, prefix)
+	}
+
+	match := proxyWithAuth.FindStringSubmatch(raw)
+	if match == nil {
+		return proxyURL
+	}
+	return fmt.Sprintf("%s%s:******@%s:%s", prefix, match[1], match[3], match[4])
 }
