@@ -9,6 +9,8 @@ import (
 )
 
 func TestDetectStatusForUserFiles(t *testing.T) {
+	clearProxyEnv(t)
+
 	home := t.TempDir()
 	account := &system.Account{Name: "test", Home: home}
 
@@ -36,6 +38,8 @@ func TestDetectStatusForUserFiles(t *testing.T) {
 }
 
 func TestDetectStatusForMissingUserFiles(t *testing.T) {
+	clearProxyEnv(t)
+
 	account := &system.Account{Name: "test", Home: t.TempDir()}
 	status := DetectStatus(account)
 
@@ -45,6 +49,8 @@ func TestDetectStatusForMissingUserFiles(t *testing.T) {
 }
 
 func TestDetectStatusRequiresProxyURL(t *testing.T) {
+	clearProxyEnv(t)
+
 	home := t.TempDir()
 	account := &system.Account{Name: "test", Home: home}
 
@@ -55,5 +61,23 @@ func TestDetectStatusRequiresProxyURL(t *testing.T) {
 	status := DetectStatus(account)
 	if status.Proxy {
 		t.Fatal("expected empty proxy block to be unconfigured")
+	}
+}
+
+func TestDetectStatusReadsProxyEnv(t *testing.T) {
+	clearProxyEnv(t)
+	t.Setenv("HTTP_PROXY", "http://192.168.31.108:52013")
+
+	account := &system.Account{Name: "test", Home: t.TempDir()}
+	status := DetectStatus(account)
+	if !status.Proxy {
+		t.Fatal("expected proxy env to be configured")
+	}
+}
+
+func clearProxyEnv(t *testing.T) {
+	t.Helper()
+	for _, name := range proxyEnvNames {
+		t.Setenv(name, "")
 	}
 }

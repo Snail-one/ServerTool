@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	proxyBegin = "# ===== BEGIN PROXY CONFIG ====="
-	proxyEnd   = "# ===== END PROXY CONFIG ====="
+	proxyBegin = "# ===== BEGIN SNAIL PROXY CONFIG ====="
+	proxyEnd   = "# ===== END SNAIL PROXY CONFIG ====="
 	noProxy    = "localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 )
 
@@ -22,6 +22,7 @@ var (
 	proxyWithAuth = regexp.MustCompile(`^([^:]+):([^@]+)@([^:]+):([0-9]+)$`)
 	proxyPlain    = regexp.MustCompile(`^([^:]+):([0-9]+)$`)
 	proxyEnvLine  = regexp.MustCompile(`(?m)^[ \t]*export[ \t]+(?:http_proxy|https_proxy|HTTP_PROXY|HTTPS_PROXY)=(?:"([^"]*)"|'([^']*)'|([^ \t\r\n;]+))`)
+	proxyEnvNames = []string{"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"}
 )
 
 func ConfigureProxy(view *ui.UI) error {
@@ -74,6 +75,10 @@ func ConfigureProxy(view *ui.UI) error {
 }
 
 func CurrentProxyURL(account *system.Account) (string, bool) {
+	if proxyURL, ok := currentProxyURLFromEnv(); ok {
+		return proxyURL, true
+	}
+
 	bashrc := filepath.Join(account.Home, ".bashrc")
 	content := readFileString(bashrc)
 	block, ok := managedBlockContent(content, proxyBegin, proxyEnd)
@@ -81,6 +86,16 @@ func CurrentProxyURL(account *system.Account) (string, bool) {
 		return "", false
 	}
 	return proxyURLFromBlock(block)
+}
+
+func currentProxyURLFromEnv() (string, bool) {
+	for _, name := range proxyEnvNames {
+		value := strings.TrimSpace(os.Getenv(name))
+		if value != "" {
+			return value, true
+		}
+	}
+	return "", false
 }
 
 func proxyURLFromBlock(block string) (string, bool) {

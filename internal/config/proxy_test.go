@@ -82,6 +82,8 @@ func TestNormalizeProxyRejectsInvalidInput(t *testing.T) {
 }
 
 func TestCurrentProxyURL(t *testing.T) {
+	clearProxyEnv(t)
+
 	home := t.TempDir()
 	account := &system.Account{Name: "test", Home: home}
 	bashrc := filepath.Join(home, ".bashrc")
