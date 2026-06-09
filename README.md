@@ -15,6 +15,24 @@
 go build -o snail_tool ./cmd/snail_tool
 ```
 
+### 一键编译
+
+Windows：
+
+```powershell
+.\build_windows.ps1
+```
+
+默认会交叉编译出 Linux 二进制，输出为 `dist/snail_tool_linux_amd64`。
+
+Linux：
+
+```bash
+bash ./build_linux.sh
+```
+
+默认输出到 `dist/` 目录。
+
 ## 运行
 
 ```bash
