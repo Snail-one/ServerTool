@@ -12,6 +12,8 @@ import (
 	"snail_tool/internal/ui"
 )
 
+const managedSSHDConfigHeader = "# Managed by setup tool"
+
 func ConfigureSSH(view *ui.UI) error {
 	account, err := system.CurrentTargetUser()
 	if err != nil {
@@ -60,22 +62,29 @@ func ConfigureSSH(view *ui.UI) error {
 		log.Warn("当前配置用户是 root：保留 root 公钥登录，不禁用 root 登录")
 	}
 
-	if err := writeSSHDConfig(port, permitRootLogin); err != nil {
+	configChanged, err := writeSSHDConfig(view, port, permitRootLogin)
+	if err != nil {
 		return err
 	}
-	if err := reloadSSHService(); err != nil {
-		return err
+	if configChanged {
+		if err := reloadSSHService(); err != nil {
+			return err
+		}
 	}
 
 	fmt.Println()
 	log.Info("SSH 配置完成")
 	fmt.Println()
 	fmt.Printf("用户：%s\n", account.Name)
-	fmt.Printf("端口：%d\n", port)
-	fmt.Printf("PermitRootLogin：%s\n", permitRootLogin)
-	fmt.Println()
-	fmt.Println("连接方式：")
-	fmt.Printf("ssh -p %d %s@服务器IP\n", port, account.Name)
+	if configChanged {
+		fmt.Printf("端口：%d\n", port)
+		fmt.Printf("PermitRootLogin：%s\n", permitRootLogin)
+		fmt.Println()
+		fmt.Println("连接方式：")
+		fmt.Printf("ssh -p %d %s@服务器IP\n", port, account.Name)
+	} else {
+		fmt.Println("SSH 服务配置：保留现有配置，未重新加载服务")
+	}
 	fmt.Println()
 	log.Warn("请先新开一个终端测试 SSH 登录成功后，再关闭当前会话。")
 	return nil
@@ -144,74 +153,92 @@ func chooseSSHPort(raw string) (int, error) {
 	return port, nil
 }
 
-func writeSSHDConfig(port int, permitRootLogin string) error {
+func writeSSHDConfig(view *ui.UI, port int, permitRootLogin string) (bool, error) {
 	sshdConfig := "/etc/ssh/sshd_config"
 	sshdDir := "/etc/ssh/sshd_config.d"
 	customConf := filepath.Join(sshdDir, "99-custom.conf")
 
 	if err := os.MkdirAll(sshdDir, 0755); err != nil {
-		return err
+		return false, err
 	}
 
 	fmt.Println()
 	log.Info("检查 Include 配置...")
 	data, err := os.ReadFile(sshdConfig)
 	if err != nil {
-		return err
+		return false, err
 	}
 	includeRe := regexp.MustCompile(`(?m)^[[:space:]]*Include[[:space:]]+/etc/ssh/sshd_config\.d/\*\.conf`)
 	if !includeRe.Match(data) {
 		file, err := os.OpenFile(sshdConfig, os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if !strings.HasSuffix(string(data), "\n") {
 			if _, err := file.WriteString("\n"); err != nil {
 				_ = file.Close()
-				return err
+				return false, err
 			}
 		}
 		if _, err := file.WriteString("Include /etc/ssh/sshd_config.d/*.conf\n"); err != nil {
 			_ = file.Close()
-			return err
+			return false, err
 		}
 		if err := file.Close(); err != nil {
-			return err
+			return false, err
 		}
 		log.Info("已自动添加 Include 配置")
 	}
 
 	if system.FileExists(customConf) {
+		existing, err := os.ReadFile(customConf)
+		if err != nil {
+			return false, err
+		}
+		printSSHDConfig(customConf, string(existing))
+
+		if strings.Contains(string(existing), managedSSHDConfigHeader) {
+			overwrite, err := view.Confirm("检测到该 SSH 配置文件由脚本创建，是否覆盖并重新生成？(y/N): ")
+			if err != nil {
+				return false, err
+			}
+			if !overwrite {
+				log.Info("已保留现有 SSH 配置")
+				return false, nil
+			}
+		}
+
 		backup, err := system.Backup(customConf)
 		if err != nil {
-			return err
+			return false, err
 		}
 		log.Info("已备份原 SSH 自定义配置：", backup)
 	}
 
 	fmt.Println()
 	log.Info("写入自定义 SSH 配置...")
-	content := fmt.Sprintf(`# Managed by setup tool
+	content := fmt.Sprintf(`%s
 
 Port %d
 PasswordAuthentication no
 PermitRootLogin %s
 PubkeyAuthentication yes
-`, port, permitRootLogin)
+`, managedSSHDConfigHeader, port, permitRootLogin)
 
 	if err := os.WriteFile(customConf, []byte(content), 0644); err != nil {
-		return err
+		return false, err
 	}
 	if err := os.Chmod(customConf, 0644); err != nil {
-		return err
+		return false, err
 	}
+	printSSHDConfig(customConf, content)
 
 	fmt.Println()
 	log.Info("验证 sshd 配置...")
 	if err := system.Run("/usr/sbin/sshd", "-t"); err != nil {
-		return fmt.Errorf("sshd 配置校验失败: %w", err)
+		return false, fmt.Errorf("sshd 配置校验失败: %w", err)
 	}
-	return nil
+	return true, nil
 }
 
 func reloadSSHService() error {
@@ -241,4 +268,15 @@ func containsLine(content, wanted string) bool {
 		}
 	}
 	return false
+}
+
+func printSSHDConfig(path, content string) {
+	fmt.Println()
+	fmt.Printf("当前 SSH 配置文件：%s\n", path)
+	fmt.Println("----------")
+	fmt.Print(content)
+	if !strings.HasSuffix(content, "\n") {
+		fmt.Println()
+	}
+	fmt.Println("----------")
 }
