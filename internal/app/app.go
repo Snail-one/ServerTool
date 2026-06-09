@@ -77,8 +77,7 @@ func showMenu(status config.Status) {
 	fmt.Println("2) 配置当前用户 Vim ~/.vimrc" + statusText(status.Vim))
 	fmt.Println("3) 配置当前用户 Bash 环境" + statusText(status.Bash))
 	fmt.Println("4) 配置当前用户 HTTP/HTTPS 代理环境变量" + statusText(status.Proxy))
-	fmt.Println("0) 退出")
-	fmt.Println("q) 退出")
+	fmt.Println("0/q) 退出")
 }
 
 func statusText(configured bool) string {
