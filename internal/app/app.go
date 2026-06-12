@@ -45,6 +45,10 @@ func (a *App) Run() error {
 			a.runAction("代理配置失败，已返回菜单", func() error {
 				return config.ConfigureProxy(a.ui)
 			})
+		case "5":
+			a.runAction("清理配置失败，已返回菜单", func() error {
+				return config.CleanupConfig(a.ui)
+			})
 		case "0", "q", "exit":
 			fmt.Println("已退出")
 			return nil
@@ -77,6 +81,7 @@ func showMenu(status config.Status) {
 	fmt.Println("2) 配置当前用户 Vim ~/.vimrc" + statusText(status.Vim))
 	fmt.Println("3) 配置当前用户 Bash 环境" + statusText(status.Bash))
 	fmt.Println("4) 配置当前用户 HTTP/HTTPS 代理环境变量" + proxyStatusText(status.Proxy))
+	fmt.Println("5) 清理已写入配置")
 	fmt.Println("0/q) 退出")
 }
 

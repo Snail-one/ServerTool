@@ -14,6 +14,10 @@ import (
 
 const (
 	managedSSHDConfigHeader = "# Managed by setup tool"
+	managedSSHDIncludeBegin = "# ===== BEGIN SNAIL SSH INCLUDE ====="
+	managedSSHDIncludeEnd   = "# ===== END SNAIL SSH INCLUDE ====="
+	sshAuthorizedKeysBegin  = "# ===== BEGIN SNAIL SSH AUTHORIZED KEYS ====="
+	sshAuthorizedKeysEnd    = "# ===== END SNAIL SSH AUTHORIZED KEYS ====="
 	sshdConfigPath          = "/etc/ssh/sshd_config"
 	sshdConfigDir           = "/etc/ssh/sshd_config.d"
 	customSSHDConfigPath    = "/etc/ssh/sshd_config.d/99-custom.conf"
@@ -165,21 +169,7 @@ func installAuthorizedKey(account *system.Account, pubkey string) error {
 		return err
 	}
 	if !containsLine(string(data), pubkey) {
-		file, err := os.OpenFile(authKeys, os.O_APPEND|os.O_WRONLY, 0600)
-		if err != nil {
-			return err
-		}
-		if len(data) > 0 && !strings.HasSuffix(string(data), "\n") {
-			if _, err := file.WriteString("\n"); err != nil {
-				_ = file.Close()
-				return err
-			}
-		}
-		if _, err := file.WriteString(pubkey + "\n"); err != nil {
-			_ = file.Close()
-			return err
-		}
-		if err := file.Close(); err != nil {
+		if err := writeManagedAuthorizedKey(authKeys, string(data), pubkey); err != nil {
 			return err
 		}
 		log.Info("已添加 SSH 公钥")
@@ -242,7 +232,8 @@ func writeSSHDConfig(port int, permitRootLogin string) error {
 				return err
 			}
 		}
-		if _, err := file.WriteString("Include /etc/ssh/sshd_config.d/*.conf\n"); err != nil {
+		block := fmt.Sprintf("%s\nInclude /etc/ssh/sshd_config.d/*.conf\n%s\n", managedSSHDIncludeBegin, managedSSHDIncludeEnd)
+		if _, err := file.WriteString(block); err != nil {
 			_ = file.Close()
 			return err
 		}
@@ -276,6 +267,32 @@ func writeSSHDConfig(port int, permitRootLogin string) error {
 		return fmt.Errorf("sshd 配置校验失败: %w", err)
 	}
 	return nil
+}
+
+func writeManagedAuthorizedKey(path, content, pubkey string) error {
+	keys := managedAuthorizedKeys(content)
+	keys = append(keys, pubkey)
+
+	cleaned := removeManagedBlock(content, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd)
+	block := fmt.Sprintf("%s\n%s\n%s\n", sshAuthorizedKeysBegin, strings.Join(keys, "\n"), sshAuthorizedKeysEnd)
+	return os.WriteFile(path, []byte(appendBlock(cleaned, block)), 0600)
+}
+
+func managedAuthorizedKeys(content string) []string {
+	block, ok := managedBlockContent(content, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd)
+	if !ok {
+		return nil
+	}
+
+	var keys []string
+	for _, line := range strings.Split(block, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		keys = append(keys, line)
+	}
+	return keys
 }
 
 func buildSSHDConfig(port int, permitRootLogin string) string {
@@ -342,7 +359,7 @@ func reloadSSHService() error {
 
 func containsLine(content, wanted string) bool {
 	for _, line := range strings.Split(content, "\n") {
-		if line == wanted {
+		if strings.TrimSpace(line) == wanted {
 			return true
 		}
 	}
