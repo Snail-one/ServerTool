@@ -46,10 +46,10 @@ jobs:
         include:
           - goos: linux
             goarch: amd64
-            artifact: snail_tool_linux_amd64
+            artifact: snailtool_linux_amd64
           - goos: linux
             goarch: arm64
-            artifact: snail_tool_linux_arm64
+            artifact: snailtool_linux_arm64
 
     steps:
       - name: Checkout
