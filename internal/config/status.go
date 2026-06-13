@@ -42,10 +42,7 @@ func isBashConfigured(account *system.Account) bool {
 	content := readFileString(bashrc)
 	return strings.Contains(content, bashAliasBegin) &&
 		strings.Contains(content, bashAliasBlock) &&
-		strings.Contains(content, bashAliasEnd) &&
-		strings.Contains(content, bashCommandBegin) &&
-		strings.Contains(content, "snail()") &&
-		strings.Contains(content, bashCommandEnd)
+		strings.Contains(content, bashAliasEnd)
 }
 
 func isProxyConfigured(account *system.Account) bool {

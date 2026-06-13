@@ -17,6 +17,11 @@ type cleanupStep struct {
 	run  func(*system.Account) error
 }
 
+const (
+	legacyBashCommandBegin = "# ===== BEGIN SNAIL COMMAND ====="
+	legacyBashCommandEnd   = "# ===== END SNAIL COMMAND ====="
+)
+
 func CleanupConfig(view *ui.UI) error {
 	account, err := system.CurrentTargetUser()
 	if err != nil {
@@ -236,7 +241,7 @@ func cleanupBashConfig(account *system.Account) error {
 	changed, err := cleanupManagedBlocks(
 		bashrc,
 		blockMarker{begin: bashAliasBegin, end: bashAliasEnd},
-		blockMarker{begin: bashCommandBegin, end: bashCommandEnd},
+		blockMarker{begin: legacyBashCommandBegin, end: legacyBashCommandEnd},
 	)
 	if err != nil {
 		return err

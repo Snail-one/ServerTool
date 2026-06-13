@@ -19,7 +19,6 @@ func TestDetectStatusForUserFiles(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(home, ".bashrc"), []byte(
 		bashAliasBegin+"\n"+bashAliasBlock+"\n"+bashAliasEnd+"\n\n"+
-			bashCommandBegin+"\nsnail() {\n  sudo '/usr/local/bin/snail_tool' \"$@\"\n}\n"+bashCommandEnd+"\n\n"+
 			proxyBegin+"\nexport http_proxy=\"http://127.0.0.1:8888\"\n"+proxyEnd+"\n",
 	), 0644); err != nil {
 		t.Fatal(err)

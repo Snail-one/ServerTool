@@ -100,7 +100,7 @@ func TestCleanupBashConfigRemovesManagedBlocksOnly(t *testing.T) {
 	bashrc := filepath.Join(home, ".bashrc")
 	content := "export EDITOR=vim\n\n" +
 		bashAliasBegin + "\n" + bashAliasBlock + "\n" + bashAliasEnd + "\n\n" +
-		bashCommandBegin + "\nsnail() {\n  sudo '/usr/local/bin/snail_tool' \"$@\"\n}\n" + bashCommandEnd + "\n"
+		legacyBashCommandBegin + "\nsnail() {\n  sudo '/usr/local/bin/snail_tool' \"$@\"\n}\n" + legacyBashCommandEnd + "\n"
 	if err := os.WriteFile(bashrc, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestCleanupBashConfigRemovesManagedBlocksOnly(t *testing.T) {
 	}
 
 	got := readTestFile(t, bashrc)
-	for _, marker := range []string{bashAliasBegin, bashAliasEnd, bashCommandBegin, bashCommandEnd, "snail()"} {
+	for _, marker := range []string{bashAliasBegin, bashAliasEnd, legacyBashCommandBegin, legacyBashCommandEnd, "snail()"} {
 		if strings.Contains(got, marker) {
 			t.Fatalf("managed bash content remained:\n%s", got)
 		}
