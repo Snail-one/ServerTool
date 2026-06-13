@@ -14,7 +14,7 @@ import (
 const (
 	bashAliasBegin = "# ===== BEGIN SNAIL BASH ALIASES ====="
 	bashAliasEnd   = "# ===== END SNAIL BASH ALIASES ====="
-	bashAliasBlock = `alias ll='ls -l'
+	bashAliasBlock = `alias ll='ls -lh'
 alias la='ls -A'
 alias l='ls -lah'`
 )
