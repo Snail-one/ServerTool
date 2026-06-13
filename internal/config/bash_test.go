@@ -50,8 +50,13 @@ export EDITOR=vim
 	if strings.Contains(content, "ls $LS_OPTIONS") || strings.Contains(content, "alias l='ls -la'") {
 		t.Fatalf("legacy aliases were not removed:\n%s", content)
 	}
-	if strings.Count(content, bashAliasBegin) != 1 || strings.Count(content, "alias ll='ls -l'") != 1 {
+	if strings.Count(content, bashAliasBegin) != 1 || strings.Count(content, bashAliasEnd) != 1 {
 		t.Fatalf("alias block is not idempotent:\n%s", content)
+	}
+	for _, line := range strings.Split(bashAliasBlock, "\n") {
+		if strings.Count(content, line) != 1 {
+			t.Fatalf("alias line %q is not idempotent:\n%s", line, content)
+		}
 	}
 	if !strings.Contains(content, "export EDITOR=vim") {
 		t.Fatalf("unrelated bashrc content was removed:\n%s", content)
