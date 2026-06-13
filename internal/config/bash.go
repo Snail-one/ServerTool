@@ -14,9 +14,9 @@ import (
 const (
 	bashAliasBegin = "# ===== BEGIN SNAIL BASH ALIASES ====="
 	bashAliasEnd   = "# ===== END SNAIL BASH ALIASES ====="
-	bashAliasBlock = `alias ll='ls -lh'
+	bashAliasBlock = `alias l='ls -lh'
 alias la='ls -A'
-alias l='ls -lah'`
+alias ll='ls -lah'`
 )
 
 func ConfigureBash() error {
