@@ -16,7 +16,8 @@ const (
 	bashAliasEnd   = "# ===== END SNAIL BASH ALIASES ====="
 	bashAliasBlock = `alias l='ls -lh'
 alias la='ls -A'
-alias ll='ls -lah'`
+alias ll='ls -lah'
+alias lspath='echo "$PATH" | tr ":" "\n"'`
 )
 
 func ConfigureBash() error {
@@ -61,6 +62,7 @@ func replaceAliases(path string) error {
 
 	content := removeManagedBlock(string(data), bashAliasBegin, bashAliasEnd)
 	patterns := []string{
+		`(?m)^[[:space:]]*#?[[:space:]]*alias lspath=.*\n?`,
 		`(?m)^[[:space:]]*#?[[:space:]]*alias ll=.*\n?`,
 		`(?m)^[[:space:]]*#?[[:space:]]*alias la=.*\n?`,
 		`(?m)^[[:space:]]*#?[[:space:]]*alias l=.*\n?`,
