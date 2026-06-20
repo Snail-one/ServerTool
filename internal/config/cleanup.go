@@ -66,7 +66,7 @@ func CleanupConfig(view *ui.UI) error {
 	case "5":
 		return runCleanupStepWithConfirm(view, account, steps[3])
 	case "0", "q", "exit":
-		return nil
+		return ErrReturnToMenu
 	default:
 		fmt.Println("无效选项，已返回菜单")
 		return nil

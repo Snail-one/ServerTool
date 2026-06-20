@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -65,6 +66,9 @@ func (a *App) Run() error {
 
 func (a *App) runAction(failureMessage string, action func() error) {
 	if err := action(); err != nil {
+		if errors.Is(err, config.ErrReturnToMenu) {
+			return
+		}
 		log.Error(err)
 		log.Error(failureMessage)
 	}

@@ -56,7 +56,7 @@ func ConfigureSSH(view *ui.UI) error {
 	case "2":
 		return configureSSHDHardening(view, account)
 	case "0", "q", "exit":
-		return nil
+		return ErrReturnToMenu
 	default:
 		fmt.Println("无效选项，已返回菜单")
 		return nil
@@ -65,10 +65,13 @@ func ConfigureSSH(view *ui.UI) error {
 
 func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 	for {
+		if err := printAuthorizedKeys(account); err != nil {
+			return err
+		}
+
 		fmt.Println("请选择公钥操作：")
-		fmt.Println("1) 查看当前公钥")
-		fmt.Println("2) 添加公钥")
-		fmt.Println("3) 删除公钥")
+		fmt.Println("1) 添加公钥")
+		fmt.Println("2) 删除公钥")
 		fmt.Println("0/q) 返回")
 		fmt.Println()
 
@@ -80,19 +83,15 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 
 		switch strings.ToLower(choice) {
 		case "1":
-			if err := printAuthorizedKeys(account); err != nil {
-				return err
-			}
-		case "2":
 			if err := addSSHAuthorizedKeys(view, account); err != nil {
 				return err
 			}
-		case "3":
+		case "2":
 			if err := deleteSSHAuthorizedKeys(view, account); err != nil {
 				return err
 			}
 		case "0", "q", "exit":
-			return nil
+			return ErrReturnToMenu
 		default:
 			fmt.Println("无效选项，请重新输入")
 		}
@@ -101,10 +100,6 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 }
 
 func addSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
-	if err := printAuthorizedKeys(account); err != nil {
-		return err
-	}
-
 	for {
 		pubkey, err := view.Ask("请粘贴 SSH 公钥（直接回车结束）: ")
 		if err != nil {

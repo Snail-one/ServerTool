@@ -9,7 +9,7 @@
 - 配置当前用户 Bash 环境
 - 配置当前用户 HTTP/HTTPS 代理环境变量
 - 清理本工具写入的 SSH、Vim、Bash、代理配置，支持一键清理或按项清理
-- 批量扫描并更新运行中的 Docker Compose 应用，更新完成后清理无用镜像
+- 批量扫描并更新运行中的 Docker Compose 应用，默认扫描 `/docker`、`/opt/docker`、`/opt/apps`、用户目录、用户目录下的 `docker`，更新完成后可选择 Docker 清理策略
 
 ## 构建
 

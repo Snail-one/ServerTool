@@ -33,8 +33,12 @@ func (u *UI) Confirm(prompt string) (bool, error) {
 }
 
 func (u *UI) Pause() {
+	u.PauseWithPrompt("按回车返回菜单...")
+}
+
+func (u *UI) PauseWithPrompt(prompt string) {
 	fmt.Println()
-	fmt.Print("按回车返回菜单...")
+	fmt.Print(prompt)
 	_, _ = u.reader.ReadString('\n')
 	fmt.Println()
 }
