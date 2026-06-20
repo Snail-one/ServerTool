@@ -19,11 +19,17 @@ const (
 )
 
 var (
-	proxyWithAuth = regexp.MustCompile(`^([^:]+):([^@]+)@([^:]+):([0-9]+)$`)
-	proxyPlain    = regexp.MustCompile(`^([^:]+):([0-9]+)$`)
-	proxyEnvLine  = regexp.MustCompile(`(?m)^[ \t]*export[ \t]+(?:http_proxy|https_proxy|HTTP_PROXY|HTTPS_PROXY)=(?:"([^"]*)"|'([^']*)'|([^ \t\r\n;]+))`)
-	proxyEnvNames = []string{"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"}
+	proxyWithAuth     = regexp.MustCompile(`^([^:]+):([^@]+)@([^:]+):([0-9]+)$`)
+	proxyPlain        = regexp.MustCompile(`^([^:]+):([0-9]+)$`)
+	proxyEnvLine      = regexp.MustCompile(`(?m)^[ \t]*export[ \t]+(?:http_proxy|https_proxy|HTTP_PROXY|HTTPS_PROXY)=(?:"([^"]*)"|'([^']*)'|([^ \t\r\n;]+))`)
+	proxyShellEnvLine = regexp.MustCompile(`^[ \t]*(?:export[ \t]+)?(http_proxy|https_proxy|HTTP_PROXY|HTTPS_PROXY|no_proxy|NO_PROXY)=(?:"([^"]*)"|'([^']*)'|([^ \t\r\n;]*))`)
+	proxyEnvNames     = []string{"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"}
 )
+
+type proxyAssignment struct {
+	name  string
+	value string
+}
 
 func ConfigureProxy(view *ui.UI) error {
 	account, err := system.CurrentTargetUser()
@@ -37,6 +43,16 @@ func ConfigureProxy(view *ui.UI) error {
 		fmt.Printf("当前代理服务器：%s\n", maskProxyURL(currentProxy))
 		fmt.Println()
 	}
+
+	bashrc := filepath.Join(account.Home, ".bashrc")
+	replaceUnmanagedProxy, err := confirmUnmanagedProxyOverride(view, bashrc)
+	if err != nil {
+		return err
+	}
+	if !replaceUnmanagedProxy {
+		return nil
+	}
+
 	fmt.Println("\033[32m[INFO]\033[0m ip:port 格式，或 username:password@ip:port 格式")
 	fmt.Println()
 
@@ -50,11 +66,10 @@ func ConfigureProxy(view *ui.UI) error {
 		return err
 	}
 
-	bashrc := filepath.Join(account.Home, ".bashrc")
 	if err := ensureFile(bashrc); err != nil {
 		return err
 	}
-	if err := writeProxyBlock(bashrc, proxyURL); err != nil {
+	if err := writeProxyBlockReplacingUnmanaged(bashrc, proxyURL); err != nil {
 		return err
 	}
 	if err := system.ChownPath(bashrc, account, false); err != nil {
@@ -159,12 +174,23 @@ func normalizeProxy(raw string) (string, error) {
 }
 
 func writeProxyBlock(path, proxyURL string) error {
+	return writeProxyBlockWithOptions(path, proxyURL, false)
+}
+
+func writeProxyBlockReplacingUnmanaged(path, proxyURL string) error {
+	return writeProxyBlockWithOptions(path, proxyURL, true)
+}
+
+func writeProxyBlockWithOptions(path, proxyURL string, removeUnmanaged bool) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
 
 	content := removeManagedBlock(string(data), proxyBegin, proxyEnd)
+	if removeUnmanaged {
+		content = removeUnmanagedProxyLines(content)
+	}
 	block := fmt.Sprintf(`
 %s
 
@@ -183,6 +209,88 @@ export NO_PROXY="%s"
 	return os.WriteFile(path, []byte(appendBlock(content, strings.TrimLeft(block, "\n"))), 0644)
 }
 
+func confirmUnmanagedProxyOverride(view *ui.UI, bashrc string) (bool, error) {
+	assignments, err := unmanagedProxyAssignments(bashrc)
+	if err != nil {
+		return false, err
+	}
+	if len(assignments) == 0 {
+		return true, nil
+	}
+
+	fmt.Printf("检测到 %s 中已有非本工具管理的代理配置：\n", bashrc)
+	for _, assignment := range assignments {
+		fmt.Printf("- %s=%s\n", assignment.name, maskProxyValue(assignment.value))
+	}
+	fmt.Println()
+	fmt.Println("1) 保留现有代理配置并返回")
+	fmt.Println("2) 删除这些代理行，并写入新的代理配置")
+	fmt.Println("0/q) 取消")
+	fmt.Println()
+
+	choice, err := view.Ask("输入选项: ")
+	if err != nil {
+		return false, err
+	}
+
+	switch strings.ToLower(choice) {
+	case "2":
+		return true, nil
+	case "1", "", "0", "q", "exit":
+		fmt.Println("已保留现有代理配置")
+		return false, nil
+	default:
+		fmt.Println("无效选项，已取消代理配置")
+		return false, nil
+	}
+}
+
+func unmanagedProxyAssignments(path string) ([]proxyAssignment, error) {
+	if !system.FileExists(path) {
+		return nil, nil
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	content := removeManagedBlock(string(data), proxyBegin, proxyEnd)
+	return proxyAssignmentsFromContent(content), nil
+}
+
+func proxyAssignmentsFromContent(content string) []proxyAssignment {
+	assignments := make([]proxyAssignment, 0)
+	for _, rawLine := range strings.Split(content, "\n") {
+		line := strings.TrimRight(rawLine, "\r")
+		match := proxyShellEnvLine.FindStringSubmatch(line)
+		if match == nil {
+			continue
+		}
+		assignments = append(assignments, proxyAssignment{
+			name:  match[1],
+			value: firstNonEmpty(match[2:]...),
+		})
+	}
+	return assignments
+}
+
+func removeUnmanagedProxyLines(content string) string {
+	lines := strings.SplitAfter(content, "\n")
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		trimmed := strings.TrimRight(line, "\r\n")
+		if proxyShellEnvLine.MatchString(trimmed) {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "")
+}
+
 func maskProxyURL(proxyURL string) string {
 	prefix := "http://"
 	raw := strings.TrimPrefix(proxyURL, prefix)
@@ -192,4 +300,37 @@ func maskProxyURL(proxyURL string) string {
 		return proxyURL
 	}
 	return fmt.Sprintf("%s%s:******@%s:%s", prefix, match[1], match[3], match[4])
+}
+
+func maskProxyValue(value string) string {
+	value = strings.TrimSpace(value)
+	if !strings.Contains(value, "@") {
+		return value
+	}
+
+	at := strings.LastIndex(value, "@")
+	schemeEnd := strings.Index(value, "://")
+	userInfoStart := 0
+	if schemeEnd >= 0 {
+		userInfoStart = schemeEnd + len("://")
+	}
+	if at <= userInfoStart {
+		return value
+	}
+
+	userInfo := value[userInfoStart:at]
+	user := userInfo
+	if colon := strings.Index(userInfo, ":"); colon >= 0 {
+		user = userInfo[:colon]
+	}
+	return value[:userInfoStart] + user + ":******@" + value[at+1:]
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

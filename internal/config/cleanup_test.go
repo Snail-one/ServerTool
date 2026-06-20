@@ -41,6 +41,62 @@ func TestCleanupSSHAuthorizedKeysRemovesManagedBlockOnly(t *testing.T) {
 	}
 }
 
+func TestCleanupSSHAuthorizedKeysKeepsEmptyFileAndDir(t *testing.T) {
+	home := t.TempDir()
+	sshDir := filepath.Join(home, ".ssh")
+	if err := os.MkdirAll(sshDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	authKeys := filepath.Join(sshDir, "authorized_keys")
+	managedKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAImanaged snail@example"
+	content := sshAuthorizedKeysBegin + "\n" + managedKey + "\n" + sshAuthorizedKeysEnd + "\n"
+	if err := os.WriteFile(authKeys, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	account := &system.Account{Name: "test", Home: home}
+	if err := cleanupSSHAuthorizedKeys(account); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := readTestFile(t, authKeys); got != "" {
+		t.Fatalf("expected authorized_keys to be kept empty, got:\n%s", got)
+	}
+	if _, err := os.Stat(sshDir); err != nil {
+		t.Fatalf("expected .ssh dir to be kept, stat err=%v", err)
+	}
+}
+
+func TestCleanupSSHAuthorizedKeysKeepsNonEmptySSHDir(t *testing.T) {
+	home := t.TempDir()
+	sshDir := filepath.Join(home, ".ssh")
+	if err := os.MkdirAll(sshDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	authKeys := filepath.Join(sshDir, "authorized_keys")
+	if err := os.WriteFile(authKeys, []byte(sshAuthorizedKeysBegin+"\nkey\n"+sshAuthorizedKeysEnd+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	knownHosts := filepath.Join(sshDir, "known_hosts")
+	if err := os.WriteFile(knownHosts, []byte("example ssh-ed25519 AAAA\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	account := &system.Account{Name: "test", Home: home}
+	if err := cleanupSSHAuthorizedKeys(account); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := readTestFile(t, authKeys); got != "" {
+		t.Fatalf("expected authorized_keys to be kept empty, got:\n%s", got)
+	}
+	if _, err := os.Stat(knownHosts); err != nil {
+		t.Fatalf("expected non-empty .ssh dir content to remain, stat err=%v", err)
+	}
+}
+
 func TestWriteManagedAuthorizedKeyIsIdempotent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "authorized_keys")
 	existingKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexisting user@example"
@@ -68,7 +124,7 @@ func TestWriteManagedAuthorizedKeyIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestCleanupVimConfigRemovesOnlyManagedTemplate(t *testing.T) {
+func TestCleanupVimConfigClearsOnlyManagedTemplate(t *testing.T) {
 	home := t.TempDir()
 	account := &system.Account{Name: "test", Home: home}
 	vimrc := filepath.Join(home, ".vimrc")
@@ -79,8 +135,8 @@ func TestCleanupVimConfigRemovesOnlyManagedTemplate(t *testing.T) {
 	if err := cleanupVimConfig(account); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(vimrc); !os.IsNotExist(err) {
-		t.Fatalf("expected managed vimrc to be removed, stat err=%v", err)
+	if got := readTestFile(t, vimrc); got != "" {
+		t.Fatalf("expected managed vimrc to be kept empty, got:\n%s", got)
 	}
 
 	if err := os.WriteFile(vimrc, []byte("set number\n"), 0644); err != nil {
@@ -120,9 +176,29 @@ func TestCleanupBashConfigRemovesManagedBlocksOnly(t *testing.T) {
 	}
 }
 
+func TestCleanupBashConfigKeepsEmptyManagedFile(t *testing.T) {
+	home := t.TempDir()
+	account := &system.Account{Name: "test", Home: home}
+	bashrc := filepath.Join(home, ".bashrc")
+	content := bashAliasBegin + "\n" + bashAliasBlock + "\n" + bashAliasEnd + "\n"
+	if err := os.WriteFile(bashrc, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cleanupBashConfig(account); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := readTestFile(t, bashrc); got != "" {
+		t.Fatalf("expected managed .bashrc to be kept empty, got:\n%s", got)
+	}
+}
+
 func TestCleanupProxyConfigRemovesManagedBlockAndCurrentEnv(t *testing.T) {
 	clearProxyEnv(t)
 	t.Setenv("HTTP_PROXY", "http://127.0.0.1:8888")
+	t.Setenv("NO_PROXY", "localhost,127.0.0.1")
+	t.Setenv("no_proxy", "localhost,127.0.0.1")
 
 	home := t.TempDir()
 	account := &system.Account{Name: "test", Home: home}
@@ -146,5 +222,31 @@ func TestCleanupProxyConfigRemovesManagedBlockAndCurrentEnv(t *testing.T) {
 	}
 	if value := os.Getenv("HTTP_PROXY"); value != "" {
 		t.Fatalf("HTTP_PROXY was not unset, got %q", value)
+	}
+	if value := os.Getenv("NO_PROXY"); value != "" {
+		t.Fatalf("NO_PROXY was not unset, got %q", value)
+	}
+	if value := os.Getenv("no_proxy"); value != "" {
+		t.Fatalf("no_proxy was not unset, got %q", value)
+	}
+}
+
+func TestCleanupProxyConfigKeepsEmptyManagedFile(t *testing.T) {
+	clearProxyEnv(t)
+
+	home := t.TempDir()
+	account := &system.Account{Name: "test", Home: home}
+	bashrc := filepath.Join(home, ".bashrc")
+	content := proxyBegin + "\nexport http_proxy=\"http://127.0.0.1:8888\"\n" + proxyEnd + "\n"
+	if err := os.WriteFile(bashrc, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cleanupProxyConfig(account); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := readTestFile(t, bashrc); got != "" {
+		t.Fatalf("expected managed .bashrc to be kept empty, got:\n%s", got)
 	}
 }

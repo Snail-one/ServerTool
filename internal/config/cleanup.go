@@ -152,6 +152,7 @@ func cleanupSSHAuthorizedKeys(account *system.Account) error {
 		return nil
 	}
 
+	cleaned = normalizeCleanedContent(cleaned)
 	if err := os.WriteFile(authKeys, []byte(cleaned), 0600); err != nil {
 		return err
 	}
@@ -186,10 +187,10 @@ func cleanupSSHDConfig() (bool, error) {
 		return serviceChanged, nil
 	}
 
-	if err := os.Remove(customSSHDConfigPath); err != nil {
+	if err := os.WriteFile(customSSHDConfigPath, nil, 0644); err != nil {
 		return serviceChanged, err
 	}
-	log.Info("已删除 SSH 自定义配置：", customSSHDConfigPath)
+	log.Info("已清空 SSH 自定义配置：", customSSHDConfigPath)
 	return true, nil
 }
 
@@ -208,6 +209,7 @@ func cleanupSSHDInclude() (bool, error) {
 	if cleaned == content {
 		return false, nil
 	}
+	cleaned = normalizeCleanedContent(cleaned)
 
 	if err := os.WriteFile(sshdConfigPath, []byte(cleaned), 0644); err != nil {
 		return false, err
@@ -229,16 +231,16 @@ func cleanupVimConfig(account *system.Account) error {
 		return nil
 	}
 
-	if err := os.Remove(vimrc); err != nil {
+	if err := os.WriteFile(vimrc, nil, 0644); err != nil {
 		return err
 	}
-	log.Info("已删除 Vim 配置：", vimrc)
+	log.Info("已清空 Vim 配置：", vimrc)
 	return nil
 }
 
 func cleanupBashConfig(account *system.Account) error {
 	bashrc := filepath.Join(account.Home, ".bashrc")
-	changed, err := cleanupManagedBlocks(
+	result, err := cleanupManagedBlocks(
 		bashrc,
 		blockMarker{begin: bashAliasBegin, end: bashAliasEnd},
 		blockMarker{begin: legacyBashCommandBegin, end: legacyBashCommandEnd},
@@ -246,7 +248,7 @@ func cleanupBashConfig(account *system.Account) error {
 	if err != nil {
 		return err
 	}
-	if changed {
+	if result.changed {
 		log.Info("已清理 Bash 托管配置：", bashrc)
 	} else {
 		log.Info("未发现 Bash 托管配置，跳过")
@@ -256,17 +258,17 @@ func cleanupBashConfig(account *system.Account) error {
 
 func cleanupProxyConfig(account *system.Account) error {
 	bashrc := filepath.Join(account.Home, ".bashrc")
-	changed, err := cleanupManagedBlocks(
+	result, err := cleanupManagedBlocks(
 		bashrc,
 		blockMarker{begin: proxyBegin, end: proxyEnd},
 	)
 	if err != nil {
 		return err
 	}
-	for _, name := range proxyEnvNames {
+	for _, name := range proxyCleanupEnvNames() {
 		_ = os.Unsetenv(name)
 	}
-	if changed {
+	if result.changed {
 		log.Info("已清理代理托管配置：", bashrc)
 		fmt.Println("当前终端已存在的代理环境变量可能需要重新登录或手动 unset 后才会消失。")
 	} else {
@@ -280,14 +282,18 @@ type blockMarker struct {
 	end   string
 }
 
-func cleanupManagedBlocks(path string, blocks ...blockMarker) (bool, error) {
+type managedBlockCleanupResult struct {
+	changed bool
+}
+
+func cleanupManagedBlocks(path string, blocks ...blockMarker) (managedBlockCleanupResult, error) {
 	if !system.FileExists(path) {
-		return false, nil
+		return managedBlockCleanupResult{}, nil
 	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return false, err
+		return managedBlockCleanupResult{}, err
 	}
 
 	content := string(data)
@@ -296,8 +302,21 @@ func cleanupManagedBlocks(path string, blocks ...blockMarker) (bool, error) {
 		cleaned = removeManagedBlock(cleaned, block.begin, block.end)
 	}
 	if cleaned == content {
-		return false, nil
+		return managedBlockCleanupResult{}, nil
 	}
 
-	return true, os.WriteFile(path, []byte(cleaned), 0644)
+	cleaned = normalizeCleanedContent(cleaned)
+	return managedBlockCleanupResult{changed: true}, os.WriteFile(path, []byte(cleaned), 0644)
+}
+
+func normalizeCleanedContent(content string) string {
+	if strings.TrimSpace(content) == "" {
+		return ""
+	}
+	return strings.Trim(content, "\n") + "\n"
+}
+
+func proxyCleanupEnvNames() []string {
+	names := append([]string{}, proxyEnvNames...)
+	return append(names, "NO_PROXY", "no_proxy")
 }

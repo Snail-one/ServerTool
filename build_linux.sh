@@ -6,7 +6,7 @@ cd "$ROOT_DIR"
 
 mkdir -p dist
 
-OUTPUT="dist/snail_tool_linux_$(go env GOARCH)"
+OUTPUT="dist/snailtool_linux_$(go env GOARCH)"
 
 CGO_ENABLED=0 GOOS=linux GOARCH="$(go env GOARCH)" go build -o "$OUTPUT" ./cmd/snail_tool
 

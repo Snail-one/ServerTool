@@ -49,6 +49,10 @@ func (a *App) Run() error {
 			a.runAction("清理配置失败，已返回菜单", func() error {
 				return config.CleanupConfig(a.ui)
 			})
+		case "6":
+			a.runAction("Docker Compose 应用更新失败，已返回菜单", func() error {
+				return config.UpdateDockerComposeApps(a.ui)
+			})
 		case "0", "q", "exit":
 			fmt.Println("已退出")
 			return nil
@@ -82,6 +86,7 @@ func showMenu(status config.Status) {
 	fmt.Println("3) 配置当前用户 Bash 环境" + statusText(status.Bash))
 	fmt.Println("4) 配置当前用户 HTTP/HTTPS 代理环境变量" + proxyStatusText(status.Proxy))
 	fmt.Println("5) 清理已写入配置")
+	fmt.Println("6) 批量更新运行中的 Docker Compose 应用")
 	fmt.Println("0/q) 退出")
 }
 

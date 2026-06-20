@@ -50,6 +50,80 @@ func TestWriteProxyBlockIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestWriteProxyBlockReplacingUnmanagedRemovesUserProxyLines(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".bashrc")
+	input := `export EDITOR=vim
+export http_proxy="http://old.example:8080"
+https_proxy='http://old.example:8080'
+export no_proxy="localhost"
+alias ll='ls -lah'
+`
+	if err := os.WriteFile(path, []byte(input), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := writeProxyBlockReplacingUnmanaged(path, "http://127.0.0.1:8888"); err != nil {
+		t.Fatal(err)
+	}
+
+	content := readTestFile(t, path)
+	for _, old := range []string{"old.example", "export no_proxy=\"localhost\""} {
+		if strings.Contains(content, old) {
+			t.Fatalf("old unmanaged proxy line remained:\n%s", content)
+		}
+	}
+	for _, kept := range []string{"export EDITOR=vim", "alias ll='ls -lah'"} {
+		if !strings.Contains(content, kept) {
+			t.Fatalf("unrelated content %q was removed:\n%s", kept, content)
+		}
+	}
+	if !strings.Contains(content, proxyBegin) || !strings.Contains(content, "http://127.0.0.1:8888") {
+		t.Fatalf("new managed proxy block missing:\n%s", content)
+	}
+}
+
+func TestUnmanagedProxyAssignmentsIgnoresManagedBlock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".bashrc")
+	input := `export http_proxy="http://user:secret@old.example:8080"
+export no_proxy="localhost"
+
+` + proxyBegin + `
+export http_proxy="http://managed.example:8080"
+` + proxyEnd + `
+`
+	if err := os.WriteFile(path, []byte(input), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	assignments, err := unmanagedProxyAssignments(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(assignments) != 2 {
+		t.Fatalf("expected 2 unmanaged proxy assignments, got %#v", assignments)
+	}
+	if assignments[0].name != "http_proxy" || assignments[0].value != "http://user:secret@old.example:8080" {
+		t.Fatalf("unexpected first assignment: %#v", assignments[0])
+	}
+	if assignments[1].name != "no_proxy" || assignments[1].value != "localhost" {
+		t.Fatalf("unexpected second assignment: %#v", assignments[1])
+	}
+}
+
+func TestMaskProxyValue(t *testing.T) {
+	got := maskProxyValue("http://user:secret@example.com:8080")
+	want := "http://user:******@example.com:8080"
+	if got != want {
+		t.Fatalf("maskProxyValue() = %q, want %q", got, want)
+	}
+
+	plain := "localhost,127.0.0.1"
+	if got := maskProxyValue(plain); got != plain {
+		t.Fatalf("maskProxyValue() = %q, want %q", got, plain)
+	}
+}
+
 func TestNormalizeProxy(t *testing.T) {
 	tests := []struct {
 		name string
