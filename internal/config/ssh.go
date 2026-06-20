@@ -5,12 +5,19 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"snail_tool/internal/log"
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
 )
+
+type authorizedKeyEntry struct {
+	index   int
+	line    string
+	managed bool
+}
 
 const (
 	managedSSHDConfigHeader = "# Managed by setup tool"
@@ -31,7 +38,162 @@ func ConfigureSSH(view *ui.UI) error {
 
 	log.Info("当前配置用户：", account.Name)
 	fmt.Println()
+	fmt.Println("请选择 SSH 操作：")
+	fmt.Println("1) 管理 SSH 公钥（查看 / 添加）")
+	fmt.Println("2) 写入随机 SSH 端口 + 禁用密码登录等常用安全配置")
+	fmt.Println("0/q) 返回")
+	fmt.Println()
 
+	choice, err := view.Ask("输入选项: ")
+	if err != nil {
+		return err
+	}
+	fmt.Println()
+
+	switch strings.ToLower(choice) {
+	case "1":
+		return configureSSHAuthorizedKeys(view, account)
+	case "2":
+		return configureSSHDHardening(view, account)
+	case "0", "q", "exit":
+		return nil
+	default:
+		fmt.Println("无效选项，已返回菜单")
+		return nil
+	}
+}
+
+func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
+	for {
+		fmt.Println("请选择公钥操作：")
+		fmt.Println("1) 查看当前公钥")
+		fmt.Println("2) 添加公钥")
+		fmt.Println("3) 删除公钥")
+		fmt.Println("0/q) 返回")
+		fmt.Println()
+
+		choice, err := view.Ask("输入选项: ")
+		if err != nil {
+			return err
+		}
+		fmt.Println()
+
+		switch strings.ToLower(choice) {
+		case "1":
+			if err := printAuthorizedKeys(account); err != nil {
+				return err
+			}
+		case "2":
+			if err := addSSHAuthorizedKeys(view, account); err != nil {
+				return err
+			}
+		case "3":
+			if err := deleteSSHAuthorizedKeys(view, account); err != nil {
+				return err
+			}
+		case "0", "q", "exit":
+			return nil
+		default:
+			fmt.Println("无效选项，请重新输入")
+		}
+		fmt.Println()
+	}
+}
+
+func addSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
+	if err := printAuthorizedKeys(account); err != nil {
+		return err
+	}
+
+	for {
+		pubkey, err := view.Ask("请粘贴 SSH 公钥（直接回车结束）: ")
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(pubkey) == "" {
+			return nil
+		}
+		if err := system.ValidateSSHPublicKey(pubkey); err != nil {
+			return err
+		}
+
+		if err := installAuthorizedKey(account, pubkey); err != nil {
+			return err
+		}
+		fmt.Println()
+	}
+}
+
+func deleteSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
+	authKeys := filepath.Join(account.Home, ".ssh", "authorized_keys")
+	if !system.FileExists(authKeys) {
+		log.Info("未发现 SSH authorized_keys，跳过")
+		return nil
+	}
+
+	data, err := os.ReadFile(authKeys)
+	if err != nil {
+		return err
+	}
+
+	content := string(data)
+	entries := authorizedKeyEntries(content)
+	if len(entries) == 0 {
+		log.Info("未发现可删除的 SSH 公钥")
+		return nil
+	}
+
+	printAuthorizedKeyEntries(entries)
+	rawSelection, err := view.Ask("请输入要删除的编号（多个用逗号或空格分隔，直接回车返回）: ")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(rawSelection) == "" {
+		return nil
+	}
+
+	indexes, err := parseAuthorizedKeySelection(rawSelection, len(entries))
+	if err != nil {
+		return err
+	}
+
+	fmt.Println()
+	fmt.Println("即将删除以下 SSH 公钥：")
+	for _, index := range indexes {
+		entry := entries[index-1]
+		fmt.Printf("%d) %s\n", entry.index, summarizeAuthorizedKey(entry.line))
+	}
+	fmt.Println()
+
+	confirmed, err := view.Confirm("确认删除选中的 SSH 公钥？(y/N): ")
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		fmt.Println("已取消删除")
+		return nil
+	}
+
+	selected := make(map[int]struct{}, len(indexes))
+	for _, index := range indexes {
+		selected[index] = struct{}{}
+	}
+	cleaned := removeAuthorizedKeyIndexes(content, selected)
+	if err := os.WriteFile(authKeys, []byte(cleaned), 0600); err != nil {
+		return err
+	}
+	if err := os.Chmod(authKeys, 0600); err != nil {
+		return err
+	}
+	if err := system.ChownPath(authKeys, account, false); err != nil {
+		return err
+	}
+
+	log.Info("已删除选中的 SSH 公钥")
+	return nil
+}
+
+func configureSSHDHardening(view *ui.UI, account *system.Account) error {
 	if account.Name != "root" && !system.UserInAdminGroup(account.Name) {
 		log.Warn("用户 ", account.Name, " 不在 sudo/wheel 用户组中")
 		confirmed, err := view.Confirm("继续配置可能导致无法提权，是否强行继续？(y/N): ")
@@ -43,20 +205,12 @@ func ConfigureSSH(view *ui.UI) error {
 		}
 	}
 
-	if err := printAuthorizedKeys(account); err != nil {
-		return err
-	}
-
-	pubkey, err := view.Ask("请粘贴 SSH 公钥: ")
+	authorizedKeysConfirmed, err := confirmAuthorizedKeysPresent(view, account)
 	if err != nil {
 		return err
 	}
-	if err := system.ValidateSSHPublicKey(pubkey); err != nil {
-		return err
-	}
-
-	if err := installAuthorizedKey(account, pubkey); err != nil {
-		return err
+	if !authorizedKeysConfirmed {
+		return nil
 	}
 
 	shouldWriteConfig, err := confirmSSHDConfigOverwrite(view)
@@ -65,13 +219,7 @@ func ConfigureSSH(view *ui.UI) error {
 	}
 	if !shouldWriteConfig {
 		fmt.Println()
-		log.Info("SSH 配置完成")
-		fmt.Println()
-		fmt.Printf("用户：%s\n", account.Name)
-		fmt.Println("SSH 公钥：已确认")
-		fmt.Println("SSH 服务配置：保留现有配置，未重新加载服务")
-		fmt.Println()
-		log.Warn("请先新开一个终端测试 SSH 登录成功后，再关闭当前会话。")
+		log.Info("已取消 SSH 服务安全配置写入")
 		return nil
 	}
 
@@ -99,7 +247,7 @@ func ConfigureSSH(view *ui.UI) error {
 	}
 
 	fmt.Println()
-	log.Info("SSH 配置完成")
+	log.Info("SSH 服务安全配置完成")
 	fmt.Println()
 	fmt.Printf("用户：%s\n", account.Name)
 	fmt.Printf("端口：%d\n", port)
@@ -112,6 +260,23 @@ func ConfigureSSH(view *ui.UI) error {
 	return nil
 }
 
+func confirmAuthorizedKeysPresent(view *ui.UI, account *system.Account) (bool, error) {
+	authKeys := filepath.Join(account.Home, ".ssh", "authorized_keys")
+	if system.FileNonEmpty(authKeys) {
+		return true, nil
+	}
+
+	log.Warn("未检测到当前用户 SSH 公钥：", authKeys)
+	confirmed, err := view.Confirm("继续禁用密码登录可能导致无法 SSH 登录，是否强行继续？(y/N): ")
+	if err != nil {
+		return false, err
+	}
+	if !confirmed {
+		fmt.Println("已取消 SSH 服务安全配置写入")
+	}
+	return confirmed, nil
+}
+
 func confirmSSHDConfigOverwrite(view *ui.UI) (bool, error) {
 	if !system.FileExists(customSSHDConfigPath) {
 		return true, nil
@@ -121,17 +286,23 @@ func confirmSSHDConfigOverwrite(view *ui.UI) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if !strings.Contains(string(existing), managedSSHDConfigHeader) {
+	existingContent := string(existing)
+	if strings.TrimSpace(existingContent) == "" {
 		return true, nil
 	}
+	if !strings.Contains(existingContent, managedSSHDConfigHeader) {
+		printSSHDConfig(customSSHDConfigPath, existingContent)
+		return view.Confirm("检测到该 SSH 配置文件不是本工具生成，继续会备份并覆盖，是否继续？(y/N): ")
+	}
 
-	printSSHDConfig(customSSHDConfigPath, string(existing))
+	printSSHDConfig(customSSHDConfigPath, existingContent)
 	return view.Confirm("检测到该 SSH 配置文件由脚本创建，是否覆盖并重新生成？(y/N): ")
 }
 
 func printAuthorizedKeys(account *system.Account) error {
 	authKeys := filepath.Join(account.Home, ".ssh", "authorized_keys")
 	if !system.FileExists(authKeys) {
+		log.Info("未发现 SSH authorized_keys")
 		return nil
 	}
 
@@ -140,16 +311,13 @@ func printAuthorizedKeys(account *system.Account) error {
 		return err
 	}
 
-	content := strings.TrimSpace(string(data))
-	if content == "" {
+	entries := authorizedKeyEntries(string(data))
+	if len(entries) == 0 {
+		log.Info("未发现 SSH 公钥")
 		return nil
 	}
 
-	fmt.Println("当前已存在的 SSH 公钥配置：")
-	fmt.Println("----------")
-	fmt.Println(content)
-	fmt.Println("----------")
-	fmt.Println()
+	printAuthorizedKeyEntries(entries)
 	return nil
 }
 
@@ -293,6 +461,136 @@ func managedAuthorizedKeys(content string) []string {
 		keys = append(keys, line)
 	}
 	return keys
+}
+
+func authorizedKeyEntries(content string) []authorizedKeyEntry {
+	var entries []authorizedKeyEntry
+	managed := false
+	for _, rawLine := range strings.Split(content, "\n") {
+		line := strings.TrimRight(rawLine, "\r")
+		trimmed := strings.TrimSpace(line)
+		switch trimmed {
+		case sshAuthorizedKeysBegin:
+			managed = true
+			continue
+		case sshAuthorizedKeysEnd:
+			managed = false
+			continue
+		}
+		if !isAuthorizedKeyLine(trimmed) {
+			continue
+		}
+		entries = append(entries, authorizedKeyEntry{
+			index:   len(entries) + 1,
+			line:    line,
+			managed: managed,
+		})
+	}
+	return entries
+}
+
+func printAuthorizedKeyEntries(entries []authorizedKeyEntry) {
+	fmt.Println("当前 SSH 公钥：")
+	for _, entry := range entries {
+		source := "手动"
+		if entry.managed {
+			source = "本工具"
+		}
+		fmt.Printf("%d) [%s] %s\n", entry.index, source, summarizeAuthorizedKey(entry.line))
+	}
+	fmt.Println()
+}
+
+func parseAuthorizedKeySelection(raw string, max int) ([]int, error) {
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t' || r == '\n' || r == '\r'
+	})
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("未选择要删除的 SSH 公钥编号")
+	}
+
+	indexes := make([]int, 0, len(parts))
+	seen := make(map[int]struct{}, len(parts))
+	for _, part := range parts {
+		index, err := strconv.Atoi(part)
+		if err != nil {
+			return nil, fmt.Errorf("无效公钥编号: %s", part)
+		}
+		if index < 1 || index > max {
+			return nil, fmt.Errorf("公钥编号超出范围: %d", index)
+		}
+		if _, ok := seen[index]; ok {
+			continue
+		}
+		seen[index] = struct{}{}
+		indexes = append(indexes, index)
+	}
+	return indexes, nil
+}
+
+func removeAuthorizedKeyIndexes(content string, selected map[int]struct{}) string {
+	lines := strings.SplitAfter(content, "\n")
+	var builder strings.Builder
+	index := 0
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		trimmed := strings.TrimSpace(strings.TrimRight(line, "\r\n"))
+		if isAuthorizedKeyLine(trimmed) {
+			index++
+			if _, ok := selected[index]; ok {
+				continue
+			}
+		}
+		builder.WriteString(line)
+	}
+
+	cleaned := removeEmptyManagedAuthorizedKeyBlock(builder.String())
+	return normalizeCleanedContent(cleaned)
+}
+
+func removeEmptyManagedAuthorizedKeyBlock(content string) string {
+	block, ok := managedBlockContent(content, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd)
+	if ok && len(authorizedKeyEntries(block)) == 0 {
+		return removeManagedBlock(content, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd)
+	}
+	return content
+}
+
+func isAuthorizedKeyLine(trimmed string) bool {
+	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+		return false
+	}
+	return true
+}
+
+func summarizeAuthorizedKey(line string) string {
+	fields := strings.Fields(line)
+	if len(fields) < 2 {
+		return truncateString(strings.TrimSpace(line), 90)
+	}
+
+	keyBody := fields[1]
+	if len(keyBody) > 24 {
+		keyBody = keyBody[:16] + "..." + keyBody[len(keyBody)-8:]
+	}
+
+	summary := fields[0] + " " + keyBody
+	if len(fields) > 2 {
+		summary += " " + strings.Join(fields[2:], " ")
+	}
+	return truncateString(summary, 120)
+}
+
+func truncateString(value string, max int) string {
+	if len(value) <= max {
+		return value
+	}
+	if max <= 3 {
+		return value[:max]
+	}
+	return value[:max-3] + "..."
 }
 
 func buildSSHDConfig(port int, permitRootLogin string) string {

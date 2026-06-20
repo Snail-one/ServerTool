@@ -46,12 +46,12 @@ func (a *App) Run() error {
 				return config.ConfigureProxy(a.ui)
 			})
 		case "5":
-			a.runAction("清理配置失败，已返回菜单", func() error {
-				return config.CleanupConfig(a.ui)
-			})
-		case "6":
 			a.runAction("Docker Compose 应用更新失败，已返回菜单", func() error {
 				return config.UpdateDockerComposeApps(a.ui)
+			})
+		case "6":
+			a.runAction("清理配置失败，已返回菜单", func() error {
+				return config.CleanupConfig(a.ui)
 			})
 		case "0", "q", "exit":
 			fmt.Println("已退出")
@@ -81,12 +81,12 @@ func currentStatus() config.Status {
 
 func showMenu(status config.Status) {
 	fmt.Println("请选择操作：")
-	fmt.Println("1) 配置当前用户 SSH 公钥登录 + 禁用密码登录 + 随机 SSH 端口" + statusText(status.SSH))
+	fmt.Println("1) SSH 公钥与常用安全配置" + statusText(status.SSH))
 	fmt.Println("2) 配置当前用户 Vim ~/.vimrc" + statusText(status.Vim))
 	fmt.Println("3) 配置当前用户 Bash 环境" + statusText(status.Bash))
 	fmt.Println("4) 配置当前用户 HTTP/HTTPS 代理环境变量" + proxyStatusText(status.Proxy))
-	fmt.Println("5) 清理已写入配置")
-	fmt.Println("6) 批量更新运行中的 Docker Compose 应用")
+	fmt.Println("5) 批量更新运行中的 Docker Compose 应用")
+	fmt.Println("6) 清理已写入配置")
 	fmt.Println("0/q) 退出")
 }
 
