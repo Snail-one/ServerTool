@@ -33,24 +33,18 @@ func (a *App) Run() error {
 
 		switch strings.ToLower(choice) {
 		case "1":
-			a.runAction("SSH 配置失败，已返回菜单", func() error {
-				return config.ConfigureSSH(a.ui)
-			})
-		case "2":
-			a.runAction("Vim 配置失败，已返回菜单", func() error {
-				return config.ConfigureVim(a.ui)
-			})
-		case "3":
-			a.runAction("Bash 配置失败，已返回菜单", config.ConfigureBash)
-		case "4":
-			a.runAction("代理配置失败，已返回菜单", func() error {
-				return config.ConfigureProxy(a.ui)
-			})
-		case "5":
 			a.runAction("Docker Compose 应用更新失败，已返回菜单", func() error {
 				return config.UpdateDockerComposeApps(a.ui)
 			})
-		case "6":
+		case "2":
+			a.runAction("SSH 公钥配置失败，已返回菜单", func() error {
+				return config.ConfigureSSH(a.ui)
+			})
+		case "3":
+			a.runAction("配置文件写入失败，已返回菜单", func() error {
+				return a.configureFiles()
+			})
+		case "4":
 			a.runAction("清理配置失败，已返回菜单", func() error {
 				return config.CleanupConfig(a.ui)
 			})
@@ -61,6 +55,39 @@ func (a *App) Run() error {
 			fmt.Println("无效选项，请重新输入")
 			a.ui.Pause()
 		}
+	}
+}
+
+func (a *App) configureFiles() error {
+	status := currentStatus()
+	fmt.Println("请选择要写入的配置：")
+	fmt.Println("1) SSH 随机端口 + 禁用密码登录等常用安全配置" + statusText(status.SSHSecurity))
+	fmt.Println("2) Vim ~/.vimrc" + statusText(status.Vim))
+	fmt.Println("3) Bash 环境" + statusText(status.Bash))
+	fmt.Println("4) HTTP/HTTPS 代理环境变量" + proxyStatusText(status.Proxy))
+	fmt.Println("0/q) 返回")
+	fmt.Println()
+
+	choice, err := a.ui.Ask("输入选项: ")
+	if err != nil {
+		return err
+	}
+	fmt.Println()
+
+	switch strings.ToLower(choice) {
+	case "1":
+		return config.ConfigureSSHSecurity(a.ui)
+	case "2":
+		return config.ConfigureVim(a.ui)
+	case "3":
+		return config.ConfigureBash()
+	case "4":
+		return config.ConfigureProxy(a.ui)
+	case "0", "q", "exit":
+		return config.ErrReturnToMenu
+	default:
+		fmt.Println("无效选项，已返回菜单")
+		return nil
 	}
 }
 
@@ -85,12 +112,10 @@ func currentStatus() config.Status {
 
 func showMenu(status config.Status) {
 	fmt.Println("请选择操作：")
-	fmt.Println("1) SSH 公钥与常用安全配置" + statusText(status.SSH))
-	fmt.Println("2) 配置当前用户 Vim ~/.vimrc" + statusText(status.Vim))
-	fmt.Println("3) 配置当前用户 Bash 环境" + statusText(status.Bash))
-	fmt.Println("4) 配置当前用户 HTTP/HTTPS 代理环境变量" + proxyStatusText(status.Proxy))
-	fmt.Println("5) 批量更新运行中的 Docker Compose 应用")
-	fmt.Println("6) 清理已写入配置")
+	fmt.Println("1) 批量更新运行中的 Docker Compose 应用")
+	fmt.Println("2) SSH 公钥管理" + statusText(status.SSHKeys))
+	fmt.Println("3) 配置文件写入")
+	fmt.Println("4) 清理已写入配置")
 	fmt.Println("0/q) 退出")
 }
 

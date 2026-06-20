@@ -38,29 +38,18 @@ func ConfigureSSH(view *ui.UI) error {
 
 	log.Info("当前配置用户：", account.Name)
 	fmt.Println()
-	fmt.Println("请选择 SSH 操作：")
-	fmt.Println("1) 管理 SSH 公钥（查看 / 添加）")
-	fmt.Println("2) 写入随机 SSH 端口 + 禁用密码登录等常用安全配置")
-	fmt.Println("0/q) 返回")
-	fmt.Println()
+	return configureSSHAuthorizedKeys(view, account)
+}
 
-	choice, err := view.Ask("输入选项: ")
+func ConfigureSSHSecurity(view *ui.UI) error {
+	account, err := system.CurrentTargetUser()
 	if err != nil {
 		return err
 	}
-	fmt.Println()
 
-	switch strings.ToLower(choice) {
-	case "1":
-		return configureSSHAuthorizedKeys(view, account)
-	case "2":
-		return configureSSHDHardening(view, account)
-	case "0", "q", "exit":
-		return ErrReturnToMenu
-	default:
-		fmt.Println("无效选项，已返回菜单")
-		return nil
-	}
+	log.Info("当前配置用户：", account.Name)
+	fmt.Println()
+	return configureSSHDHardening(view, account)
 }
 
 func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {

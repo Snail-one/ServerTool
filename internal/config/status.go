@@ -9,26 +9,37 @@ import (
 )
 
 type Status struct {
-	SSH   bool
-	Vim   bool
-	Bash  bool
-	Proxy bool
+	SSH         bool
+	SSHKeys     bool
+	SSHSecurity bool
+	Vim         bool
+	Bash        bool
+	Proxy       bool
 }
 
 func DetectStatus(account *system.Account) Status {
+	sshKeys := isSSHKeysConfigured(account)
+	sshSecurity := isSSHSecurityConfigured()
 	return Status{
-		SSH:   isSSHConfigured(account),
-		Vim:   isVimConfigured(account),
-		Bash:  isBashConfigured(account),
-		Proxy: isProxyConfigured(account),
+		SSH:         sshKeys && sshSecurity,
+		SSHKeys:     sshKeys,
+		SSHSecurity: sshSecurity,
+		Vim:         isVimConfigured(account),
+		Bash:        isBashConfigured(account),
+		Proxy:       isProxyConfigured(account),
 	}
 }
 
 func isSSHConfigured(account *system.Account) bool {
+	return isSSHKeysConfigured(account) && isSSHSecurityConfigured()
+}
+
+func isSSHKeysConfigured(account *system.Account) bool {
 	authKeys := filepath.Join(account.Home, ".ssh", "authorized_keys")
-	if !fileContainsNonEmptyContent(authKeys) {
-		return false
-	}
+	return fileContainsNonEmptyContent(authKeys)
+}
+
+func isSSHSecurityConfigured() bool {
 	return fileContains(customSSHDConfigPath, managedSSHDConfigHeader)
 }
 
