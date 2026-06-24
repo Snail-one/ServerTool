@@ -9,6 +9,16 @@
 - 集中写入配置文件：SSH 随机端口与禁用密码登录等安全配置、Vim `~/.vimrc`、Bash 环境、HTTP/HTTPS 代理环境变量
 - 清理本工具写入的 SSH、Vim、Bash、代理配置，支持一键清理或按项清理
 
+一键下载安装
+
+```bash
+sudo -E wget -O /usr/local/sbin/snailtool https://github.com/Snail-one/ServerTool/releases/latest/download/snailtool_linux_amd64 && sudo chmod +x /usr/local/sbin/snailtool
+```
+
+```bash
+sudo curl -L -o /usr/local/sbin/snailtool https://github.com/Snail-one/ServerTool/releases/latest/download/snailtool_linux_amd64 && sudo chmod +x /usr/local/sbin/snailtool
+```
+
 ## 构建
 
 ```bash
