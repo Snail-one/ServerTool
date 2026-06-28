@@ -15,6 +15,7 @@ type Status struct {
 	Vim         bool
 	Bash        bool
 	Proxy       bool
+	UPS         bool
 }
 
 func DetectStatus(account *system.Account) Status {
@@ -27,6 +28,7 @@ func DetectStatus(account *system.Account) Status {
 		Vim:         isVimConfigured(account),
 		Bash:        isBashConfigured(account),
 		Proxy:       isProxyConfigured(account),
+		UPS:         isUPSConfigured(),
 	}
 }
 
@@ -59,6 +61,46 @@ func isBashConfigured(account *system.Account) bool {
 func isProxyConfigured(account *system.Account) bool {
 	_, ok := CurrentProxyURL(account)
 	return ok
+}
+
+func isUPSConfigured() bool {
+	nutConf := readFileString(nutConfPath)
+	upsConf := readFileString(upsConfPath)
+	upsdConf := readFileString(upsdConfPath)
+	upsdUsers := readFileString(upsdUsersPath)
+	upsmonConf := readFileString(upsmonConfPath)
+	upsschedConf := readFileString(upsschedConfPath)
+	upsOnBattScriptContent := readFileString(upsOnBattScript)
+
+	return nutStandaloneModeLine.MatchString(nutConf) &&
+		hasNUTSection(upsConf, upsMonitorName) &&
+		containsLine(upsdConf, upsListenLine) &&
+		hasNUTSection(upsdUsers, upsMonitorUser) &&
+		strings.Contains(upsdUsers, "upsmon master") &&
+		hasUPSMonConfig(upsmonConf) &&
+		hasUPSSchedConfig(upsschedConf) &&
+		hasUPSOnBattScript(upsOnBattScriptContent) &&
+		filePermissionMatches(upsOnBattScriptFile)
+}
+
+func hasUPSMonConfig(content string) bool {
+	return strings.Contains(content, "MONITOR ups@localhost 1 monuser ") &&
+		containsLine(content, "NOTIFYCMD /usr/sbin/upssched") &&
+		containsLine(content, "NOTIFYFLAG ONBATT EXEC") &&
+		containsLine(content, "NOTIFYFLAG ONLINE EXEC")
+}
+
+func hasUPSSchedConfig(content string) bool {
+	return containsLine(content, "CMDSCRIPT /usr/local/sbin/ups-onbatt-actions.sh") &&
+		containsLine(content, "PIPEFN /run/nut/upssched.pipe") &&
+		containsLine(content, "LOCKFN /run/nut/upssched.lock") &&
+		containsLine(content, "AT ONBATT * START-TIMER onbatt_shutdown 60") &&
+		containsLine(content, "AT ONLINE * CANCEL-TIMER onbatt_shutdown")
+}
+
+func hasUPSOnBattScript(content string) bool {
+	return strings.Contains(content, "onbatt_shutdown") &&
+		strings.Contains(content, "upsmon -c fsd")
 }
 
 func fileContains(path, wanted string) bool {

@@ -61,7 +61,8 @@ func (a *App) configureFiles() error {
 	fmt.Println("2) Vim ~/.vimrc" + statusText(status.Vim))
 	fmt.Println("3) Bash 环境" + statusText(status.Bash))
 	fmt.Println("4) HTTP/HTTPS 代理设置" + proxyStatusText(status.Proxy))
-	fmt.Println("5) 清理配置")
+	fmt.Println("5) UPS 配置" + statusText(status.UPS))
+	fmt.Println("6) 清理配置")
 	fmt.Println("0/q) 返回")
 	fmt.Println()
 
@@ -81,6 +82,8 @@ func (a *App) configureFiles() error {
 	case "4":
 		return config.ConfigureProxy(a.ui)
 	case "5":
+		return config.ConfigureUPS(a.ui)
+	case "6":
 		return config.CleanupConfig(a.ui)
 	case "0", "q", "exit":
 		return config.ErrReturnToMenu

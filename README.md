@@ -6,7 +6,7 @@
 
 - 批量扫描并更新运行中的 Docker Compose 应用，默认扫描 `/docker`、`/opt/docker`、`/opt/apps`、用户目录、用户目录下的 `docker`，更新完成后可选择 Docker 清理策略
 - 管理当前用户 SSH 公钥（查看、添加、删除）
-- 集中写入配置文件：SSH 随机端口与禁用密码登录等安全配置、Vim `~/.vimrc`、Bash 环境、HTTP/HTTPS 代理环境变量
+- 集中写入配置文件：SSH 随机端口与禁用密码登录等安全配置、Vim `~/.vimrc`、Bash 环境、HTTP/HTTPS 代理环境变量、UPS(NUT) 配置
 - 清理本工具写入的 SSH、Vim、Bash、代理配置，支持一键清理或按项清理
 
 一键下载安装
@@ -67,7 +67,7 @@ sudo ./snail_tool
 ```text
 cmd/snail_tool      程序入口
 internal/app        交互菜单和流程编排
-internal/config     SSH、Vim、Bash、Proxy 等功能模块
+internal/config     SSH、Vim、Bash、Proxy、UPS 等功能模块
 internal/system     系统命令、用户、端口、文件辅助能力
 internal/ui         输入、确认、暂停等交互封装
 internal/log        彩色日志输出
