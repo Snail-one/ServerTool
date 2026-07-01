@@ -123,37 +123,70 @@ func TestDockerCleanupPlanForChoice(t *testing.T) {
 	}
 }
 
-func TestComposePullArgsIgnoreBuildableWhenSupported(t *testing.T) {
+func TestComposePullArgs(t *testing.T) {
+	want := []string{"pull"}
+	if got := composePullArgs(composeCommand{}); !reflect.DeepEqual(got, want) {
+		t.Fatalf("pull args mismatch: got %#v, want %#v", got, want)
+	}
+}
+
+func TestComposeUpArgs(t *testing.T) {
+	if got, want := composeUpArgs(false), []string{"up", "-d", "--remove-orphans"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("up args mismatch: got %#v, want %#v", got, want)
+	}
+	if got, want := composeUpArgs(true), []string{"up", "-d", "--build", "--remove-orphans"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("build up args mismatch: got %#v, want %#v", got, want)
+	}
+}
+
+func TestComposeConfigHasBuild(t *testing.T) {
 	tests := []struct {
 		name    string
-		compose composeCommand
-		want    []string
+		raw     string
+		want    bool
+		wantErr bool
 	}{
 		{
-			name:    "plain pull",
-			compose: composeCommand{},
-			want:    []string{"pull"},
+			name: "build object",
+			raw:  `{"services":{"app":{"build":{"context":"/srv/app"}}}}`,
+			want: true,
 		},
 		{
-			name:    "ignore buildable",
-			compose: composeCommand{pullIgnoreBuildable: true},
-			want:    []string{"pull", "--ignore-buildable"},
+			name: "build string",
+			raw:  `{"services":{"app":{"build":"."}}}`,
+			want: true,
+		},
+		{
+			name: "null build",
+			raw:  `{"services":{"app":{"image":"nginx","build":null}}}`,
+		},
+		{
+			name: "image only",
+			raw:  `{"services":{"app":{"image":"nginx"}}}`,
+		},
+		{
+			name:    "invalid json",
+			raw:     `{`,
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := composePullArgs(tt.compose); !reflect.DeepEqual(got, tt.want) {
-				t.Fatalf("pull args mismatch: got %#v, want %#v", got, tt.want)
+			got, err := composeConfigHasBuild([]byte(tt.raw))
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Fatalf("has build = %v, want %v", got, tt.want)
 			}
 		})
-	}
-}
-
-func TestComposeUpArgsBuildsLocalImages(t *testing.T) {
-	want := []string{"up", "-d", "--build", "--remove-orphans"}
-	if got := composeUpArgs(); !reflect.DeepEqual(got, want) {
-		t.Fatalf("up args mismatch: got %#v, want %#v", got, want)
 	}
 }
 

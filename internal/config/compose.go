@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -30,10 +31,10 @@ var composeFilenames = map[string]struct{}{
 }
 
 type composeCommand struct {
-	name                string
-	args                []string
-	display             string
-	pullIgnoreBuildable bool
+	name             string
+	args             []string
+	display          string
+	configFormatJSON bool
 }
 
 type dockerCleanupPlan struct {
@@ -298,12 +299,12 @@ func dedupeCleanPaths(paths []string) []string {
 func detectComposeCommand() (composeCommand, error) {
 	if err := exec.Command("docker", "compose", "version").Run(); err == nil {
 		compose := composeCommand{name: "docker", args: []string{"compose"}, display: "docker compose"}
-		compose.pullIgnoreBuildable = composeCommandSupports(compose, "pull", "--ignore-buildable")
+		compose.configFormatJSON = composeCommandSupports(compose, "config", "--format")
 		return compose, nil
 	}
 	if system.CommandExists("docker-compose") {
 		compose := composeCommand{name: "docker-compose", display: "docker-compose"}
-		compose.pullIgnoreBuildable = composeCommandSupports(compose, "pull", "--ignore-buildable")
+		compose.configFormatJSON = composeCommandSupports(compose, "config", "--format")
 		return compose, nil
 	}
 	return composeCommand{}, fmt.Errorf("未找到 docker compose 或 docker-compose")
@@ -407,28 +408,83 @@ func updateComposeDir(compose composeCommand, gitUpdater *composeGitUpdater, dir
 	log.Info("更新（运行中）: ", dir)
 	if gitUpdater != nil {
 		if err := gitUpdater.pull(dir); err != nil {
-			return true, err
+			log.Error("跳过（Git 拉取失败）: ", err)
+			return false, nil
 		}
 	}
+
+	hasBuild, err := composeProjectHasBuild(compose, dir)
+	if err != nil {
+		return true, err
+	}
+	if hasBuild {
+		log.Info("检测到 build 配置，直接构建启动: ", dir)
+		if err := runCompose(compose, dir, composeUpArgs(true)...); err != nil {
+			log.Error("跳过（构建启动失败）: ", fmt.Errorf("%s up 失败: %w", dir, err))
+			return false, nil
+		}
+		return true, nil
+	}
+
 	if err := runCompose(compose, dir, composePullArgs(compose)...); err != nil {
 		return true, fmt.Errorf("%s pull 失败: %w", dir, err)
 	}
-	if err := runCompose(compose, dir, composeUpArgs()...); err != nil {
+	if err := runCompose(compose, dir, composeUpArgs(false)...); err != nil {
 		return true, fmt.Errorf("%s up 失败: %w", dir, err)
 	}
 	return true, nil
 }
 
 func composePullArgs(compose composeCommand) []string {
-	args := []string{"pull"}
-	if compose.pullIgnoreBuildable {
-		args = append(args, "--ignore-buildable")
-	}
-	return args
+	return []string{"pull"}
 }
 
-func composeUpArgs() []string {
-	return []string{"up", "-d", "--build", "--remove-orphans"}
+func composeUpArgs(build bool) []string {
+	args := []string{"up", "-d"}
+	if build {
+		args = append(args, "--build")
+	}
+	return append(args, "--remove-orphans")
+}
+
+type composeConfig struct {
+	Services map[string]composeServiceConfig `json:"services"`
+}
+
+type composeServiceConfig struct {
+	Build json.RawMessage `json:"build"`
+}
+
+func composeProjectHasBuild(compose composeCommand, dir string) (bool, error) {
+	if !compose.configFormatJSON {
+		log.Warn("Compose 不支持 config --format json，无法检测 build 配置：", dir)
+		return false, nil
+	}
+
+	output, err := composeOutput(compose, dir, "config", "--format", "json")
+	if err != nil {
+		return false, fmt.Errorf("%s config 失败: %w", dir, err)
+	}
+	hasBuild, err := composeConfigHasBuild([]byte(output))
+	if err != nil {
+		return false, fmt.Errorf("%s config 解析失败: %w", dir, err)
+	}
+	return hasBuild, nil
+}
+
+func composeConfigHasBuild(raw []byte) (bool, error) {
+	var config composeConfig
+	if err := json.Unmarshal(raw, &config); err != nil {
+		return false, err
+	}
+
+	for _, service := range config.Services {
+		build := strings.TrimSpace(string(service.Build))
+		if build != "" && build != "null" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func newComposeGitUpdater(account *system.Account) *composeGitUpdater {
