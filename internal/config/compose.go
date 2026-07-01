@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	osuser "os/user"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"syscall"
 
 	"snail_tool/internal/log"
 	"snail_tool/internal/system"
@@ -27,9 +30,10 @@ var composeFilenames = map[string]struct{}{
 }
 
 type composeCommand struct {
-	name    string
-	args    []string
-	display string
+	name                string
+	args                []string
+	display             string
+	pullIgnoreBuildable bool
 }
 
 type dockerCleanupPlan struct {
@@ -37,6 +41,13 @@ type dockerCleanupPlan struct {
 	args         []string
 	needsConfirm bool
 	skip         bool
+}
+
+type composeGitUpdater struct {
+	account      *system.Account
+	pulledRoots  map[string]struct{}
+	gitAvailable bool
+	warnedNoGit  bool
 }
 
 func UpdateDockerComposeApps(view *ui.UI) error {
@@ -53,6 +64,12 @@ func UpdateDockerComposeApps(view *ui.UI) error {
 	if err != nil {
 		return err
 	}
+
+	account, accountErr := system.CurrentTargetUser()
+	if accountErr != nil {
+		log.Warn("无法获取目标用户，Git 源码拉取将使用当前用户：", accountErr)
+	}
+	gitUpdater := newComposeGitUpdater(account)
 
 	fmt.Println("扫描目录：")
 	for _, root := range existingRoots {
@@ -76,7 +93,7 @@ func UpdateDockerComposeApps(view *ui.UI) error {
 
 	updated, skipped := 0, 0
 	for _, dir := range dirs {
-		ran, err := updateComposeDir(compose, dir)
+		ran, err := updateComposeDir(compose, gitUpdater, dir)
 		if err != nil {
 			return err
 		}
@@ -280,12 +297,21 @@ func dedupeCleanPaths(paths []string) []string {
 
 func detectComposeCommand() (composeCommand, error) {
 	if err := exec.Command("docker", "compose", "version").Run(); err == nil {
-		return composeCommand{name: "docker", args: []string{"compose"}, display: "docker compose"}, nil
+		compose := composeCommand{name: "docker", args: []string{"compose"}, display: "docker compose"}
+		compose.pullIgnoreBuildable = composeCommandSupports(compose, "pull", "--ignore-buildable")
+		return compose, nil
 	}
 	if system.CommandExists("docker-compose") {
-		return composeCommand{name: "docker-compose", display: "docker-compose"}, nil
+		compose := composeCommand{name: "docker-compose", display: "docker-compose"}
+		compose.pullIgnoreBuildable = composeCommandSupports(compose, "pull", "--ignore-buildable")
+		return compose, nil
 	}
 	return composeCommand{}, fmt.Errorf("未找到 docker compose 或 docker-compose")
+}
+
+func composeCommandSupports(compose composeCommand, command, option string) bool {
+	output, err := exec.Command(compose.name, composeArgs(compose, command, "--help")...).CombinedOutput()
+	return err == nil && strings.Contains(string(output), option)
 }
 
 func findComposeDirsInRoots(roots []string) ([]string, error) {
@@ -368,7 +394,7 @@ func isRegularFile(entry os.DirEntry) bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
-func updateComposeDir(compose composeCommand, dir string) (bool, error) {
+func updateComposeDir(compose composeCommand, gitUpdater *composeGitUpdater, dir string) (bool, error) {
 	running, err := composeProjectRunning(compose, dir)
 	if err != nil {
 		return false, err
@@ -379,13 +405,242 @@ func updateComposeDir(compose composeCommand, dir string) (bool, error) {
 	}
 
 	log.Info("更新（运行中）: ", dir)
-	if err := runCompose(compose, dir, "pull"); err != nil {
+	if gitUpdater != nil {
+		if err := gitUpdater.pull(dir); err != nil {
+			return true, err
+		}
+	}
+	if err := runCompose(compose, dir, composePullArgs(compose)...); err != nil {
 		return true, fmt.Errorf("%s pull 失败: %w", dir, err)
 	}
-	if err := runCompose(compose, dir, "up", "-d", "--remove-orphans"); err != nil {
+	if err := runCompose(compose, dir, composeUpArgs()...); err != nil {
 		return true, fmt.Errorf("%s up 失败: %w", dir, err)
 	}
 	return true, nil
+}
+
+func composePullArgs(compose composeCommand) []string {
+	args := []string{"pull"}
+	if compose.pullIgnoreBuildable {
+		args = append(args, "--ignore-buildable")
+	}
+	return args
+}
+
+func composeUpArgs() []string {
+	return []string{"up", "-d", "--build", "--remove-orphans"}
+}
+
+func newComposeGitUpdater(account *system.Account) *composeGitUpdater {
+	return &composeGitUpdater{
+		account:      account,
+		pulledRoots:  make(map[string]struct{}),
+		gitAvailable: system.CommandExists("git"),
+	}
+}
+
+func (updater *composeGitUpdater) pull(dir string) error {
+	if !updater.gitAvailable {
+		if !updater.warnedNoGit {
+			log.Warn("未找到 git，已跳过源码拉取")
+			updater.warnedNoGit = true
+		}
+		return nil
+	}
+
+	account := updater.gitAccount(dir)
+	root, ok, err := gitWorktreeRoot(account, dir)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		log.Info("跳过源码拉取（非 Git 工作区）: ", dir)
+		return nil
+	}
+
+	root = filepath.Clean(root)
+	if _, ok := updater.pulledRoots[root]; ok {
+		return nil
+	}
+
+	account = updater.gitAccount(root)
+	log.Info("拉取源码: ", root)
+	if err := runGitPull(account, root); err != nil {
+		return fmt.Errorf("%s git pull 失败: %w", root, err)
+	}
+	updater.pulledRoots[root] = struct{}{}
+	return nil
+}
+
+func (updater *composeGitUpdater) gitAccount(path string) *system.Account {
+	if account := accountForPathOwner(path); account != nil {
+		return account
+	}
+	return updater.account
+}
+
+func accountForPathOwner(path string) *system.Account {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return nil
+	}
+	account, err := lookupAccountByID(stat.Uid, stat.Gid)
+	if err != nil {
+		return nil
+	}
+	return account
+}
+
+func lookupAccountByID(uid, gid uint32) (*system.Account, error) {
+	account, err := osuser.LookupId(strconv.FormatUint(uint64(uid), 10))
+	if err != nil {
+		return nil, err
+	}
+	primaryGID := gid
+	if account.Gid != "" {
+		parsedGID, err := strconv.ParseUint(account.Gid, 10, 32)
+		if err == nil {
+			primaryGID = uint32(parsedGID)
+		}
+	}
+	if account.Username == "" || account.HomeDir == "" {
+		return nil, fmt.Errorf("用户 %d 信息不完整", uid)
+	}
+	return &system.Account{
+		Name: account.Username,
+		Home: account.HomeDir,
+		UID:  int(uid),
+		GID:  int(primaryGID),
+	}, nil
+}
+
+func gitWorktreeRoot(account *system.Account, dir string) (string, bool, error) {
+	cmd := gitCommand(account, "-C", dir, "rev-parse", "--show-toplevel")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		if gitMarkerExists(dir) {
+			return "", false, fmt.Errorf("%s Git 工作区检测失败: %s", dir, strings.TrimSpace(string(output)))
+		}
+		return "", false, nil
+	}
+
+	root := strings.TrimSpace(string(output))
+	if root == "" {
+		return "", false, nil
+	}
+	return root, true, nil
+}
+
+func gitMarkerExists(dir string) bool {
+	current := filepath.Clean(dir)
+	for {
+		marker := filepath.Join(current, ".git")
+		if isGitMarker(marker) {
+			return true
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			return false
+		}
+		current = parent
+	}
+}
+
+func isGitMarker(marker string) bool {
+	if system.DirExists(marker) {
+		return system.FileExists(filepath.Join(marker, "HEAD"))
+	}
+	if !system.FileExists(marker) {
+		return false
+	}
+
+	content, err := os.ReadFile(marker)
+	if err != nil {
+		return false
+	}
+	return strings.HasPrefix(strings.TrimSpace(string(content)), "gitdir:")
+}
+
+func runGitPull(account *system.Account, root string) error {
+	cmd := gitCommand(account, "-C", root, "pull", "--ff-only")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	return cmd.Run()
+}
+
+func gitCommand(account *system.Account, args ...string) *exec.Cmd {
+	cmd := exec.Command("git", args...)
+	if account == nil {
+		return cmd
+	}
+
+	cmd.Env = envWithAccount(os.Environ(), account)
+	if os.Geteuid() == 0 && account.UID != 0 {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Credential: accountCredential(account)}
+	}
+	return cmd
+}
+
+func envWithAccount(base []string, account *system.Account) []string {
+	overrides := map[string]string{
+		"HOME":    account.Home,
+		"LOGNAME": account.Name,
+		"USER":    account.Name,
+	}
+
+	result := make([]string, 0, len(base)+len(overrides))
+	for _, item := range base {
+		key, _, ok := strings.Cut(item, "=")
+		if !ok {
+			continue
+		}
+		if _, overridden := overrides[key]; overridden {
+			continue
+		}
+		result = append(result, item)
+	}
+	for _, key := range []string{"HOME", "LOGNAME", "USER"} {
+		result = append(result, key+"="+overrides[key])
+	}
+	return result
+}
+
+func accountCredential(account *system.Account) *syscall.Credential {
+	credential := &syscall.Credential{
+		Uid: uint32(account.UID),
+		Gid: uint32(account.GID),
+	}
+	if groups := accountGroupIDs(account.Name); len(groups) > 0 {
+		credential.Groups = groups
+	}
+	return credential
+}
+
+func accountGroupIDs(name string) []uint32 {
+	account, err := osuser.Lookup(name)
+	if err != nil {
+		return nil
+	}
+	rawGroupIDs, err := account.GroupIds()
+	if err != nil {
+		return nil
+	}
+
+	groupIDs := make([]uint32, 0, len(rawGroupIDs))
+	for _, rawGroupID := range rawGroupIDs {
+		groupID, err := strconv.ParseUint(rawGroupID, 10, 32)
+		if err != nil {
+			continue
+		}
+		groupIDs = append(groupIDs, uint32(groupID))
+	}
+	return groupIDs
 }
 
 func composeProjectRunning(compose composeCommand, dir string) (bool, error) {

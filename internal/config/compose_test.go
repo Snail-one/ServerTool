@@ -2,10 +2,13 @@ package config
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"snail_tool/internal/system"
 )
 
 func TestFindComposeDirsMatchesScriptDepthAndDedupes(t *testing.T) {
@@ -117,6 +120,114 @@ func TestDockerCleanupPlanForChoice(t *testing.T) {
 				t.Fatalf("skip = %v, want %v", got.skip, tt.wantSkip)
 			}
 		})
+	}
+}
+
+func TestComposePullArgsIgnoreBuildableWhenSupported(t *testing.T) {
+	tests := []struct {
+		name    string
+		compose composeCommand
+		want    []string
+	}{
+		{
+			name:    "plain pull",
+			compose: composeCommand{},
+			want:    []string{"pull"},
+		},
+		{
+			name:    "ignore buildable",
+			compose: composeCommand{pullIgnoreBuildable: true},
+			want:    []string{"pull", "--ignore-buildable"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := composePullArgs(tt.compose); !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("pull args mismatch: got %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestComposeUpArgsBuildsLocalImages(t *testing.T) {
+	want := []string{"up", "-d", "--build", "--remove-orphans"}
+	if got := composeUpArgs(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("up args mismatch: got %#v, want %#v", got, want)
+	}
+}
+
+func TestGitMarkerExistsFindsCurrentAndParentMarkers(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(root, ".git", "HEAD"), "ref: refs/heads/main\n")
+	nested := filepath.Join(root, "app", "compose")
+	if err := os.MkdirAll(nested, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	if !gitMarkerExists(nested) {
+		t.Fatal("expected nested path to find parent .git marker")
+	}
+	if gitMarkerExists(t.TempDir()) {
+		t.Fatal("expected non-repo path to have no .git marker")
+	}
+}
+
+func TestGitWorktreeRoot(t *testing.T) {
+	if !system.CommandExists("git") {
+		t.Skip("git is not installed")
+	}
+
+	root := t.TempDir()
+	cmd := exec.Command("git", "-C", root, "init")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init failed: %v\n%s", err, output)
+	}
+	nested := filepath.Join(root, "app", "compose")
+	if err := os.MkdirAll(nested, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok, err := gitWorktreeRoot(nil, nested)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected path to be inside a Git worktree")
+	}
+	if got != root {
+		t.Fatalf("git root mismatch: got %q, want %q", got, root)
+	}
+
+	_, ok, err = gitWorktreeRoot(nil, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("expected non-repo path to be skipped")
+	}
+}
+
+func TestEnvWithAccountOverridesTargetUser(t *testing.T) {
+	account := &system.Account{Name: "snail", Home: "/home/snail"}
+	got := envWithAccount([]string{
+		"HOME=/root",
+		"PATH=/usr/bin",
+		"LOGNAME=root",
+		"USER=root",
+	}, account)
+
+	want := []string{
+		"PATH=/usr/bin",
+		"HOME=/home/snail",
+		"LOGNAME=snail",
+		"USER=snail",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("env mismatch: got %#v, want %#v", got, want)
 	}
 }
 
