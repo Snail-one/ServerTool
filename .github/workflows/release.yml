@@ -68,7 +68,11 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           mkdir -p dist
-          go build -trimpath -ldflags="-s -w" -o dist/${{ matrix.artifact }} ./cmd/snail_tool
+          VERSION="${{ inputs.tag_name || github.ref_name }}"
+          COMMIT="${GITHUB_SHA}"
+          BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          LDFLAGS="-s -w -X snail_tool/internal/version.Version=${VERSION} -X snail_tool/internal/version.Commit=${COMMIT} -X snail_tool/internal/version.BuildDate=${BUILD_DATE}"
+          go build -trimpath -ldflags="${LDFLAGS}" -o dist/${{ matrix.artifact }} ./cmd/snail_tool
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7

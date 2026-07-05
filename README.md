@@ -62,6 +62,12 @@ git push origin v1.0.0
 sudo ./snail_tool
 ```
 
+查看版本不需要 root：
+
+```bash
+./snail_tool --version
+```
+
 ## 结构
 
 ```text
