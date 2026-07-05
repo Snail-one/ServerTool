@@ -44,6 +44,10 @@ func (a *App) Run() error {
 			a.runAction("配置失败，已返回菜单", func() error {
 				return a.configureFiles()
 			})
+		case "4":
+			a.runAction("清理配置失败，已返回菜单", func() error {
+				return config.CleanupConfig(a.ui)
+			})
 		case "0", "q", "exit":
 			fmt.Println("已退出")
 			return nil
@@ -62,7 +66,6 @@ func (a *App) configureFiles() error {
 	fmt.Println("3) Bash 环境" + statusText(status.Bash))
 	fmt.Println("4) HTTP/HTTPS 代理设置" + proxyStatusText(status.Proxy))
 	fmt.Println("5) UPS 配置" + statusText(status.UPS))
-	fmt.Println("6) 清理配置")
 	fmt.Println("0/q) 返回")
 	fmt.Println()
 
@@ -83,8 +86,6 @@ func (a *App) configureFiles() error {
 		return config.ConfigureProxy(a.ui)
 	case "5":
 		return config.ConfigureUPS(a.ui)
-	case "6":
-		return config.CleanupConfig(a.ui)
 	case "0", "q", "exit":
 		return config.ErrReturnToMenu
 	default:
@@ -117,6 +118,7 @@ func showMenu(status config.Status) {
 	fmt.Println("1) 批量更新运行中的 Docker Compose 应用")
 	fmt.Println("2) SSH 公钥管理" + statusText(status.SSHKeys))
 	fmt.Println("3) 配置")
+	fmt.Println("4) 清理配置")
 	fmt.Println("0/q) 退出")
 }
 

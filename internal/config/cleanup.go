@@ -32,10 +32,11 @@ func CleanupConfig(view *ui.UI) error {
 	fmt.Println()
 	fmt.Println("请选择要清理的配置：")
 	fmt.Println("1) 清理所有由本工具写入的配置")
-	fmt.Println("2) 清理 SSH 配置")
-	fmt.Println("3) 清理 Vim 配置")
-	fmt.Println("4) 清理 Bash 配置")
-	fmt.Println("5) 清理 HTTP/HTTPS 代理配置")
+	fmt.Println("2) 清理 SSH 公钥配置")
+	fmt.Println("3) 清理 SSH 常用安全配置")
+	fmt.Println("4) 清理 Vim 配置")
+	fmt.Println("5) 清理 Bash 配置")
+	fmt.Println("6) 清理 HTTP/HTTPS 代理配置")
 	fmt.Println("0/q) 返回")
 	fmt.Println()
 
@@ -48,7 +49,8 @@ func CleanupConfig(view *ui.UI) error {
 	steps := allCleanupSteps()
 	switch strings.ToLower(choice) {
 	case "1":
-		confirmed, err := view.Confirm("确认清理所有由本工具写入的配置？(y/N): ")
+		fmt.Println("警告：清理所有配置会移除本工具写入的 SSH 常用安全配置，可能恢复系统默认 SSH 密码登录。")
+		confirmed, err := view.Confirm("确认清理所有由本工具写入的配置？请输入 y 确认，默认取消 (y/N): ")
 		if err != nil {
 			return err
 		}
@@ -65,6 +67,8 @@ func CleanupConfig(view *ui.UI) error {
 		return runCleanupStepWithConfirm(view, account, steps[2])
 	case "5":
 		return runCleanupStepWithConfirm(view, account, steps[3])
+	case "6":
+		return runCleanupStepWithConfirm(view, account, steps[4])
 	case "0", "q", "exit":
 		return ErrReturnToMenu
 	default:
@@ -75,7 +79,8 @@ func CleanupConfig(view *ui.UI) error {
 
 func allCleanupSteps() []cleanupStep {
 	return []cleanupStep{
-		{name: "SSH", run: cleanupSSHConfig},
+		{name: "SSH 公钥", run: cleanupSSHAuthorizedKeys},
+		{name: "SSH 常用安全", run: cleanupSSHDConfigStep},
 		{name: "Vim", run: cleanupVimConfig},
 		{name: "Bash", run: cleanupBashConfig},
 		{name: "代理", run: cleanupProxyConfig},
@@ -114,23 +119,17 @@ func runCleanupSteps(account *system.Account, steps []cleanupStep) error {
 	return nil
 }
 
-func cleanupSSHConfig(account *system.Account) error {
-	var errs []error
-	if err := cleanupSSHAuthorizedKeys(account); err != nil {
-		errs = append(errs, err)
-	}
-
+func cleanupSSHDConfigStep(_ *system.Account) error {
 	sshServiceChanged, err := cleanupSSHDConfig()
 	if err != nil {
-		errs = append(errs, err)
+		return err
 	}
 	if sshServiceChanged {
 		if err := reloadSSHService(); err != nil {
-			errs = append(errs, fmt.Errorf("重新加载 SSH 服务失败: %w", err))
+			return fmt.Errorf("重新加载 SSH 服务失败: %w", err)
 		}
 	}
-
-	return errors.Join(errs...)
+	return nil
 }
 
 func cleanupSSHAuthorizedKeys(account *system.Account) error {
