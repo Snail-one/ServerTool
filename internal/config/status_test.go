@@ -63,14 +63,29 @@ func TestDetectStatusRequiresProxyURL(t *testing.T) {
 	}
 }
 
-func TestDetectStatusReadsProxyEnv(t *testing.T) {
+func TestDetectStatusReadsProxyFileEnv(t *testing.T) {
+	clearProxyEnv(t)
+
+	home := t.TempDir()
+	account := &system.Account{Name: "test", Home: home}
+	if err := os.WriteFile(filepath.Join(home, ".bashrc"), []byte("https_proxy='http://192.168.31.108:52013'\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	status := DetectStatus(account)
+	if !status.Proxy {
+		t.Fatal("expected proxy file env to be configured")
+	}
+}
+
+func TestDetectStatusIgnoresTemporaryProxyEnv(t *testing.T) {
 	clearProxyEnv(t)
 	t.Setenv("HTTP_PROXY", "http://192.168.31.108:52013")
 
 	account := &system.Account{Name: "test", Home: t.TempDir()}
 	status := DetectStatus(account)
-	if !status.Proxy {
-		t.Fatal("expected proxy env to be configured")
+	if status.Proxy {
+		t.Fatal("expected temporary proxy env to be unconfigured")
 	}
 }
 

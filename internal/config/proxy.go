@@ -21,7 +21,6 @@ const (
 var (
 	proxyWithAuth     = regexp.MustCompile(`^([^:]+):([^@]+)@([^:]+):([0-9]+)$`)
 	proxyPlain        = regexp.MustCompile(`^([^:]+):([0-9]+)$`)
-	proxyEnvLine      = regexp.MustCompile(`(?m)^[ \t]*export[ \t]+(?:http_proxy|https_proxy|HTTP_PROXY|HTTPS_PROXY)=(?:"([^"]*)"|'([^']*)'|([^ \t\r\n;]+))`)
 	proxyShellEnvLine = regexp.MustCompile(`^[ \t]*(?:export[ \t]+)?(http_proxy|https_proxy|HTTP_PROXY|HTTPS_PROXY|no_proxy|NO_PROXY)=(?:"([^"]*)"|'([^']*)'|([^ \t\r\n;]*))`)
 	proxyEnvNames     = []string{"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"}
 )
@@ -98,13 +97,12 @@ func CurrentProxyURL(account *system.Account) (string, bool) {
 		return proxyURL, true
 	}
 
+	return ConfiguredProxyURL(account)
+}
+
+func ConfiguredProxyURL(account *system.Account) (string, bool) {
 	bashrc := filepath.Join(account.Home, ".bashrc")
-	content := readFileString(bashrc)
-	block, ok := managedBlockContent(content, proxyBegin, proxyEnd)
-	if !ok {
-		return "", false
-	}
-	return proxyURLFromBlock(block)
+	return proxyURLFromShellContent(readFileString(bashrc))
 }
 
 func currentProxyURLFromInvokerEnv() (string, bool) {
@@ -138,10 +136,14 @@ func proxyURLFromEnvPairs(pairs []string) (string, bool) {
 	return "", false
 }
 
-func proxyURLFromBlock(block string) (string, bool) {
-	for _, match := range proxyEnvLine.FindAllStringSubmatch(block, -1) {
-		for _, value := range match[1:] {
-			value = strings.TrimSpace(value)
+func proxyURLFromShellContent(content string) (string, bool) {
+	assignments := proxyAssignmentsFromContent(content)
+	for _, name := range proxyEnvNames {
+		for _, assignment := range assignments {
+			if assignment.name != name {
+				continue
+			}
+			value := strings.TrimSpace(assignment.value)
 			if value != "" {
 				return value, true
 			}

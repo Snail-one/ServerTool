@@ -59,7 +59,7 @@ func isBashConfigured(account *system.Account) bool {
 }
 
 func isProxyConfigured(account *system.Account) bool {
-	_, ok := CurrentProxyURL(account)
+	_, ok := ConfiguredProxyURL(account)
 	return ok
 }
 
