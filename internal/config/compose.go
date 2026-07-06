@@ -67,7 +67,7 @@ func UpdateDockerComposeApps(view *ui.UI) error {
 	}
 	fmt.Println()
 
-	confirmed, err := view.Confirm("将只更新运行中的项目，更新后可选择 Docker 清理策略，是否继续？(y/N): ")
+	confirmed, err := view.Confirm("将只更新运行中的项目，是否继续？(y/N): ")
 	if err != nil {
 		return err
 	}
@@ -89,14 +89,15 @@ func UpdateDockerComposeApps(view *ui.UI) error {
 		}
 	}
 
-	if err := runDockerCleanup(view); err != nil {
-		return err
-	}
-
 	fmt.Println()
 	log.Info("完成")
 	fmt.Printf("已更新：%d，已跳过：%d\n", updated, skipped)
 	return nil
+}
+
+func CleanupDockerResources(view *ui.UI) error {
+	log.Info("清理 Docker 容器与资源")
+	return runDockerCleanup(view)
 }
 
 func askComposeScanDirs(view *ui.UI, defaultRoots []string) ([]string, []string, error) {
@@ -145,12 +146,15 @@ func runDockerCleanup(view *ui.UI) error {
 	log.Info("当前 Docker 磁盘占用")
 	printDockerDiskUsage()
 	fmt.Println()
-	fmt.Println("请选择 Docker 清理策略：")
-	fmt.Println("1) 清理悬空镜像（默认，docker image prune -f）")
-	fmt.Println("2) 清理所有未被容器使用的镜像（docker image prune -a -f）")
-	fmt.Println("3) 清理停止容器、无用网络、悬空镜像和构建缓存（docker system prune -f）")
-	fmt.Println("4) 深度清理：停止容器、无用网络、所有未使用镜像和构建缓存（docker system prune -a -f）")
-	fmt.Println("0/q) 跳过清理")
+	fmt.Println("请选择 Docker 清理操作：")
+	fmt.Println("1) 一键清理无用资源（默认，停止容器、无用网络、悬空镜像和构建缓存）")
+	fmt.Println("2) 只清理停止容器（docker container prune -f）")
+	fmt.Println("3) 只清理无用网络（docker network prune -f）")
+	fmt.Println("4) 只清理悬空镜像（docker image prune -f）")
+	fmt.Println("5) 清理所有未被容器使用的镜像（docker image prune -a -f）")
+	fmt.Println("6) 只清理构建缓存（docker builder prune -f）")
+	fmt.Println("7) 深度一键清理：停止容器、无用网络、所有未使用镜像和构建缓存")
+	fmt.Println("0/q) 返回")
 	fmt.Println()
 	fmt.Println("说明：以上选项都不会清理 Docker volume。")
 	fmt.Println()
@@ -164,11 +168,11 @@ func runDockerCleanup(view *ui.UI) error {
 	plan, err := dockerCleanupPlanForChoice(choice)
 	if err != nil {
 		fmt.Println(err)
-		fmt.Println("已跳过 Docker 清理")
+		fmt.Println("已返回容器管理")
 		return nil
 	}
 	if plan.skip {
-		fmt.Println("已跳过 Docker 清理")
+		fmt.Println("已返回容器管理")
 		return nil
 	}
 
@@ -199,21 +203,36 @@ func dockerCleanupPlanForChoice(choice string) (dockerCleanupPlan, error) {
 	switch strings.ToLower(strings.TrimSpace(choice)) {
 	case "", "1":
 		return dockerCleanupPlan{
+			name: "一键清理 Docker 无用资源",
+			args: []string{"system", "prune", "-f"},
+		}, nil
+	case "2":
+		return dockerCleanupPlan{
+			name: "清理停止容器",
+			args: []string{"container", "prune", "-f"},
+		}, nil
+	case "3":
+		return dockerCleanupPlan{
+			name: "清理无用网络",
+			args: []string{"network", "prune", "-f"},
+		}, nil
+	case "4":
+		return dockerCleanupPlan{
 			name: "清理悬空镜像",
 			args: []string{"image", "prune", "-f"},
 		}, nil
-	case "2":
+	case "5":
 		return dockerCleanupPlan{
 			name:         "清理所有未被容器使用的镜像",
 			args:         []string{"image", "prune", "-a", "-f"},
 			needsConfirm: true,
 		}, nil
-	case "3":
+	case "6":
 		return dockerCleanupPlan{
-			name: "清理停止容器、无用网络、悬空镜像和构建缓存",
-			args: []string{"system", "prune", "-f"},
+			name: "清理 Docker 构建缓存",
+			args: []string{"builder", "prune", "-f"},
 		}, nil
-	case "4":
+	case "7":
 		return dockerCleanupPlan{
 			name:         "深度清理 Docker 无用资源",
 			args:         []string{"system", "prune", "-a", "-f"},

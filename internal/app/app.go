@@ -33,15 +33,15 @@ func (a *App) Run() error {
 
 		switch strings.ToLower(choice) {
 		case "1":
-			a.runAction("Docker Compose 应用更新失败，已返回菜单", func() error {
-				return config.UpdateDockerComposeApps(a.ui)
+			a.runAction("容器管理失败，已返回菜单", func() error {
+				return a.manageContainers()
 			})
 		case "2":
 			a.runAction("SSH 管理失败，已返回菜单", func() error {
 				return a.manageSSH()
 			})
 		case "3":
-			a.runAction("配置失败，已返回菜单", func() error {
+			a.runAction("常用配置失败，已返回菜单", func() error {
 				return a.configureFiles()
 			})
 		case "4":
@@ -51,6 +51,38 @@ func (a *App) Run() error {
 		case "0", "q", "exit":
 			fmt.Println("已退出")
 			return nil
+		default:
+			fmt.Println("无效选项，请重新输入")
+			a.ui.Pause()
+		}
+	}
+}
+
+func (a *App) manageContainers() error {
+	for {
+		fmt.Println("请选择容器管理操作：")
+		fmt.Println("1) 更新容器")
+		fmt.Println("2) 清理容器")
+		fmt.Println("0/q) 返回")
+		fmt.Println()
+
+		choice, err := a.ui.Ask("输入选项: ")
+		if err != nil {
+			return err
+		}
+		fmt.Println()
+
+		switch strings.ToLower(choice) {
+		case "1":
+			a.runAction("容器更新失败，已返回容器管理", func() error {
+				return config.UpdateDockerComposeApps(a.ui)
+			})
+		case "2":
+			a.runAction("容器清理失败，已返回容器管理", func() error {
+				return config.CleanupDockerResources(a.ui)
+			})
+		case "0", "q", "exit":
+			return config.ErrReturnToMenu
 		default:
 			fmt.Println("无效选项，请重新输入")
 			a.ui.Pause()
@@ -150,9 +182,9 @@ func currentStatus() config.Status {
 
 func showMenu(status config.Status) {
 	fmt.Println("请选择操作：")
-	fmt.Println("1) 批量更新运行中的 Docker Compose 应用")
+	fmt.Println("1) 容器管理")
 	fmt.Println("2) SSH 管理" + statusText(status.SSH))
-	fmt.Println("3) 配置")
+	fmt.Println("3) 常用配置")
 	fmt.Println("4) 清理配置")
 	fmt.Println("0/q) 退出")
 }

@@ -86,11 +86,14 @@ func TestDockerCleanupPlanForChoice(t *testing.T) {
 		wantSkip    bool
 		wantErrPart string
 	}{
-		{choice: "", wantArgs: []string{"image", "prune", "-f"}},
-		{choice: "1", wantArgs: []string{"image", "prune", "-f"}},
-		{choice: "2", wantArgs: []string{"image", "prune", "-a", "-f"}, wantConfirm: true},
-		{choice: "3", wantArgs: []string{"system", "prune", "-f"}},
-		{choice: "4", wantArgs: []string{"system", "prune", "-a", "-f"}, wantConfirm: true},
+		{choice: "", wantArgs: []string{"system", "prune", "-f"}},
+		{choice: "1", wantArgs: []string{"system", "prune", "-f"}},
+		{choice: "2", wantArgs: []string{"container", "prune", "-f"}},
+		{choice: "3", wantArgs: []string{"network", "prune", "-f"}},
+		{choice: "4", wantArgs: []string{"image", "prune", "-f"}},
+		{choice: "5", wantArgs: []string{"image", "prune", "-a", "-f"}, wantConfirm: true},
+		{choice: "6", wantArgs: []string{"builder", "prune", "-f"}},
+		{choice: "7", wantArgs: []string{"system", "prune", "-a", "-f"}, wantConfirm: true},
 		{choice: "q", wantSkip: true},
 		{choice: "bad", wantErrPart: "无效 Docker 清理选项"},
 	}
