@@ -5,8 +5,8 @@
 ## 功能
 
 - 批量扫描并更新运行中的 Docker Compose 应用，检测到 `build:` 的项目会直接跳过，默认扫描 `/docker`、`/opt/docker`、`/opt/apps`、用户目录、用户目录下的 `docker`，更新完成后可选择 Docker 清理策略
-- 管理当前用户 SSH 公钥（查看、添加、删除）
-- 查看当前 SSH 生效安全配置，集中写入配置文件：SSH 随机端口与禁用密码登录等安全配置、Vim `~/.vimrc`、Bash 环境、HTTP/HTTPS 代理环境变量、UPS(NUT) 配置
+- SSH 管理：管理当前用户 SSH 公钥（查看、添加、删除）、写入 SSH 随机端口与禁用密码登录等安全配置、查看当前 SSH 生效安全配置
+- 集中写入配置文件：Vim `~/.vimrc`、Bash 环境、HTTP/HTTPS 代理环境变量、UPS(NUT) 配置
 - 清理本工具写入的 SSH、Vim、Bash、代理配置，支持一键清理或按项清理
 
 一键下载安装

@@ -181,7 +181,7 @@ func cleanupSSHDConfig() (bool, error) {
 	if err != nil {
 		return serviceChanged, err
 	}
-	if !strings.Contains(string(data), managedSSHDConfigHeader) {
+	if !isManagedSSHDConfig(string(data)) {
 		log.Warn("SSH 自定义配置不是本工具生成，已跳过：", customSSHDConfigPath)
 		return serviceChanged, nil
 	}

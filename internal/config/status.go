@@ -42,7 +42,7 @@ func isSSHKeysConfigured(account *system.Account) bool {
 }
 
 func isSSHSecurityConfigured() bool {
-	return fileContains(customSSHDConfigPath, managedSSHDConfigHeader)
+	return isManagedSSHDConfig(readFileString(customSSHDConfigPath))
 }
 
 func isVimConfigured(account *system.Account) bool {

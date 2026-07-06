@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -28,8 +29,15 @@ type sshdSecurityRow struct {
 	directive string
 }
 
+type sshdPortDirective struct {
+	path string
+	line int
+	text string
+}
+
 const (
-	managedSSHDConfigHeader = "# Managed by setup tool"
+	managedSSHDConfigBegin  = "# ===== BEGIN SNAIL TOOL SERVERTOOL SSHD CONFIG ====="
+	managedSSHDConfigEnd    = "# ===== END SNAIL TOOL SERVERTOOL SSHD CONFIG ====="
 	managedSSHDIncludeBegin = "# ===== BEGIN SNAIL SSH INCLUDE ====="
 	managedSSHDIncludeEnd   = "# ===== END SNAIL SSH INCLUDE ====="
 	sshAuthorizedKeysBegin  = "# ===== BEGIN SNAIL SSH AUTHORIZED KEYS ====="
@@ -72,13 +80,21 @@ func ShowSSHSecurityStatus() error {
 	fmt.Println()
 	fmt.Println("配置来源：", source)
 	fmt.Println()
+	printSSHSecurityRows(settings)
+	return nil
+}
+
+func printSSHSecurityRows(settings sshdSettings) {
 	for _, row := range buildSSHSecurityRows(settings) {
-		fmt.Printf("- %s：%s [%s]\n", row.name, row.value, row.status)
+		if row.status == "" {
+			fmt.Printf("- %s：%s\n", row.name, row.value)
+		} else {
+			fmt.Printf("- %s：%s [%s]\n", row.name, row.value, row.status)
+		}
 		if row.directive != "" {
 			fmt.Printf("  配置项：%s\n", row.directive)
 		}
 	}
-	return nil
 }
 
 func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
@@ -252,22 +268,47 @@ func configureSSHDHardening(view *ui.UI, account *system.Account) error {
 		log.Warn("当前配置用户是 root：保留 root 公钥登录，不禁用 root 登录")
 	}
 
-	if err := writeSSHDConfig(port, permitRootLogin); err != nil {
+	disableSSHDConfigPorts, err := confirmDisableSSHDConfigPorts(view, port)
+	if err != nil {
+		return err
+	}
+
+	if err := writeSSHDConfig(port, permitRootLogin, disableSSHDConfigPorts); err != nil {
 		return err
 	}
 	if err := reloadSSHService(); err != nil {
 		return err
 	}
 
+	settings, source, err := loadSSHDSettings()
+	if err != nil {
+		return err
+	}
+	effectivePort := firstSSHDSetting(settings, "Port")
+	if effectivePort == "" {
+		effectivePort = strconv.Itoa(port)
+	}
+
 	fmt.Println()
 	log.Info("SSH 服务安全配置完成")
 	fmt.Println()
 	fmt.Printf("用户：%s\n", account.Name)
-	fmt.Printf("端口：%d\n", port)
-	fmt.Printf("PermitRootLogin：%s\n", permitRootLogin)
+	fmt.Println()
+	fmt.Println("本次写入 SSH 配置：")
+	printSSHDConfig(customSSHDConfigPath, buildSSHDConfig(port, permitRootLogin))
+	if disableSSHDConfigPorts {
+		fmt.Println("旧端口处理：已按确认注释旧 Port 配置")
+	} else {
+		fmt.Println("旧端口处理：未注释旧 Port 配置")
+	}
+	fmt.Println()
+	fmt.Println("生效配置来源：", source)
+	fmt.Println()
+	fmt.Println("生效 SSH 安全配置：")
+	printSSHSecurityRows(settings)
 	fmt.Println()
 	fmt.Println("连接方式：")
-	fmt.Printf("ssh -p %d %s@服务器IP\n", port, account.Name)
+	fmt.Printf("ssh -p %s %s@服务器IP\n", effectivePort, account.Name)
 	fmt.Println()
 	log.Warn("请先新开一个终端测试 SSH 登录成功后，再关闭当前会话。")
 	return nil
@@ -303,13 +344,54 @@ func confirmSSHDConfigOverwrite(view *ui.UI) (bool, error) {
 	if strings.TrimSpace(existingContent) == "" {
 		return true, nil
 	}
-	if !strings.Contains(existingContent, managedSSHDConfigHeader) {
+	if !isManagedSSHDConfig(existingContent) {
 		printSSHDConfig(customSSHDConfigPath, existingContent)
 		return view.Confirm("检测到该 SSH 配置文件不是本工具生成，继续会备份并覆盖，是否继续？(y/N): ")
 	}
 
 	printSSHDConfig(customSSHDConfigPath, existingContent)
 	return view.Confirm("检测到该 SSH 配置文件由脚本创建，是否覆盖并重新生成？(y/N): ")
+}
+
+func confirmDisableSSHDConfigPorts(view *ui.UI, port int) (bool, error) {
+	paths, err := sshdPortConfigPaths()
+	if err != nil {
+		return false, err
+	}
+
+	directives, err := activeSSHDPortDirectivesInFiles(paths)
+	if err != nil {
+		return false, err
+	}
+	if len(directives) == 0 {
+		return false, nil
+	}
+
+	fmt.Println()
+	fmt.Println("检测到已有 Port 配置：")
+	for _, directive := range directives {
+		fmt.Printf("- %s 第 %d 行：%s\n", directive.path, directive.line, strings.TrimSpace(directive.text))
+	}
+	fmt.Printf("新端口将写入 %s：Port %d\n", customSSHDConfigPath, port)
+	return confirmDefaultYes(view, "是否注释这些 Port 配置，关闭旧端口？(Y/n): ")
+}
+
+func confirmDefaultYes(view *ui.UI, prompt string) (bool, error) {
+	for {
+		value, err := view.Ask(prompt)
+		if err != nil {
+			return false, err
+		}
+
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "", "y", "yes":
+			return true, nil
+		case "n", "no":
+			return false, nil
+		default:
+			fmt.Println("请输入 y 或 n")
+		}
+	}
 }
 
 func printAuthorizedKeys(account *system.Account) error {
@@ -383,7 +465,118 @@ func chooseSSHPort(raw string) (int, error) {
 	return port, nil
 }
 
-func writeSSHDConfig(port int, permitRootLogin string) error {
+func sshdPortConfigPaths() ([]string, error) {
+	return sshdPortConfigPathsFor(sshdConfigPath, sshdConfigDir, customSSHDConfigPath)
+}
+
+func sshdPortConfigPathsFor(configPath, configDir, customPath string) ([]string, error) {
+	paths := []string{configPath}
+
+	matches, err := filepath.Glob(filepath.Join(configDir, "*.conf"))
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(matches)
+
+	cleanCustomPath := filepath.Clean(customPath)
+	for _, path := range matches {
+		if filepath.Clean(path) == cleanCustomPath {
+			continue
+		}
+
+		info, err := os.Stat(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+		if info.IsDir() {
+			continue
+		}
+		paths = append(paths, path)
+	}
+	return paths, nil
+}
+
+func activeSSHDPortDirectivesInFiles(paths []string) ([]sshdPortDirective, error) {
+	var directives []sshdPortDirective
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("读取 SSH 配置文件失败 %s: %w", path, err)
+		}
+
+		for _, directive := range activeSSHDPortDirectives(string(data)) {
+			directive.path = path
+			directives = append(directives, directive)
+		}
+	}
+	return directives, nil
+}
+
+func activeSSHDPortDirectives(content string) []sshdPortDirective {
+	var directives []sshdPortDirective
+	for index, rawLine := range strings.Split(content, "\n") {
+		line := strings.TrimRight(rawLine, "\r")
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+
+		fields := strings.Fields(trimmed)
+		if len(fields) >= 2 && strings.EqualFold(fields[0], "Port") {
+			directives = append(directives, sshdPortDirective{
+				line: index + 1,
+				text: line,
+			})
+		}
+	}
+	return directives
+}
+
+func commentActiveSSHDPortDirectives(content string) (string, bool) {
+	lines := strings.SplitAfter(content, "\n")
+	var builder strings.Builder
+	changed := false
+
+	for _, line := range lines {
+		body, ending := splitLineEnding(line)
+		if isActiveSSHDPortDirective(body) {
+			builder.WriteString("# SNAIL disabled duplicate Port: ")
+			changed = true
+		}
+		builder.WriteString(body)
+		builder.WriteString(ending)
+	}
+
+	return builder.String(), changed
+}
+
+func splitLineEnding(line string) (string, string) {
+	if strings.HasSuffix(line, "\r\n") {
+		return strings.TrimSuffix(line, "\r\n"), "\r\n"
+	}
+	if strings.HasSuffix(line, "\n") {
+		return strings.TrimSuffix(line, "\n"), "\n"
+	}
+	return line, ""
+}
+
+func isActiveSSHDPortDirective(line string) bool {
+	trimmed := strings.TrimSpace(strings.TrimRight(line, "\r"))
+	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+		return false
+	}
+
+	fields := strings.Fields(trimmed)
+	return len(fields) >= 2 && strings.EqualFold(fields[0], "Port")
+}
+
+func writeSSHDConfig(port int, permitRootLogin string, disableSSHDConfigPorts bool) error {
 	if err := os.MkdirAll(sshdConfigDir, 0755); err != nil {
 		return err
 	}
@@ -442,10 +635,53 @@ func writeSSHDConfig(port int, permitRootLogin string) error {
 	}
 	printSSHDConfig(customSSHDConfigPath, content)
 
+	if disableSSHDConfigPorts {
+		if err := disableSSHDConfigPortsInFiles(); err != nil {
+			return err
+		}
+	}
+
 	fmt.Println()
 	log.Info("验证当前 sshd 配置...")
 	if err := system.Run(sshdCommandPath, "-t"); err != nil {
 		return fmt.Errorf("sshd 配置校验失败: %w", err)
+	}
+	return nil
+}
+
+func disableSSHDConfigPortsInFiles() error {
+	paths, err := sshdPortConfigPaths()
+	if err != nil {
+		return err
+	}
+
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return fmt.Errorf("读取 SSH 配置文件失败 %s: %w", path, err)
+		}
+
+		cleaned, changed := commentActiveSSHDPortDirectives(string(data))
+		if !changed {
+			continue
+		}
+
+		mode := os.FileMode(0644)
+		if info, err := os.Stat(path); err == nil {
+			mode = info.Mode().Perm()
+		}
+		backup, err := system.Backup(path)
+		if err != nil {
+			return err
+		}
+		log.Info("已备份 SSH 配置：", backup)
+		if err := os.WriteFile(path, []byte(cleaned), mode); err != nil {
+			return err
+		}
+		log.Info("已注释 ", path, " 中的 Port 配置")
 	}
 	return nil
 }
@@ -607,13 +843,13 @@ func truncateString(value string, max int) string {
 }
 
 func buildSSHDConfig(port int, permitRootLogin string) string {
-	return fmt.Sprintf(`%s
+	return fmt.Sprintf("%s\n\nPort %d\nPasswordAuthentication no\nPermitRootLogin %s\nPubkeyAuthentication yes\n%s\n",
+		managedSSHDConfigBegin, port, permitRootLogin, managedSSHDConfigEnd)
+}
 
-Port %d
-PasswordAuthentication no
-PermitRootLogin %s
-PubkeyAuthentication yes
-`, managedSSHDConfigHeader, port, permitRootLogin)
+func isManagedSSHDConfig(content string) bool {
+	return strings.Contains(content, managedSSHDConfigBegin) &&
+		strings.Contains(content, managedSSHDConfigEnd)
 }
 
 func loadSSHDSettings() (sshdSettings, string, error) {
@@ -684,7 +920,7 @@ func sshdPortRow(settings sshdSettings) sshdSecurityRow {
 	} else if value == "22" {
 		status = "默认"
 	} else {
-		status = "已调整"
+		status = ""
 	}
 	return sshdSecurityRow{
 		name:      "SSH 端口",
