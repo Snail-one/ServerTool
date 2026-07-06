@@ -12,7 +12,7 @@
 一键下载安装
 
 ```bash
-sudo -E wget -O /usr/local/sbin/snailtool https://github.com/Snail-one/ServerTool/releases/latest/download/snailtool_linux_amd64 && sudo chmod +x /usr/local/sbin/snailtool
+sudo wget -O /usr/local/sbin/snailtool https://github.com/Snail-one/ServerTool/releases/latest/download/snailtool_linux_amd64 && sudo chmod +x /usr/local/sbin/snailtool
 ```
 
 ```bash
