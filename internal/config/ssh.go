@@ -19,6 +19,15 @@ type authorizedKeyEntry struct {
 	managed bool
 }
 
+type sshdSettings map[string][]string
+
+type sshdSecurityRow struct {
+	name      string
+	value     string
+	status    string
+	directive string
+}
+
 const (
 	managedSSHDConfigHeader = "# Managed by setup tool"
 	managedSSHDIncludeBegin = "# ===== BEGIN SNAIL SSH INCLUDE ====="
@@ -28,6 +37,7 @@ const (
 	sshdConfigPath          = "/etc/ssh/sshd_config"
 	sshdConfigDir           = "/etc/ssh/sshd_config.d"
 	customSSHDConfigPath    = "/etc/ssh/sshd_config.d/99-custom.conf"
+	sshdCommandPath         = "/usr/sbin/sshd"
 )
 
 func ConfigureSSH(view *ui.UI) error {
@@ -50,6 +60,25 @@ func ConfigureSSHSecurity(view *ui.UI) error {
 	log.Info("当前配置用户：", account.Name)
 	fmt.Println()
 	return configureSSHDHardening(view, account)
+}
+
+func ShowSSHSecurityStatus() error {
+	settings, source, err := loadSSHDSettings()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("当前 SSH 安全配置：")
+	fmt.Println()
+	fmt.Println("配置来源：", source)
+	fmt.Println()
+	for _, row := range buildSSHSecurityRows(settings) {
+		fmt.Printf("- %s：%s [%s]\n", row.name, row.value, row.status)
+		if row.directive != "" {
+			fmt.Printf("  配置项：%s\n", row.directive)
+		}
+	}
+	return nil
 }
 
 func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
@@ -415,7 +444,7 @@ func writeSSHDConfig(port int, permitRootLogin string) error {
 
 	fmt.Println()
 	log.Info("验证当前 sshd 配置...")
-	if err := system.Run("/usr/sbin/sshd", "-t"); err != nil {
+	if err := system.Run(sshdCommandPath, "-t"); err != nil {
 		return fmt.Errorf("sshd 配置校验失败: %w", err)
 	}
 	return nil
@@ -587,6 +616,201 @@ PubkeyAuthentication yes
 `, managedSSHDConfigHeader, port, permitRootLogin)
 }
 
+func loadSSHDSettings() (sshdSettings, string, error) {
+	output, err := system.Output(sshdCommandPath, "-T")
+	if err != nil {
+		detail := strings.TrimSpace(output)
+		if detail != "" {
+			return nil, "", fmt.Errorf("读取当前 sshd 生效配置失败: %w: %s", err, detail)
+		}
+		return nil, "", fmt.Errorf("读取当前 sshd 生效配置失败: %w", err)
+	}
+
+	settings := parseSSHDSettings(output)
+	if len(settings) == 0 {
+		return nil, "", fmt.Errorf("读取当前 sshd 生效配置失败: sshd -T 未返回配置")
+	}
+	return settings, sshdCommandPath + " -T", nil
+}
+
+func parseSSHDSettings(output string) sshdSettings {
+	settings := make(sshdSettings)
+	for _, rawLine := range strings.Split(output, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+
+		key := strings.ToLower(fields[0])
+		value := strings.TrimSpace(strings.TrimPrefix(line, fields[0]))
+		if value == "" {
+			continue
+		}
+		settings[key] = append(settings[key], value)
+	}
+	return settings
+}
+
+func buildSSHSecurityRows(settings sshdSettings) []sshdSecurityRow {
+	return []sshdSecurityRow{
+		sshdPortRow(settings),
+		sshdYesNoRow(settings, "PubkeyAuthentication", "密钥登录", "已开启", "已关闭", true),
+		sshdValueRow(settings, "AuthorizedKeysFile", "密钥文件路径", "信息", "未检测到"),
+		sshdYesNoRow(settings, "PasswordAuthentication", "密码登录", "已开启", "已禁用", false),
+		sshdKeyboardInteractiveRow(settings),
+		sshdPermitRootLoginRow(settings),
+		sshdYesNoRow(settings, "PermitEmptyPasswords", "空密码登录", "已允许", "已禁止", false),
+		sshdYesNoInfoRow(settings, "UsePAM", "PAM 认证", "已开启", "已关闭"),
+		sshdYesNoRow(settings, "PermitUserEnvironment", "用户环境变量", "已允许", "已禁止", false),
+		sshdYesNoRow(settings, "X11Forwarding", "X11 转发", "已开启", "已关闭", false),
+		sshdYesNoRow(settings, "AllowTcpForwarding", "TCP 转发", "已开启", "已关闭", false),
+		sshdValueRow(settings, "MaxAuthTries", "最大认证尝试次数", "信息", "未检测到"),
+		sshdValueRow(settings, "AllowUsers", "允许登录用户", "信息", "未限制"),
+		sshdValueRow(settings, "AllowGroups", "允许登录用户组", "信息", "未限制"),
+	}
+}
+
+func sshdPortRow(settings sshdSettings) sshdSecurityRow {
+	value := joinedSSHDSetting(settings, "Port")
+	status := "信息"
+	if value == "" {
+		value = "未检测到"
+		status = "未知"
+	} else if value == "22" {
+		status = "默认"
+	} else {
+		status = "已调整"
+	}
+	return sshdSecurityRow{
+		name:      "SSH 端口",
+		value:     value,
+		status:    status,
+		directive: "Port",
+	}
+}
+
+func sshdYesNoRow(settings sshdSettings, directive, name, yesText, noText string, secureWhenYes bool) sshdSecurityRow {
+	value := firstSSHDSetting(settings, directive)
+	display := value
+	status := "未知"
+
+	switch strings.ToLower(value) {
+	case "yes":
+		display = yesText
+		if secureWhenYes {
+			status = "安全"
+		} else {
+			status = "风险"
+		}
+	case "no":
+		display = noText
+		if secureWhenYes {
+			status = "风险"
+		} else {
+			status = "安全"
+		}
+	case "":
+		display = "未检测到"
+	default:
+		status = "信息"
+	}
+
+	return sshdSecurityRow{
+		name:      name,
+		value:     display,
+		status:    status,
+		directive: directive,
+	}
+}
+
+func sshdYesNoInfoRow(settings sshdSettings, directive, name, yesText, noText string) sshdSecurityRow {
+	row := sshdYesNoRow(settings, directive, name, yesText, noText, true)
+	row.status = "信息"
+	return row
+}
+
+func sshdKeyboardInteractiveRow(settings sshdSettings) sshdSecurityRow {
+	row := sshdYesNoRow(settings, "KbdInteractiveAuthentication", "键盘交互认证", "已开启", "已禁用", false)
+	if strings.EqualFold(firstSSHDSetting(settings, "KbdInteractiveAuthentication"), "yes") {
+		row.status = "需确认"
+	}
+	return row
+}
+
+func sshdPermitRootLoginRow(settings sshdSettings) sshdSecurityRow {
+	value := firstSSHDSetting(settings, "PermitRootLogin")
+	display := value
+	status := "未知"
+
+	switch strings.ToLower(value) {
+	case "no":
+		display = "已禁止"
+		status = "安全"
+	case "prohibit-password", "without-password":
+		display = "仅允许密钥登录"
+		status = "安全"
+	case "forced-commands-only":
+		display = "仅允许强制命令"
+		status = "安全"
+	case "yes":
+		display = "允许登录"
+		status = "风险"
+	case "":
+		display = "未检测到"
+	default:
+		status = "信息"
+	}
+
+	return sshdSecurityRow{
+		name:      "Root 登录",
+		value:     display,
+		status:    status,
+		directive: "PermitRootLogin",
+	}
+}
+
+func sshdValueRow(settings sshdSettings, directive, name, status, missing string) sshdSecurityRow {
+	value := joinedSSHDSetting(settings, directive)
+	if value == "" {
+		value = missing
+	}
+	return sshdSecurityRow{
+		name:      name,
+		value:     value,
+		status:    status,
+		directive: directive,
+	}
+}
+
+func firstSSHDSetting(settings sshdSettings, key string) string {
+	values := settings[strings.ToLower(key)]
+	if len(values) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(values[0])
+}
+
+func joinedSSHDSetting(settings sshdSettings, key string) string {
+	values := settings[strings.ToLower(key)]
+	if len(values) == 0 {
+		return ""
+	}
+
+	cleaned := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			cleaned = append(cleaned, value)
+		}
+	}
+	return strings.Join(cleaned, ", ")
+}
+
 func validateSSHDConfig(content string) error {
 	tmp, err := os.CreateTemp("", "snail-sshd-*.conf")
 	if err != nil {
@@ -601,7 +825,7 @@ func validateSSHDConfig(content string) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := system.Run("/usr/sbin/sshd", "-t", "-f", tmp.Name()); err != nil {
+	if err := system.Run(sshdCommandPath, "-t", "-f", tmp.Name()); err != nil {
 		return fmt.Errorf("新 SSH 配置校验失败，未写入正式配置: %w", err)
 	}
 	return nil

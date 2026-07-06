@@ -61,3 +61,64 @@ func TestRemoveAuthorizedKeyIndexesRemovesSelectedKeysOnly(t *testing.T) {
 		t.Fatalf("unselected key was removed:\n%s", cleaned)
 	}
 }
+
+func TestParseSSHDSettings(t *testing.T) {
+	output := `
+# ignored
+port 2222
+listenaddress 0.0.0.0:2222
+listenaddress [::]:2222
+authorizedkeysfile .ssh/authorized_keys .ssh/authorized_keys2
+`
+
+	settings := parseSSHDSettings(output)
+	if got := firstSSHDSetting(settings, "Port"); got != "2222" {
+		t.Fatalf("Port = %q, want 2222", got)
+	}
+
+	wantListen := []string{"0.0.0.0:2222", "[::]:2222"}
+	if !reflect.DeepEqual(settings["listenaddress"], wantListen) {
+		t.Fatalf("ListenAddress = %#v, want %#v", settings["listenaddress"], wantListen)
+	}
+
+	wantKeys := ".ssh/authorized_keys .ssh/authorized_keys2"
+	if got := firstSSHDSetting(settings, "AuthorizedKeysFile"); got != wantKeys {
+		t.Fatalf("AuthorizedKeysFile = %q, want %q", got, wantKeys)
+	}
+}
+
+func TestBuildSSHSecurityRowsClassifiesCommonSettings(t *testing.T) {
+	settings := parseSSHDSettings(`
+port 2222
+pubkeyauthentication yes
+passwordauthentication no
+kbdinteractiveauthentication yes
+permitrootlogin prohibit-password
+permitemptypasswords no
+permituserenvironment yes
+usepam yes
+`)
+
+	assertSSHDRow(t, settings, "SSH 端口", "2222", "已调整")
+	assertSSHDRow(t, settings, "密钥登录", "已开启", "安全")
+	assertSSHDRow(t, settings, "密码登录", "已禁用", "安全")
+	assertSSHDRow(t, settings, "键盘交互认证", "已开启", "需确认")
+	assertSSHDRow(t, settings, "Root 登录", "仅允许密钥登录", "安全")
+	assertSSHDRow(t, settings, "空密码登录", "已禁止", "安全")
+	assertSSHDRow(t, settings, "用户环境变量", "已允许", "风险")
+	assertSSHDRow(t, settings, "PAM 认证", "已开启", "信息")
+}
+
+func assertSSHDRow(t *testing.T, settings sshdSettings, name, wantValue, wantStatus string) {
+	t.Helper()
+	for _, row := range buildSSHSecurityRows(settings) {
+		if row.name != name {
+			continue
+		}
+		if row.value != wantValue || row.status != wantStatus {
+			t.Fatalf("%s row = value %q status %q, want value %q status %q", name, row.value, row.status, wantValue, wantStatus)
+		}
+		return
+	}
+	t.Fatalf("row %q not found", name)
+}
