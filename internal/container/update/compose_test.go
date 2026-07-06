@@ -79,7 +79,7 @@ func TestParseComposeRootsUsesDefaultsAndSplitsInput(t *testing.T) {
 
 func TestComposePullArgs(t *testing.T) {
 	want := []string{"pull"}
-	if got := composePullArgs(composeCommand{}); !reflect.DeepEqual(got, want) {
+	if got := composePullArgs(ComposeCommand{}); !reflect.DeepEqual(got, want) {
 		t.Fatalf("pull args mismatch: got %#v, want %#v", got, want)
 	}
 }

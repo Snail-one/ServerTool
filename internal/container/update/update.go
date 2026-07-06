@@ -28,11 +28,11 @@ var composeFilenames = map[string]struct{}{
 	"compose.yaml":        {},
 }
 
-type composeCommand struct {
-	name             string
-	args             []string
-	display          string
-	configFormatJSON bool
+type ComposeCommand struct {
+	Name             string
+	Args             []string
+	Display          string
+	ConfigFormatJSON bool
 }
 
 type composeLsProject struct {
@@ -49,7 +49,7 @@ func UpdateDockerComposeApps(view *ui.UI) error {
 	log.Info("批量更新运行中的 Docker Compose 应用")
 	fmt.Println()
 
-	compose, err := detectComposeCommand()
+	compose, err := DetectComposeCommand()
 	if err != nil {
 		return err
 	}
@@ -66,7 +66,7 @@ func UpdateDockerComposeApps(view *ui.UI) error {
 	case 1:
 		// 运行中的项目更新（使用 docker compose ls，新默认）
 		fmt.Println("正在通过 docker compose ls 获取运行中的项目...")
-		dirs, err = getComposeProjectDirsFromLS(compose)
+		dirs, err = GetComposeProjectDirsFromLS(compose)
 		if err != nil {
 			return err
 		}
@@ -77,8 +77,8 @@ func UpdateDockerComposeApps(view *ui.UI) error {
 		}
 	case 2:
 		// 扫描目录更新
-		defaultRoots := defaultComposeRoots()
-		scanRoots, dirs, err = askComposeScanDirs(view, defaultRoots)
+		defaultRoots := DefaultComposeRoots()
+		scanRoots, dirs, err = AskComposeScanDirs(view, defaultRoots)
 		if err != nil {
 			return err
 		}
@@ -94,7 +94,7 @@ func UpdateDockerComposeApps(view *ui.UI) error {
 	} else {
 		fmt.Println("来源：docker compose ls")
 	}
-	fmt.Printf("Compose 命令：%s\n", compose.display)
+	fmt.Printf("Compose 命令：%s\n", compose.Display)
 	fmt.Printf("找到 %d 个 Compose 目录：\n", len(dirs))
 	for _, dir := range dirs {
 		fmt.Printf("- %s\n", dir)
@@ -160,7 +160,7 @@ func chooseUpdateMode(view *ui.UI) (int, error) {
 	}
 }
 
-func getComposeProjectDirsFromLS(compose composeCommand) ([]string, error) {
+func GetComposeProjectDirsFromLS(compose ComposeCommand) ([]string, error) {
 	output, err := composeOutputGlobal(compose, "ls", "--format", "json")
 	if err != nil {
 		return nil, fmt.Errorf("执行 compose ls 失败: %w", err)
@@ -209,13 +209,57 @@ func getComposeProjectDirsFromLS(compose composeCommand) ([]string, error) {
 	return result, nil
 }
 
-func composeOutputGlobal(compose composeCommand, args ...string) (string, error) {
-	cmd := exec.Command(compose.name, composeArgs(compose, args...)...)
+// GetAllComposeProjectDirsFromLS returns dirs from compose ls without the running filter (for management)
+func GetAllComposeProjectDirsFromLS(compose ComposeCommand) ([]string, error) {
+	output, err := composeOutputGlobal(compose, "ls", "--format", "json")
+	if err != nil {
+		return nil, fmt.Errorf("执行 compose ls 失败: %w", err)
+	}
+
+	output = strings.TrimSpace(output)
+	if output == "" || output == "[]" || output == "null" {
+		return nil, nil
+	}
+
+	var projects []composeLsProject
+	if err := json.Unmarshal([]byte(output), &projects); err != nil {
+		return nil, fmt.Errorf("解析 compose ls 输出失败: %w (原始: %s)", err, output)
+	}
+
+	dirSet := make(map[string]struct{})
+	for _, p := range projects {
+		if p.ConfigFiles == "" {
+			continue
+		}
+		for _, f := range strings.Split(p.ConfigFiles, ",") {
+			f = strings.TrimSpace(f)
+			if f == "" {
+				continue
+			}
+			dir := filepath.Dir(f)
+			dir = filepath.Clean(dir)
+			if dir == "." || dir == "" {
+				continue
+			}
+			dirSet[dir] = struct{}{}
+		}
+	}
+
+	result := make([]string, 0, len(dirSet))
+	for d := range dirSet {
+		result = append(result, d)
+	}
+	sort.Strings(result)
+	return result, nil
+}
+
+func composeOutputGlobal(compose ComposeCommand, args ...string) (string, error) {
+	cmd := exec.Command(compose.Name, composeArgs(compose, args...)...)
 	out, err := cmd.Output()
 	return string(out), err
 }
 
-func askComposeScanDirs(view *ui.UI, defaultRoots []string) ([]string, []string, error) {
+func AskComposeScanDirs(view *ui.UI, defaultRoots []string) ([]string, []string, error) {
 	for {
 		fmt.Println("默认扫描目录：")
 		for _, root := range defaultRoots {
@@ -256,7 +300,7 @@ func askComposeScanDirs(view *ui.UI, defaultRoots []string) ([]string, []string,
 	}
 }
 
-func defaultComposeRoots() []string {
+func DefaultComposeRoots() []string {
 	roots := append([]string{}, defaultComposeRootCandidates...)
 	if account, err := system.CurrentTargetUser(); err == nil {
 		roots = append(roots, account.Home, filepath.Join(account.Home, "docker"))
@@ -304,22 +348,28 @@ func dedupeCleanPaths(paths []string) []string {
 	return result
 }
 
-func detectComposeCommand() (composeCommand, error) {
-	if err := exec.Command("docker", "compose", "version").Run(); err == nil {
-		compose := composeCommand{name: "docker", args: []string{"compose"}, display: "docker compose"}
-		compose.configFormatJSON = composeCommandSupports(compose, "config", "--format")
-		return compose, nil
+func DetectComposeCommand() (ComposeCommand, error) {
+	// Try podman and docker compose plugins first for broad compatibility
+	for _, base := range []string{"podman", "docker"} {
+		if err := exec.Command(base, "compose", "version").Run(); err == nil {
+			compose := ComposeCommand{Name: base, Args: []string{"compose"}, Display: base + " compose"}
+			compose.ConfigFormatJSON = composeCommandSupports(compose, "config", "--format")
+			return compose, nil
+		}
 	}
-	if system.CommandExists("docker-compose") {
-		compose := composeCommand{name: "docker-compose", display: "docker-compose"}
-		compose.configFormatJSON = composeCommandSupports(compose, "config", "--format")
-		return compose, nil
+	// Legacy fallbacks
+	for _, bin := range []string{"podman-compose", "docker-compose"} {
+		if system.CommandExists(bin) {
+			compose := ComposeCommand{Name: bin, Display: bin}
+			compose.ConfigFormatJSON = composeCommandSupports(compose, "config", "--format")
+			return compose, nil
+		}
 	}
-	return composeCommand{}, fmt.Errorf("未找到 docker compose 或 docker-compose")
+	return ComposeCommand{}, fmt.Errorf("未找到 docker compose / podman compose 或对应 legacy 工具")
 }
 
-func composeCommandSupports(compose composeCommand, command, option string) bool {
-	output, err := exec.Command(compose.name, composeArgs(compose, command, "--help")...).CombinedOutput()
+func composeCommandSupports(compose ComposeCommand, command, option string) bool {
+	output, err := exec.Command(compose.Name, composeArgs(compose, command, "--help")...).CombinedOutput()
 	return err == nil && strings.Contains(string(output), option)
 }
 
@@ -403,7 +453,7 @@ func isRegularFile(entry os.DirEntry) bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
-func updateComposeDir(compose composeCommand, dir string) (bool, error) {
+func updateComposeDir(compose ComposeCommand, dir string) (bool, error) {
 	running, err := composeProjectRunning(compose, dir)
 	if err != nil {
 		return false, err
@@ -424,16 +474,16 @@ func updateComposeDir(compose composeCommand, dir string) (bool, error) {
 		return false, nil
 	}
 
-	if err := runCompose(compose, dir, composePullArgs(compose)...); err != nil {
+	if err := RunCompose(compose, dir, composePullArgs(compose)...); err != nil {
 		return true, fmt.Errorf("%s pull 失败: %w", dir, err)
 	}
-	if err := runCompose(compose, dir, composeUpArgs()...); err != nil {
+	if err := RunCompose(compose, dir, composeUpArgs()...); err != nil {
 		return true, fmt.Errorf("%s up 失败: %w", dir, err)
 	}
 	return true, nil
 }
 
-func composePullArgs(compose composeCommand) []string {
+func composePullArgs(compose ComposeCommand) []string {
 	return []string{"pull"}
 }
 
@@ -449,8 +499,8 @@ type composeServiceConfig struct {
 	Build json.RawMessage `json:"build"`
 }
 
-func composeProjectHasBuild(compose composeCommand, dir string) (bool, error) {
-	if !compose.configFormatJSON {
+func composeProjectHasBuild(compose ComposeCommand, dir string) (bool, error) {
+	if !compose.ConfigFormatJSON {
 		log.Warn("Compose 不支持 config --format json，无法检测 build 配置：", dir)
 		return false, nil
 	}
@@ -481,7 +531,7 @@ func composeConfigHasBuild(raw []byte) (bool, error) {
 	return false, nil
 }
 
-func composeProjectRunning(compose composeCommand, dir string) (bool, error) {
+func composeProjectRunning(compose ComposeCommand, dir string) (bool, error) {
 	output, err := composeOutput(compose, dir, "ps", "--status", "running", "-q")
 	if err != nil {
 		return false, nil
@@ -489,8 +539,8 @@ func composeProjectRunning(compose composeCommand, dir string) (bool, error) {
 	return strings.TrimSpace(output) != "", nil
 }
 
-func runCompose(compose composeCommand, dir string, args ...string) error {
-	cmd := exec.Command(compose.name, composeArgs(compose, args...)...)
+func RunCompose(compose ComposeCommand, dir string, args ...string) error {
+	cmd := exec.Command(compose.Name, composeArgs(compose, args...)...)
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -498,14 +548,14 @@ func runCompose(compose composeCommand, dir string, args ...string) error {
 	return cmd.Run()
 }
 
-func composeOutput(compose composeCommand, dir string, args ...string) (string, error) {
-	cmd := exec.Command(compose.name, composeArgs(compose, args...)...)
+func composeOutput(compose ComposeCommand, dir string, args ...string) (string, error) {
+	cmd := exec.Command(compose.Name, composeArgs(compose, args...)...)
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	return string(out), err
 }
 
-func composeArgs(compose composeCommand, args ...string) []string {
-	allArgs := append([]string{}, compose.args...)
+func composeArgs(compose ComposeCommand, args ...string) []string {
+	allArgs := append([]string{}, compose.Args...)
 	return append(allArgs, args...)
 }
