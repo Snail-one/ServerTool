@@ -14,6 +14,7 @@ import (
 
 func Run(view *ui.UI) error {
 	for {
+		ui.ClearScreen()
 		status := currentStatus()
 		fmt.Println("请选择 SSH 管理操作：")
 		fmt.Println("1) SSH 公钥管理" + statusText(status.keys))

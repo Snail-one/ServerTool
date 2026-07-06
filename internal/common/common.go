@@ -14,6 +14,7 @@ import (
 )
 
 func Run(view *ui.UI) error {
+	ui.ClearScreen()
 	status := currentStatus()
 	fmt.Println("请选择配置操作：")
 	fmt.Println("1) Vim ~/.vimrc" + statusText(status.vim))

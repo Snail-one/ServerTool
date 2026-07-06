@@ -23,6 +23,7 @@ func Ensure(view *ui.UI) error {
 			return nil
 		}
 
+		ui.ClearScreen()
 		fmt.Println("未检测到 Docker 或 Podman。")
 		fmt.Println()
 		fmt.Println("请选择安装方式：")

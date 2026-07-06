@@ -17,6 +17,7 @@ func Run(view *ui.UI) error {
 	}
 
 	for {
+		ui.ClearScreen()
 		fmt.Println("请选择容器管理操作：")
 		fmt.Println("1) 更新容器")
 		fmt.Println("2) 清理容器")

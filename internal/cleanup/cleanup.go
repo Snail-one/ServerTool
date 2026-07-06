@@ -27,6 +27,7 @@ func Run(view *ui.UI) error {
 		return err
 	}
 
+	ui.ClearScreen()
 	fmt.Printf("当前配置用户：%s\n", account.Name)
 	fmt.Println()
 	fmt.Println("请选择要清理的配置：")

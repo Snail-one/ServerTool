@@ -44,5 +44,6 @@ func (u *UI) PauseWithPrompt(prompt string) {
 }
 
 func ClearScreen() {
-	fmt.Print("\033[H\033[2J")
+	// \033[2J 清屏, \033[H 光标移到左上角, \033[3J 尝试清除回滚缓冲 (部分终端支持)
+	fmt.Print("\033[2J\033[H\033[3J")
 }
