@@ -64,6 +64,17 @@ func Run(name string, args ...string) error {
 	}
 }
 
+func IsInterrupted(err error) bool {
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return false
+	}
+	if exitErr.ExitCode() == 130 {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "interrupt")
+}
+
 func Output(name string, args ...string) (string, error) {
 	out, err := exec.Command(name, args...).CombinedOutput()
 	return string(out), err

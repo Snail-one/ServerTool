@@ -84,8 +84,9 @@ func TestContainerActionAvailability(t *testing.T) {
 		state     string
 		wantStart bool
 		wantStop  bool
+		wantEnter bool
 	}{
-		{name: "running", state: containerStateRunning, wantStop: true},
+		{name: "running", state: containerStateRunning, wantStop: true, wantEnter: true},
 		{name: "paused", state: containerStatePaused, wantStop: true},
 		{name: "restarting", state: containerStateRestarting, wantStop: true},
 		{name: "exited", state: containerStateExited, wantStart: true},
@@ -101,6 +102,9 @@ func TestContainerActionAvailability(t *testing.T) {
 			if got := canStopContainer(c); got != tt.wantStop {
 				t.Fatalf("canStop = %v, want %v", got, tt.wantStop)
 			}
+			if got := canEnterContainer(c); got != tt.wantEnter {
+				t.Fatalf("canEnter = %v, want %v", got, tt.wantEnter)
+			}
 		})
 	}
 }
@@ -112,6 +116,7 @@ func TestContainerCommandArgs(t *testing.T) {
 		want []string
 	}{
 		{name: "start", got: containerLifecycleArgs("start", "web"), want: []string{"start", "web"}},
+		{name: "shell", got: containerShellArgs("web"), want: []string{"exec", "-it", "web", "sh", "-lc", "if command -v bash >/dev/null 2>&1; then bash; else sh; fi; exit 0"}},
 		{name: "logs", got: containerLogsArgs("web", false), want: []string{"logs", "--tail", "200", "web"}},
 		{name: "follow logs", got: containerLogsArgs("web", true), want: []string{"logs", "-f", "--tail", "100", "web"}},
 	}

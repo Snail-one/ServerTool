@@ -357,6 +357,7 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 	canComposeDown := project != "" && composeErr == nil
 
 	for {
+		ui.ClearScreen()
 		fmt.Printf("\n容器: %s (%s)\n", c.Name, c.ID)
 		fmt.Printf("状态: %s | 端口: %s\n", containerDetailStatus(c), defaultText(c.Ports))
 		fmt.Println()
@@ -370,9 +371,12 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 		}
 		fmt.Println("3) 重启")
 		fmt.Println("4) 查看日志（最近 200 行）")
-		fmt.Println("5) 实时日志（Ctrl+C 退出）")
+		fmt.Println("5) 实时日志（Ctrl+C 返回操作界面）")
+		if canEnterContainer(c) {
+			fmt.Println("6) 进入容器 Shell（exit/Ctrl+D 返回操作界面）")
+		}
 		if canComposeDown {
-			fmt.Println("6) Down（compose down）")
+			fmt.Println("7) Down（compose down）")
 		}
 		fmt.Println("0/q) 返回")
 		fmt.Println()
@@ -392,22 +396,39 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 		case "1":
 			if !canStartContainer(c) {
 				fmt.Println("当前状态不支持启动")
-				break
+				view.PauseWithPrompt("按回车返回容器操作...")
+				continue
 			}
 			runContainerLifecycle(rt, c, "start", "启动失败: ", "已启动: ")
 		case "2":
 			if !canStopContainer(c) {
 				fmt.Println("当前状态不支持停止")
-				break
+				view.PauseWithPrompt("按回车返回容器操作...")
+				continue
 			}
 			runContainerLifecycle(rt, c, "stop", "停止失败: ", "已停止: ")
 		case "3":
 			runContainerLifecycle(rt, c, "restart", "重启失败: ", "已重启: ")
 		case "4":
 			runContainerLogs(rt, c, false)
+			view.PauseWithPrompt("按回车返回容器操作...")
+			continue
 		case "5":
-			runContainerLogs(rt, c, true)
+			if !runContainerLogs(rt, c, true) {
+				view.PauseWithPrompt("按回车返回容器操作...")
+			}
+			continue
 		case "6":
+			if !canEnterContainer(c) {
+				fmt.Println("当前状态不支持进入容器")
+				view.PauseWithPrompt("按回车返回容器操作...")
+				continue
+			}
+			if !runContainerShell(rt, c) {
+				view.PauseWithPrompt("按回车返回容器操作...")
+			}
+			continue
+		case "7":
 			if canComposeDown {
 				dir, _ := findProjectDirForContainer(compose, project)
 				if dir != "" {
@@ -426,13 +447,21 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 				log.Warn("未检测到 Compose 命令，无法执行 down")
 			} else {
 				fmt.Println("当前容器未检测到 Compose 项目")
+				view.PauseWithPrompt("按回车返回容器操作...")
+				continue
 			}
 		default:
 			fmt.Println("无效选项")
+			view.PauseWithPrompt("按回车返回容器操作...")
+			continue
 		}
 		view.Pause()
 		return nil // return after action to refresh outer list
 	}
+}
+
+func canEnterContainer(c containerInfo) bool {
+	return c.State == containerStateRunning
 }
 
 func canStartContainer(c containerInfo) bool {
@@ -462,14 +491,45 @@ func runContainerLifecycle(rt runtime.Runtime, c containerInfo, action, failureM
 	log.Info(successMessage, ref)
 }
 
-func runContainerLogs(rt runtime.Runtime, c containerInfo, follow bool) {
+func runContainerLogs(rt runtime.Runtime, c containerInfo, follow bool) bool {
 	if err := system.Run(rt.Name, containerLogsArgs(containerRef(c), follow)...); err != nil {
+		if follow && system.IsInterrupted(err) {
+			log.Info("已退出实时日志")
+			return true
+		}
 		log.Error("查看日志失败: ", err)
+		return false
 	}
+	return true
+}
+
+func runContainerShell(rt runtime.Runtime, c containerInfo) bool {
+	fmt.Println("进入容器 Shell，输入 exit 或 Ctrl+D 返回容器操作界面。")
+	if err := system.Run(rt.Name, containerShellArgs(containerRef(c))...); err != nil {
+		if system.IsInterrupted(err) {
+			log.Info("已退出容器 Shell")
+			return true
+		}
+		log.Error("进入容器失败: ", err)
+		return false
+	}
+	log.Info("已退出容器 Shell")
+	return true
 }
 
 func containerLifecycleArgs(action, ref string) []string {
 	return []string{action, ref}
+}
+
+func containerShellArgs(ref string) []string {
+	return []string{
+		"exec",
+		"-it",
+		ref,
+		"sh",
+		"-lc",
+		"if command -v bash >/dev/null 2>&1; then bash; else sh; fi; exit 0",
+	}
 }
 
 func containerLogsArgs(ref string, follow bool) []string {
