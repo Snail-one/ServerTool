@@ -20,7 +20,7 @@ func Run(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
 		fmt.Println("请选择容器管理操作：")
-		fmt.Println("1) 查看容器")
+		fmt.Println("1) 查看/管理容器（状态、启动/停止/重启、日志）")
 		fmt.Println("2) 管理 Compose 项目（docker compose ls）")
 		fmt.Println("3) 管理 Compose 项目（扫描目录）")
 		fmt.Println("4) 更新容器")
