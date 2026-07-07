@@ -117,6 +117,7 @@ func TestContainerCommandArgs(t *testing.T) {
 	}{
 		{name: "start", got: containerLifecycleArgs("start", "web"), want: []string{"start", "web"}},
 		{name: "shell", got: containerShellArgs("web"), want: []string{"exec", "-it", "web", "sh", "-lc", "if command -v bash >/dev/null 2>&1; then bash; else sh; fi; exit 0"}},
+		{name: "inspect", got: containerInspectArgs("web"), want: []string{"inspect", "web"}},
 		{name: "logs", got: containerLogsArgs("web", false), want: []string{"logs", "--tail", "200", "web"}},
 		{name: "follow logs", got: containerLogsArgs("web", true), want: []string{"logs", "-f", "--tail", "100", "web"}},
 	}
@@ -213,5 +214,31 @@ func TestComposeContainerSummaryDisplay(t *testing.T) {
 	want := "总4 运行2 停止1 未知1"
 	if got != want {
 		t.Fatalf("display = %q, want %q", got, want)
+	}
+}
+
+func TestComposeProjectActionForChoice(t *testing.T) {
+	tests := []struct {
+		choice string
+		wantOK bool
+		want   composeProjectAction
+	}{
+		{choice: "1", wantOK: true, want: composeProjectAction{Name: "up -d", Args: []string{"up", "-d"}}},
+		{choice: "2", wantOK: true, want: composeProjectAction{Name: "down", Args: []string{"down"}}},
+		{choice: "3", wantOK: true, want: composeProjectAction{Name: "stop", Args: []string{"stop"}}},
+		{choice: "4", wantOK: true, want: composeProjectAction{Name: "restart", Args: []string{"restart"}}},
+		{choice: "x", wantOK: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.choice, func(t *testing.T) {
+			got, ok := composeProjectActionForChoice(tt.choice)
+			if ok != tt.wantOK {
+				t.Fatalf("ok = %v, want %v", ok, tt.wantOK)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("action = %#v, want %#v", got, tt.want)
+			}
+		})
 	}
 }

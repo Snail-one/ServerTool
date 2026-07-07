@@ -47,6 +47,11 @@ type composeContainerSummary struct {
 	Unknown    int
 }
 
+type composeProjectAction struct {
+	Name string
+	Args []string
+}
+
 const (
 	containerStateRunning    = "running"
 	containerStateExited     = "exited"
@@ -370,13 +375,14 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 			fmt.Println("2) 停止")
 		}
 		fmt.Println("3) 重启")
-		fmt.Println("4) 查看日志（最近 200 行）")
-		fmt.Println("5) 实时日志（Ctrl+C 返回操作界面）")
+		fmt.Println("4) 查看容器信息（inspect）")
+		fmt.Println("5) 查看日志（最近 200 行）")
+		fmt.Println("6) 实时日志（Ctrl+C 返回操作界面）")
 		if canEnterContainer(c) {
-			fmt.Println("6) 进入容器 Shell（exit/Ctrl+D 返回操作界面）")
+			fmt.Println("7) 进入容器 Shell（exit/Ctrl+D 返回操作界面）")
 		}
 		if canComposeDown {
-			fmt.Println("7) Down（compose down）")
+			fmt.Println("8) Down（compose down）")
 		}
 		fmt.Println("0/q) 返回")
 		fmt.Println()
@@ -410,15 +416,19 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 		case "3":
 			runContainerLifecycle(rt, c, "restart", "重启失败: ", "已重启: ")
 		case "4":
-			runContainerLogs(rt, c, false)
+			runContainerInspect(rt, c)
 			view.PauseWithPrompt("按回车返回容器操作...")
 			continue
 		case "5":
+			runContainerLogs(rt, c, false)
+			view.PauseWithPrompt("按回车返回容器操作...")
+			continue
+		case "6":
 			if !runContainerLogs(rt, c, true) {
 				view.PauseWithPrompt("按回车返回容器操作...")
 			}
 			continue
-		case "6":
+		case "7":
 			if !canEnterContainer(c) {
 				fmt.Println("当前状态不支持进入容器")
 				view.PauseWithPrompt("按回车返回容器操作...")
@@ -428,7 +438,7 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 				view.PauseWithPrompt("按回车返回容器操作...")
 			}
 			continue
-		case "7":
+		case "8":
 			if canComposeDown {
 				dir, _ := findProjectDirForContainer(compose, project)
 				if dir != "" {
@@ -503,6 +513,15 @@ func runContainerLogs(rt runtime.Runtime, c containerInfo, follow bool) bool {
 	return true
 }
 
+func runContainerInspect(rt runtime.Runtime, c containerInfo) bool {
+	ref := containerRef(c)
+	if err := system.Run(rt.Name, containerInspectArgs(ref)...); err != nil {
+		log.Error("查看容器信息失败: ", err)
+		return false
+	}
+	return true
+}
+
 func runContainerShell(rt runtime.Runtime, c containerInfo) bool {
 	fmt.Println("进入容器 Shell，输入 exit 或 Ctrl+D 返回容器操作界面。")
 	if err := system.Run(rt.Name, containerShellArgs(containerRef(c))...); err != nil {
@@ -537,6 +556,10 @@ func containerLogsArgs(ref string, follow bool) []string {
 		return []string{"logs", "-f", "--tail", "100", ref}
 	}
 	return []string{"logs", "--tail", "200", ref}
+}
+
+func containerInspectArgs(ref string) []string {
+	return []string{"inspect", ref}
 }
 
 func containerRef(c containerInfo) string {
@@ -1000,9 +1023,10 @@ func manageComposeProjects(view *ui.UI, rt runtime.Runtime, useLS bool) error {
 func manageSingleProject(view *ui.UI, compose update.ComposeCommand, dir string) error {
 	fmt.Printf("\n项目目录: %s\n", dir)
 	fmt.Println("请选择操作：")
-	fmt.Println("1) Down")
-	fmt.Println("2) Stop")
-	fmt.Println("3) Restart")
+	fmt.Println("1) Start/Up（compose up -d）")
+	fmt.Println("2) Down")
+	fmt.Println("3) Stop")
+	fmt.Println("4) Restart")
 	fmt.Println("0/q) 返回")
 	fmt.Println()
 
@@ -1017,32 +1041,40 @@ func manageSingleProject(view *ui.UI, compose update.ComposeCommand, dir string)
 		return shared.ErrReturnToMenu
 	}
 
-	var action string
-	switch ch {
-	case "1":
-		action = "down"
-	case "2":
-		action = "stop"
-	case "3":
-		action = "restart"
-	default:
+	action, ok := composeProjectActionForChoice(ch)
+	if !ok {
 		fmt.Println("无效选项")
 		view.Pause()
 		return shared.ErrReturnToMenu
 	}
 
-	confirmed, _ := view.Confirm(fmt.Sprintf("确认执行 compose %s 于 %s ？(y/N): ", action, dir))
+	confirmed, _ := view.Confirm(fmt.Sprintf("确认执行 compose %s 于 %s ？(y/N): ", action.Name, dir))
 	if !confirmed {
 		fmt.Println("已取消")
 		view.Pause()
 		return shared.ErrReturnToMenu
 	}
 
-	if err := update.RunCompose(compose, dir, action); err != nil {
+	if err := update.RunCompose(compose, dir, action.Args...); err != nil {
 		log.Error("执行失败: ", err)
 	} else {
-		log.Info("已执行 compose ", action, " 于 ", dir)
+		log.Info("已执行 compose ", action.Name, " 于 ", dir)
 	}
 	view.Pause()
 	return shared.ErrReturnToMenu
+}
+
+func composeProjectActionForChoice(choice string) (composeProjectAction, bool) {
+	switch choice {
+	case "1":
+		return composeProjectAction{Name: "up -d", Args: []string{"up", "-d"}}, true
+	case "2":
+		return composeProjectAction{Name: "down", Args: []string{"down"}}, true
+	case "3":
+		return composeProjectAction{Name: "stop", Args: []string{"stop"}}, true
+	case "4":
+		return composeProjectAction{Name: "restart", Args: []string{"restart"}}, true
+	default:
+		return composeProjectAction{}, false
+	}
 }
