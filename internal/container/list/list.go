@@ -357,7 +357,7 @@ func printContainers(conts []containerInfo) {
 }
 
 func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) error {
-	compose, composeErr := update.DetectComposeCommand()
+	compose, composeErr := update.DetectComposeCommandForRuntime(rt.Name)
 	project := getContainerComposeProject(rt, c)
 	canComposeDown := project != "" && composeErr == nil
 
@@ -963,7 +963,7 @@ func composeArgs(compose update.ComposeCommand, args ...string) []string {
 }
 
 func manageComposeProjects(view *ui.UI, rt runtime.Runtime, useLS bool) error {
-	compose, err := update.DetectComposeCommand()
+	compose, err := update.DetectComposeCommandForRuntime(rt.Name)
 	if err != nil {
 		return err
 	}

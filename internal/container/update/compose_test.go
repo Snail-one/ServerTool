@@ -90,6 +90,49 @@ func TestComposeUpArgs(t *testing.T) {
 	}
 }
 
+func TestComposeCommandCandidatesFollowRuntimeOrder(t *testing.T) {
+	tests := []struct {
+		name        string
+		runtimeName string
+		want        []composeCommandCandidate
+	}{
+		{
+			name:        "docker runtime",
+			runtimeName: "docker",
+			want: []composeCommandCandidate{
+				{name: "docker", args: []string{"compose"}, display: "docker compose"},
+				{name: "docker-compose", display: "docker-compose"},
+			},
+		},
+		{
+			name:        "podman runtime",
+			runtimeName: "podman",
+			want: []composeCommandCandidate{
+				{name: "podman", args: []string{"compose"}, display: "podman compose"},
+				{name: "podman-compose", display: "podman-compose"},
+			},
+		},
+		{
+			name: "unknown runtime uses docker first",
+			want: []composeCommandCandidate{
+				{name: "docker", args: []string{"compose"}, display: "docker compose"},
+				{name: "docker-compose", display: "docker-compose"},
+				{name: "podman", args: []string{"compose"}, display: "podman compose"},
+				{name: "podman-compose", display: "podman-compose"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := composeCommandCandidatesForRuntime(tt.runtimeName)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("compose candidates mismatch\ngot:  %#v\nwant: %#v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestComposeConfigHasBuild(t *testing.T) {
 	tests := []struct {
 		name    string

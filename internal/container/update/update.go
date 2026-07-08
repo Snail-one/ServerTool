@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	containerruntime "snail_tool/internal/container/runtime"
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
@@ -33,6 +34,12 @@ type ComposeCommand struct {
 	Args             []string
 	Display          string
 	ConfigFormatJSON bool
+}
+
+type composeCommandCandidate struct {
+	name    string
+	args    []string
+	display string
 }
 
 type composeLsProject struct {
@@ -349,23 +356,72 @@ func dedupeCleanPaths(paths []string) []string {
 }
 
 func DetectComposeCommand() (ComposeCommand, error) {
-	// Try podman and docker compose plugins first for broad compatibility
-	for _, base := range []string{"podman", "docker"} {
-		if err := exec.Command(base, "compose", "version").Run(); err == nil {
-			compose := ComposeCommand{Name: base, Args: []string{"compose"}, Display: base + " compose"}
-			compose.ConfigFormatJSON = composeCommandSupports(compose, "config", "--format")
-			return compose, nil
-		}
+	if rt, ok := containerruntime.Detect(); ok {
+		return DetectComposeCommandForRuntime(rt.Name)
 	}
-	// Legacy fallbacks
-	for _, bin := range []string{"podman-compose", "docker-compose"} {
-		if system.CommandExists(bin) {
-			compose := ComposeCommand{Name: bin, Display: bin}
-			compose.ConfigFormatJSON = composeCommandSupports(compose, "config", "--format")
+	return detectComposeCommand(composeCommandCandidatesForRuntime(""))
+}
+
+func DetectComposeCommandForRuntime(runtimeName string) (ComposeCommand, error) {
+	compose, err := detectComposeCommand(composeCommandCandidatesForRuntime(runtimeName))
+	if err == nil {
+		return compose, nil
+	}
+	switch runtimeName {
+	case "docker":
+		return ComposeCommand{}, fmt.Errorf("未找到 docker compose 或 docker-compose")
+	case "podman":
+		return ComposeCommand{}, fmt.Errorf("未找到 podman compose 或 podman-compose")
+	default:
+		return ComposeCommand{}, err
+	}
+}
+
+func detectComposeCommand(candidates []composeCommandCandidate) (ComposeCommand, error) {
+	for _, candidate := range candidates {
+		compose, ok := detectComposeCommandCandidate(candidate)
+		if ok {
 			return compose, nil
 		}
 	}
 	return ComposeCommand{}, fmt.Errorf("未找到 docker compose / podman compose 或对应 legacy 工具")
+}
+
+func detectComposeCommandCandidate(candidate composeCommandCandidate) (ComposeCommand, bool) {
+	if len(candidate.args) > 0 {
+		args := append(append([]string{}, candidate.args...), "version")
+		if err := exec.Command(candidate.name, args...).Run(); err != nil {
+			return ComposeCommand{}, false
+		}
+	} else if !system.CommandExists(candidate.name) {
+		return ComposeCommand{}, false
+	}
+
+	compose := ComposeCommand{Name: candidate.name, Args: candidate.args, Display: candidate.display}
+	compose.ConfigFormatJSON = composeCommandSupports(compose, "config", "--format")
+	return compose, true
+}
+
+func composeCommandCandidatesForRuntime(runtimeName string) []composeCommandCandidate {
+	switch runtimeName {
+	case "docker":
+		return []composeCommandCandidate{
+			{name: "docker", args: []string{"compose"}, display: "docker compose"},
+			{name: "docker-compose", display: "docker-compose"},
+		}
+	case "podman":
+		return []composeCommandCandidate{
+			{name: "podman", args: []string{"compose"}, display: "podman compose"},
+			{name: "podman-compose", display: "podman-compose"},
+		}
+	default:
+		return []composeCommandCandidate{
+			{name: "docker", args: []string{"compose"}, display: "docker compose"},
+			{name: "docker-compose", display: "docker-compose"},
+			{name: "podman", args: []string{"compose"}, display: "podman compose"},
+			{name: "podman-compose", display: "podman-compose"},
+		}
+	}
 }
 
 func composeCommandSupports(compose ComposeCommand, command, option string) bool {
