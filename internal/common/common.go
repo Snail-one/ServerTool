@@ -14,36 +14,46 @@ import (
 )
 
 func Run(view *ui.UI) error {
-	ui.ClearScreen()
-	status := currentStatus()
-	fmt.Println("请选择配置操作：")
-	fmt.Println("1) Vim ~/.vimrc" + statusText(status.vim))
-	fmt.Println("2) Bash 环境" + statusText(status.bash))
-	fmt.Println("3) HTTP/HTTPS 代理设置" + proxyStatusText(status.proxy))
-	fmt.Println("4) UPS 配置" + statusText(status.ups))
-	fmt.Println("0/q) 返回")
-	fmt.Println()
+	for {
+		ui.ClearScreen()
+		status := currentStatus()
+		fmt.Println("请选择配置操作：")
+		fmt.Println("1) Vim ~/.vimrc" + statusText(status.vim))
+		fmt.Println("2) Bash 环境" + statusText(status.bash))
+		fmt.Println("3) HTTP/HTTPS 代理设置" + proxyStatusText(status.proxy))
+		fmt.Println("4) UPS 配置" + statusText(status.ups))
+		fmt.Println("0/q) 返回")
+		fmt.Println()
 
-	choice, err := view.Ask("输入选项: ")
-	if err != nil {
-		return err
-	}
-	fmt.Println()
+		choice, err := view.Ask("输入选项: ")
+		if err != nil {
+			return err
+		}
+		fmt.Println()
 
-	switch strings.ToLower(choice) {
-	case "1":
-		return commonvim.Run(view)
-	case "2":
-		return commonbash.Run()
-	case "3":
-		return commonproxy.Run(view)
-	case "4":
-		return commonups.Run(view)
-	case "0", "q", "exit":
-		return shared.ErrReturnToMenu
-	default:
-		fmt.Println("无效选项，已返回菜单")
-		return nil
+		switch strings.ToLower(choice) {
+		case "1":
+			shared.RunAction(view, "Vim 配置失败，已返回常用配置", func() error {
+				return commonvim.Run(view)
+			})
+		case "2":
+			shared.RunAction(view, "Bash 环境配置失败，已返回常用配置", func() error {
+				return commonbash.Run()
+			})
+		case "3":
+			shared.RunAction(view, "代理配置失败，已返回常用配置", func() error {
+				return commonproxy.Run(view)
+			})
+		case "4":
+			shared.RunAction(view, "UPS 配置失败，已返回常用配置", func() error {
+				return commonups.Run(view)
+			})
+		case "0", "q", "exit":
+			return shared.ErrReturnToMenu
+		default:
+			fmt.Println("无效选项，请重新输入")
+			view.Pause()
+		}
 	}
 }
 
