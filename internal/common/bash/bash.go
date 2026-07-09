@@ -93,6 +93,6 @@ func replaceAliases(path string) error {
 		content = re.ReplaceAllString(content, "")
 	}
 
-	block := fmt.Sprintf("%s\n%s\n%s\n", bashAliasBegin, bashAliasBlock, bashAliasEnd)
+	block := shared.FormatManagedBlock(bashAliasBegin, bashAliasBlock, bashAliasEnd)
 	return os.WriteFile(path, []byte(shared.AppendBlock(content, block)), 0644)
 }

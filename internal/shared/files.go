@@ -33,6 +33,14 @@ func ManagedBlockContent(content, begin, end string) (string, bool) {
 	return match[1], true
 }
 
+func FormatManagedBlock(begin, body, end string) string {
+	body = strings.Trim(body, "\n")
+	if body == "" {
+		return begin + "\n\n" + end + "\n"
+	}
+	return begin + "\n\n" + body + "\n\n" + end + "\n"
+}
+
 func AppendBlock(content, block string) string {
 	content = strings.TrimRight(content, "\n")
 	if content == "" {

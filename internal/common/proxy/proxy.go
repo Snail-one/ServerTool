@@ -216,10 +216,7 @@ func writeProxyBlockWithOptions(path, proxyURL string, removeUnmanaged bool) err
 	if removeUnmanaged {
 		content = removeUnmanagedProxyLines(content)
 	}
-	block := fmt.Sprintf(`
-%s
-
-export http_proxy="%s"
+	body := fmt.Sprintf(`export http_proxy="%s"
 export https_proxy="%s"
 
 export HTTP_PROXY="%s"
@@ -227,11 +224,10 @@ export HTTPS_PROXY="%s"
 
 export no_proxy="%s"
 export NO_PROXY="%s"
+`, proxyURL, proxyURL, proxyURL, proxyURL, noProxy, noProxy)
+	block := shared.FormatManagedBlock(proxyBegin, body, proxyEnd)
 
-%s
-`, proxyBegin, proxyURL, proxyURL, proxyURL, proxyURL, noProxy, noProxy, proxyEnd)
-
-	return os.WriteFile(path, []byte(shared.AppendBlock(content, strings.TrimLeft(block, "\n"))), 0644)
+	return os.WriteFile(path, []byte(shared.AppendBlock(content, block)), 0644)
 }
 
 func confirmUnmanagedProxyOverride(view *ui.UI, bashrc string) (bool, error) {

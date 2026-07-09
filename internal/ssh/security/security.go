@@ -440,7 +440,7 @@ func writeSSHDConfig(port int, permitRootLogin string, disableSSHDConfigPorts bo
 				return err
 			}
 		}
-		block := fmt.Sprintf("%s\nInclude /etc/ssh/sshd_config.d/*.conf\n%s\n", managedSSHDIncludeBegin, managedSSHDIncludeEnd)
+		block := buildSSHDIncludeBlock()
 		if _, err := file.WriteString(block); err != nil {
 			_ = file.Close()
 			return err
@@ -521,8 +521,17 @@ func disableSSHDConfigPortsInFiles() error {
 }
 
 func buildSSHDConfig(port int, permitRootLogin string) string {
-	return fmt.Sprintf("%s\n\nPort %d\nPasswordAuthentication no\nPermitRootLogin %s\nPubkeyAuthentication yes\n%s\n",
-		managedSSHDConfigBegin, port, permitRootLogin, managedSSHDConfigEnd)
+	body := fmt.Sprintf("Port %d\nPasswordAuthentication no\nPermitRootLogin %s\nPubkeyAuthentication yes",
+		port, permitRootLogin)
+	return shared.FormatManagedBlock(managedSSHDConfigBegin, body, managedSSHDConfigEnd)
+}
+
+func buildSSHDIncludeBlock() string {
+	return shared.FormatManagedBlock(
+		managedSSHDIncludeBegin,
+		"Include /etc/ssh/sshd_config.d/*.conf",
+		managedSSHDIncludeEnd,
+	)
 }
 
 func isManagedSSHDConfig(content string) bool {

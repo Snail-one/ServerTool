@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"snail_tool/internal/shared"
 )
 
 func TestAuthorizedKeyEntriesMarksManagedKeys(t *testing.T) {
@@ -83,6 +85,10 @@ func TestWriteManagedAuthorizedKeyIsIdempotent(t *testing.T) {
 	content := readTestFile(t, path)
 	if strings.Count(content, sshAuthorizedKeysBegin) != 1 || strings.Count(content, sshAuthorizedKeysEnd) != 1 {
 		t.Fatalf("managed SSH key block is not idempotent:\n%s", content)
+	}
+	wantBlock := shared.FormatManagedBlock(sshAuthorizedKeysBegin, firstKey+"\n"+secondKey, sshAuthorizedKeysEnd)
+	if !strings.Contains(content, wantBlock) {
+		t.Fatalf("managed SSH key block spacing mismatch:\n%s", content)
 	}
 	for _, key := range []string{existingKey, firstKey, secondKey} {
 		if !strings.Contains(content, key) {

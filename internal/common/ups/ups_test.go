@@ -3,9 +3,22 @@ package ups
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestNUTSystemdServicesOrder(t *testing.T) {
+	got := nutSystemdServices()
+	want := []nutSystemdService{
+		{unit: "nut-driver", optional: true},
+		{unit: "nut-server"},
+		{unit: "nut-monitor"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("nutSystemdServices() = %#v, want %#v", got, want)
+	}
+}
 
 func TestApplyNUTStandaloneModeReplacesExistingMode(t *testing.T) {
 	input := "# sample\nMODE=netserver\n"

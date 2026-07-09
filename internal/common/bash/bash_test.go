@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"snail_tool/internal/shared"
 )
 
 func TestReplaceAliasesAddsManagedBlock(t *testing.T) {
@@ -20,6 +22,9 @@ func TestReplaceAliasesAddsManagedBlock(t *testing.T) {
 	content := readTestFile(t, path)
 	if !strings.Contains(content, bashAliasBegin) || !strings.Contains(content, bashAliasEnd) {
 		t.Fatalf("managed alias block was not written:\n%s", content)
+	}
+	if want := shared.FormatManagedBlock(bashAliasBegin, bashAliasBlock, bashAliasEnd); !strings.Contains(content, want) {
+		t.Fatalf("managed alias block spacing mismatch:\n%s", content)
 	}
 	for _, line := range strings.Split(bashAliasBlock, "\n") {
 		if !strings.Contains(content, line) {

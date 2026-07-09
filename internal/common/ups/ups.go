@@ -138,7 +138,7 @@ func configureUPS(view *ui.UI) error {
 		return err
 	}
 
-	if err := restartNUTServices(); err != nil {
+	if err := activateNUTServices(); err != nil {
 		return err
 	}
 
@@ -639,7 +639,7 @@ func restoreUPSBackup(view *ui.UI) error {
 	}
 	warnIfNUTConfigPermissionsMismatch()
 
-	if err := restartNUTServices(); err != nil {
+	if err := activateNUTServices(); err != nil {
 		return err
 	}
 
@@ -957,18 +957,40 @@ func hasUPSOnBattScript(content string) bool {
 		strings.Contains(content, "upsmon -c fsd")
 }
 
-func restartNUTServices() error {
-	log.Info("重启 nut-server...")
-	if err := system.Run("systemctl", "restart", "nut-server"); err != nil {
-		return fmt.Errorf("重启 nut-server 失败: %w", err)
-	}
+type nutSystemdService struct {
+	unit     string
+	optional bool
+}
 
-	log.Info("重启 nut-monitor...")
-	if err := system.Run("systemctl", "restart", "nut-monitor"); err != nil {
-		return fmt.Errorf("重启 nut-monitor 失败: %w", err)
-	}
+func activateNUTServices() error {
+	for _, service := range nutSystemdServices() {
+		if !system.SystemdUnitExists(service.unit + ".service") {
+			if service.optional {
+				log.Warn("未检测到 ", service.unit, ".service，跳过该服务")
+				continue
+			}
+			return fmt.Errorf("未检测到 systemd 服务: %s.service", service.unit)
+		}
 
+		log.Info("设置 ", service.unit, " 开机启动...")
+		if err := system.Run("systemctl", "enable", service.unit); err != nil {
+			return fmt.Errorf("设置 %s 开机启动失败: %w", service.unit, err)
+		}
+
+		log.Info("启动/重启 ", service.unit, "...")
+		if err := system.Run("systemctl", "restart", service.unit); err != nil {
+			return fmt.Errorf("启动/重启 %s 失败: %w", service.unit, err)
+		}
+	}
 	return nil
+}
+
+func nutSystemdServices() []nutSystemdService {
+	return []nutSystemdService{
+		{unit: "nut-driver", optional: true},
+		{unit: "nut-server"},
+		{unit: "nut-monitor"},
+	}
 }
 
 func verifyUPSCommunication() error {

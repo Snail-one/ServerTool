@@ -10,11 +10,24 @@ import (
 
 func TestBuildSSHDConfigIncludesManagedMarkers(t *testing.T) {
 	content := buildSSHDConfig(2222, "no")
-	if !strings.Contains(content, managedSSHDConfigBegin) {
-		t.Fatalf("managed begin marker missing:\n%s", content)
+	want := managedSSHDConfigBegin + "\n\n" +
+		"Port 2222\n" +
+		"PasswordAuthentication no\n" +
+		"PermitRootLogin no\n" +
+		"PubkeyAuthentication yes\n\n" +
+		managedSSHDConfigEnd + "\n"
+	if content != want {
+		t.Fatalf("buildSSHDConfig() = %q, want %q", content, want)
 	}
-	if !strings.Contains(content, managedSSHDConfigEnd) {
-		t.Fatalf("managed end marker missing:\n%s", content)
+}
+
+func TestBuildSSHDIncludeBlockUsesManagedBlockSpacing(t *testing.T) {
+	got := buildSSHDIncludeBlock()
+	want := managedSSHDIncludeBegin + "\n\n" +
+		"Include /etc/ssh/sshd_config.d/*.conf\n\n" +
+		managedSSHDIncludeEnd + "\n"
+	if got != want {
+		t.Fatalf("buildSSHDIncludeBlock() = %q, want %q", got, want)
 	}
 }
 

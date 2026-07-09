@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
 )
 
@@ -44,6 +45,17 @@ func TestWriteProxyBlockIsIdempotent(t *testing.T) {
 	}
 	if !strings.Contains(content, "http://admin:secret@192.168.1.1:8888") {
 		t.Fatalf("new proxy URL missing:\n%s", content)
+	}
+	wantBody := `export http_proxy="http://admin:secret@192.168.1.1:8888"
+export https_proxy="http://admin:secret@192.168.1.1:8888"
+
+export HTTP_PROXY="http://admin:secret@192.168.1.1:8888"
+export HTTPS_PROXY="http://admin:secret@192.168.1.1:8888"
+
+export no_proxy="` + noProxy + `"
+export NO_PROXY="` + noProxy + `"`
+	if wantBlock := shared.FormatManagedBlock(proxyBegin, wantBody, proxyEnd); !strings.Contains(content, wantBlock) {
+		t.Fatalf("managed proxy block spacing mismatch:\n%s", content)
 	}
 	if !strings.Contains(content, "export EDITOR=vim") {
 		t.Fatalf("unrelated bashrc content was removed:\n%s", content)

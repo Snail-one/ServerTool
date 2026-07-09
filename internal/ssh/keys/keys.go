@@ -233,7 +233,7 @@ func writeManagedAuthorizedKey(path, content, pubkey string) error {
 	keys = append(keys, pubkey)
 
 	cleaned := shared.RemoveManagedBlock(content, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd)
-	block := fmt.Sprintf("%s\n%s\n%s\n", sshAuthorizedKeysBegin, strings.Join(keys, "\n"), sshAuthorizedKeysEnd)
+	block := shared.FormatManagedBlock(sshAuthorizedKeysBegin, strings.Join(keys, "\n"), sshAuthorizedKeysEnd)
 	return os.WriteFile(path, []byte(shared.AppendBlock(cleaned, block)), 0600)
 }
 
