@@ -204,8 +204,8 @@ func TestUPSManagedFileModesAndOwners(t *testing.T) {
 			if file.mode != 0700 {
 				t.Fatalf("script mode = %v, want 0700", file.mode)
 			}
-			if file.owner != rootOwner {
-				t.Fatalf("script owner = %#v, want %#v", file.owner, rootOwner)
+			if file.owner != nutOwner {
+				t.Fatalf("script owner = %#v, want %#v", file.owner, nutOwner)
 			}
 		default:
 			if !strings.HasPrefix(file.path, nutConfigDir+"/") {

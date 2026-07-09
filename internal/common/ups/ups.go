@@ -50,13 +50,14 @@ var (
 	usbIDLine             = regexp.MustCompile(`(?i)^[0-9a-f]{4}$`)
 	rootNutOwner          = fileOwner{user: "root", group: "nut"}
 	rootOwner             = fileOwner{user: "root", group: "root"}
+	nutOwner              = fileOwner{user: "nut", group: "nut"}
 	nutConfFile           = nutConfigFile{path: nutConfPath, mode: 0640, owner: rootNutOwner}
 	upsConfFile           = nutConfigFile{path: upsConfPath, mode: 0640, owner: rootNutOwner}
 	upsdConfFile          = nutConfigFile{path: upsdConfPath, mode: 0640, owner: rootNutOwner}
 	upsdUsersFile         = nutConfigFile{path: upsdUsersPath, mode: 0640, owner: rootNutOwner}
 	upsmonConfFile        = nutConfigFile{path: upsmonConfPath, mode: 0640, owner: rootNutOwner}
 	upsschedConfFile      = nutConfigFile{path: upsschedConfPath, mode: 0640, owner: rootNutOwner}
-	upsOnBattScriptFile   = nutConfigFile{path: upsOnBattScript, mode: 0700, owner: rootOwner}
+	upsOnBattScriptFile   = nutConfigFile{path: upsOnBattScript, mode: 0700, owner: nutOwner}
 	nutConfigFiles        = []nutConfigFile{
 		nutConfFile,
 		upsConfFile,
