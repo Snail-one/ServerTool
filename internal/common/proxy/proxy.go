@@ -16,7 +16,7 @@ import (
 const (
 	proxyBegin = "# ===== BEGIN SNAIL PROXY CONFIG ====="
 	proxyEnd   = "# ===== END SNAIL PROXY CONFIG ====="
-	noProxy    = "localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+	noProxy    = "localhost,127.0.0.1,::1,.localhost,.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,fc00::/7,fe80::/10"
 )
 
 var (
@@ -37,6 +37,10 @@ func ProxyMarkers() (string, string) {
 
 func ProxyEnvNames() []string {
 	return append([]string{}, proxyEnvNames...)
+}
+
+func DefaultNoProxy() string {
+	return noProxy
 }
 
 func ProxyCleanupEnvNames() []string {

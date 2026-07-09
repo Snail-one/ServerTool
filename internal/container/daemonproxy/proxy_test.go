@@ -13,7 +13,7 @@ func TestBuildDockerProxyConfig(t *testing.T) {
 	want := `[Service]
 Environment="HTTP_PROXY=http://admin:123456@192.168.1.100:7890/"
 Environment="HTTPS_PROXY=http://admin:123456@192.168.1.100:7890/"
-Environment="NO_PROXY=localhost,127.0.0.1,127.0.0.0/8,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,*.local"
+Environment="NO_PROXY=localhost,127.0.0.1,::1,.localhost,.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,fc00::/7,fe80::/10"
 `
 	if got != want {
 		t.Fatalf("buildDockerProxyConfig() = %q, want %q", got, want)
@@ -48,7 +48,7 @@ func TestWriteDockerProxyConfig(t *testing.T) {
 	for _, want := range []string{
 		`Environment="HTTP_PROXY=http://127.0.0.1:7890/"`,
 		`Environment="HTTPS_PROXY=http://127.0.0.1:7890/"`,
-		`Environment="NO_PROXY=` + dockerNoProxy + `"`,
+		`Environment="NO_PROXY=localhost,127.0.0.1,::1,.localhost,.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,fc00::/7,fe80::/10"`,
 	} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("missing %q in:\n%s", want, content)

@@ -15,7 +15,6 @@ import (
 const (
 	dockerProxyDir  = "/etc/systemd/system/docker.service.d"
 	dockerProxyPath = "/etc/systemd/system/docker.service.d/http-proxy.conf"
-	dockerNoProxy   = "localhost,127.0.0.1,127.0.0.0/8,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,*.local"
 )
 
 func Run(view *ui.UI) error {
@@ -94,7 +93,7 @@ func buildDockerProxyConfig(proxyURL string) string {
 Environment="HTTP_PROXY=%s"
 Environment="HTTPS_PROXY=%s"
 Environment="NO_PROXY=%s"
-`, proxyURL, proxyURL, dockerNoProxy)
+`, proxyURL, proxyURL, commonproxy.DefaultNoProxy())
 }
 
 func configuredDockerProxyURL(path string) (string, bool) {
