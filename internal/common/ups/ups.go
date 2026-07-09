@@ -958,13 +958,14 @@ func hasUPSOnBattScript(content string) bool {
 }
 
 type nutSystemdService struct {
-	unit     string
-	optional bool
+	unit      string
+	unitFiles []string
+	optional  bool
 }
 
 func activateNUTServices() error {
 	for _, service := range nutSystemdServices() {
-		if !system.SystemdUnitExists(service.unit + ".service") {
+		if !nutSystemdServiceExists(service) {
 			if service.optional {
 				log.Warn("未检测到 ", service.unit, ".service，跳过该服务")
 				continue
@@ -987,10 +988,26 @@ func activateNUTServices() error {
 
 func nutSystemdServices() []nutSystemdService {
 	return []nutSystemdService{
-		{unit: "nut-driver", optional: true},
+		{
+			unit:      "nut-driver@" + upsMonitorName,
+			unitFiles: []string{"nut-driver@" + upsMonitorName + ".service", "nut-driver@.service"},
+			optional:  true,
+		},
 		{unit: "nut-server"},
 		{unit: "nut-monitor"},
 	}
+}
+
+func nutSystemdServiceExists(service nutSystemdService) bool {
+	if len(service.unitFiles) == 0 {
+		return system.SystemdUnitExists(service.unit + ".service")
+	}
+	for _, unitFile := range service.unitFiles {
+		if system.SystemdUnitExists(unitFile) {
+			return true
+		}
+	}
+	return false
 }
 
 func verifyUPSCommunication() error {

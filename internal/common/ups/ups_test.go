@@ -11,7 +11,11 @@ import (
 func TestNUTSystemdServicesOrder(t *testing.T) {
 	got := nutSystemdServices()
 	want := []nutSystemdService{
-		{unit: "nut-driver", optional: true},
+		{
+			unit:      "nut-driver@ups",
+			unitFiles: []string{"nut-driver@ups.service", "nut-driver@.service"},
+			optional:  true,
+		},
 		{unit: "nut-server"},
 		{unit: "nut-monitor"},
 	}
