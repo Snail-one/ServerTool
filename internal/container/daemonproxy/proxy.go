@@ -32,6 +32,15 @@ func ConfigureDockerDaemonProxy(view *ui.UI) error {
 
 	fmt.Println("\033[32m[INFO]\033[0m 配置 Docker daemon 代理")
 	fmt.Println()
+	if currentContent := dockerProxyConfigContent(dockerProxyPath); strings.TrimSpace(currentContent) != "" {
+		fmt.Printf("当前配置文件：%s\n", dockerProxyPath)
+		fmt.Println("当前配置内容：")
+		fmt.Print(currentContent)
+		if !strings.HasSuffix(currentContent, "\n") {
+			fmt.Println()
+		}
+		fmt.Println()
+	}
 	fmt.Println("支持 ip:port 格式，或 username:password@ip:port 格式")
 	fmt.Println()
 
@@ -63,7 +72,10 @@ func ConfigureDockerDaemonProxy(view *ui.UI) error {
 	fmt.Println()
 	fmt.Println("Docker daemon 代理配置完成")
 	fmt.Printf("配置文件：%s\n", dockerProxyPath)
+	fmt.Printf("写入地址：%s\n", dockerProxyDir)
 	fmt.Printf("代理地址：%s\n", commonproxy.MaskProxyURL(proxyURL))
+	fmt.Println("已执行：systemctl daemon-reload")
+	fmt.Println("已执行：systemctl restart docker")
 	return nil
 }
 
@@ -83,6 +95,43 @@ Environment="HTTP_PROXY=%s"
 Environment="HTTPS_PROXY=%s"
 Environment="NO_PROXY=%s"
 `, proxyURL, proxyURL, dockerNoProxy)
+}
+
+func configuredDockerProxyURL(path string) (string, bool) {
+	content := dockerProxyConfigContent(path)
+	return dockerProxyURLFromContent(content)
+}
+
+func dockerProxyURLFromContent(content string) (string, bool) {
+	for _, name := range []string{"HTTP_PROXY", "HTTPS_PROXY"} {
+		if value, ok := dockerEnvironmentValue(content, name); ok {
+			return value, true
+		}
+	}
+	return "", false
+}
+
+func dockerEnvironmentValue(content, name string) (string, bool) {
+	prefix := `Environment="` + name + `=`
+	for _, rawLine := range strings.Split(content, "\n") {
+		line := strings.TrimSpace(strings.TrimRight(rawLine, "\r"))
+		if !strings.HasPrefix(line, prefix) || !strings.HasSuffix(line, `"`) {
+			continue
+		}
+		value := strings.TrimSuffix(strings.TrimPrefix(line, prefix), `"`)
+		if strings.TrimSpace(value) != "" {
+			return value, true
+		}
+	}
+	return "", false
+}
+
+func dockerProxyConfigContent(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 func dockerProxyURL(proxyURL string) string {

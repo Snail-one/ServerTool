@@ -55,3 +55,29 @@ func TestWriteDockerProxyConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestDockerProxyURLFromContent(t *testing.T) {
+	content := `[Service]
+Environment="HTTP_PROXY=http://admin:secret@192.168.1.100:7890/"
+Environment="HTTPS_PROXY=http://admin:secret@192.168.1.100:7890/"
+Environment="NO_PROXY=localhost,127.0.0.1"
+`
+	got, ok := dockerProxyURLFromContent(content)
+	want := "http://admin:secret@192.168.1.100:7890/"
+	if !ok || got != want {
+		t.Fatalf("dockerProxyURLFromContent() = %q, %v; want %q, true", got, ok, want)
+	}
+}
+
+func TestConfiguredDockerProxyURL(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "http-proxy.conf")
+	if err := os.WriteFile(path, []byte(`Environment="HTTPS_PROXY=http://127.0.0.1:7890/"`+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := configuredDockerProxyURL(path)
+	want := "http://127.0.0.1:7890/"
+	if !ok || got != want {
+		t.Fatalf("configuredDockerProxyURL() = %q, %v; want %q, true", got, ok, want)
+	}
+}
