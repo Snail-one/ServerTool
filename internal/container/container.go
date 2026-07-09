@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	containercleanup "snail_tool/internal/container/cleanup"
+	"snail_tool/internal/container/daemonproxy"
 	"snail_tool/internal/container/list"
 	"snail_tool/internal/container/runtime"
 	"snail_tool/internal/container/update"
@@ -25,6 +26,7 @@ func Run(view *ui.UI) error {
 		fmt.Println("3) 管理 Compose 项目（扫描目录）")
 		fmt.Println("4) 更新容器")
 		fmt.Println("5) 清理容器")
+		fmt.Println("6) 配置 Docker daemon 代理")
 		fmt.Println("0/q) 返回")
 		fmt.Println()
 
@@ -54,6 +56,10 @@ func Run(view *ui.UI) error {
 		case "5":
 			shared.RunAction(view, "容器清理失败，已返回容器管理", func() error {
 				return containercleanup.Run(view)
+			})
+		case "6":
+			shared.RunAction(view, "Docker daemon 代理配置失败，已返回容器管理", func() error {
+				return daemonproxy.Run(view)
 			})
 		case "0", "q", "exit":
 			return shared.ErrReturnToMenu

@@ -128,6 +128,14 @@ func IsProxyConfigured(account *system.Account) bool {
 	return ok
 }
 
+func NormalizeProxy(raw string) (string, error) {
+	return normalizeProxy(raw)
+}
+
+func MaskProxyURL(proxyURL string) string {
+	return maskProxyURL(proxyURL)
+}
+
 func currentProxyURLFromInvokerEnv() (string, bool) {
 	if strings.TrimSpace(os.Getenv("SUDO_USER")) == "" {
 		return "", false
