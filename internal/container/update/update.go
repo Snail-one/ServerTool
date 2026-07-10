@@ -36,6 +36,10 @@ type ComposeCommand struct {
 	ConfigFormatJSON bool
 }
 
+type ComposeRebuildConfirmer interface {
+	Confirm(prompt string) (bool, error)
+}
+
 type composeCommandCandidate struct {
 	name    string
 	args    []string
@@ -47,6 +51,14 @@ type composeLsProject struct {
 	Status      string `json:"Status"`
 	ConfigFiles string `json:"ConfigFiles"`
 }
+
+type composeRebuildResult struct {
+	Dirs     []string
+	Rebuilt  int
+	Canceled bool
+}
+
+type composeRunner func(ComposeCommand, string, ...string) error
 
 func Run(view *ui.UI) error {
 	return UpdateDockerComposeApps(view)
@@ -258,6 +270,84 @@ func GetAllComposeProjectDirsFromLS(compose ComposeCommand) ([]string, error) {
 	}
 	sort.Strings(result)
 	return result, nil
+}
+
+func RebuildRunningComposeProjects(view *ui.UI) error {
+	return RebuildRunningComposeProjectsWithPrompt(view, "确认按目录执行 compose down 后 compose up -d？(y/N): ")
+}
+
+func RebuildRunningComposeProjectsWithPrompt(confirmer ComposeRebuildConfirmer, confirmPrompt string) error {
+	log.Info("批量重建运行中的 Docker Compose 项目")
+	fmt.Println()
+
+	compose, err := DetectComposeCommand()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("正在通过 docker compose ls 获取运行中的项目...")
+	dirs, err := GetComposeProjectDirsFromLS(compose)
+	if err != nil {
+		return err
+	}
+
+	_, err = rebuildRunningComposeProjects(confirmer, compose, dirs, RunCompose, confirmPrompt)
+	return err
+}
+
+func rebuildRunningComposeProjects(confirmer ComposeRebuildConfirmer, compose ComposeCommand, dirs []string, runner composeRunner, confirmPrompt string) (composeRebuildResult, error) {
+	result := composeRebuildResult{Dirs: append([]string{}, dirs...)}
+	if confirmPrompt == "" {
+		confirmPrompt = "确认按目录执行 compose down 后 compose up -d？(y/N): "
+	}
+
+	fmt.Printf("Compose 命令：%s\n", compose.Display)
+	fmt.Printf("找到 %d 个运行中的 Compose 项目：\n", len(dirs))
+	for _, dir := range dirs {
+		fmt.Printf("- %s\n", dir)
+	}
+	fmt.Println("说明：只会重建 Docker Compose 项目；非 Compose 创建的容器需要按原 docker run 参数手动重建。")
+	fmt.Println()
+
+	if len(dirs) == 0 {
+		log.Warn("未发现运行中的 Compose 项目")
+		return result, nil
+	}
+
+	confirmed, err := confirmer.Confirm(confirmPrompt)
+	if err != nil {
+		return result, err
+	}
+	if !confirmed {
+		result.Canceled = true
+		fmt.Println("已取消重建")
+		fmt.Println("说明：已有容器通常需要重建后才会应用。")
+		return result, nil
+	}
+
+	for _, dir := range dirs {
+		log.Info("重建 Compose 项目：", dir)
+		if err := runner(compose, dir, composeRebuildDownArgs()...); err != nil {
+			return result, fmt.Errorf("%s down 失败: %w", dir, err)
+		}
+		if err := runner(compose, dir, composeRebuildUpArgs()...); err != nil {
+			return result, fmt.Errorf("%s up -d 失败: %w", dir, err)
+		}
+		result.Rebuilt++
+	}
+
+	fmt.Println()
+	log.Info("重建完成")
+	fmt.Printf("已重建：%d\n", result.Rebuilt)
+	return result, nil
+}
+
+func composeRebuildDownArgs() []string {
+	return []string{"down"}
+}
+
+func composeRebuildUpArgs() []string {
+	return []string{"up", "-d"}
 }
 
 func composeOutputGlobal(compose ComposeCommand, args ...string) (string, error) {

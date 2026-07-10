@@ -4,7 +4,7 @@
 
 ## 功能
 
-- 容器管理：检测 Docker/Podman，缺失时可选择安装 Docker 或 Podman；容器列表和 Compose 项目列表显示当前状态，并支持启动、停止、重启、进入容器、查看日志和实时日志；批量扫描并更新运行中的 Docker Compose 应用，检测到 `build:` 的项目会直接跳过；支持容器无用资源一键清理和按容器、网络、镜像、构建缓存单项清理
+- 容器管理：检测 Docker/Podman，缺失时可选择安装 Docker 或 Podman；顶层按容器列表与操作、Compose 项目、Docker daemon 配置、清理容器资源分组；容器列表和 Compose 项目列表显示当前状态，并支持启动、停止、重启、进入容器、查看日志和实时日志；Compose 项目支持通过 `docker compose ls` 管理、扫描目录管理、批量更新运行中的应用和重建运行中的项目；Docker daemon 配置支持代理和日志轮转；支持容器无用资源一键清理和按容器、网络、镜像、构建缓存单项清理
 - SSH 管理：管理当前用户 SSH 公钥（查看、添加、删除）、写入 SSH 随机端口与禁用密码登录等安全配置、查看当前 SSH 生效安全配置
 - 集中写入配置文件：Vim `~/.vimrc`、Bash 环境、HTTP/HTTPS 代理环境变量、UPS(NUT) 配置
 - 清理本工具写入的 SSH、Vim、Bash、代理配置，支持一键清理或按项清理
@@ -73,7 +73,7 @@ sudo ./snail_tool
 ```text
 cmd/snail_tool      程序入口
 internal/app        交互菜单和流程编排
-internal/container  容器管理：更新 Compose 应用、清理容器资源、安装运行时
+internal/container  容器管理：容器列表与操作、Compose 项目、Docker daemon 配置、清理容器资源、安装运行时
 internal/ssh        SSH 管理：公钥、安全配置、生效安全配置查看
 internal/common     常用配置：Vim、Bash、HTTP/HTTPS 代理、UPS
 internal/cleanup    清理配置：一键清理或按项清理本工具写入的配置

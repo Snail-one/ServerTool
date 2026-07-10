@@ -1,9 +1,11 @@
 package update
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -87,6 +89,108 @@ func TestComposePullArgs(t *testing.T) {
 func TestComposeUpArgs(t *testing.T) {
 	if got, want := composeUpArgs(), []string{"up", "-d", "--remove-orphans"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("up args mismatch: got %#v, want %#v", got, want)
+	}
+}
+
+func TestComposeRebuildArgs(t *testing.T) {
+	if got, want := composeRebuildDownArgs(), []string{"down"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("rebuild down args mismatch: got %#v, want %#v", got, want)
+	}
+	if got, want := composeRebuildUpArgs(), []string{"up", "-d"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("rebuild up args mismatch: got %#v, want %#v", got, want)
+	}
+}
+
+func TestRebuildRunningComposeProjectsNoDirsSkipsCommands(t *testing.T) {
+	confirmer := &fakeComposeRebuildConfirmer{confirmed: true}
+	runner := &fakeComposeRunner{}
+
+	result, err := rebuildRunningComposeProjects(confirmer, ComposeCommand{Display: "docker compose"}, nil, runner.run, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Rebuilt != 0 || result.Canceled {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if confirmer.calls != 0 {
+		t.Fatalf("confirm calls = %d, want 0", confirmer.calls)
+	}
+	if len(runner.calls) != 0 {
+		t.Fatalf("runner calls = %#v, want none", runner.calls)
+	}
+}
+
+func TestRebuildRunningComposeProjectsRejectSkipsCommands(t *testing.T) {
+	confirmer := &fakeComposeRebuildConfirmer{confirmed: false}
+	runner := &fakeComposeRunner{}
+
+	result, err := rebuildRunningComposeProjects(confirmer, ComposeCommand{Display: "docker compose"}, []string{"/srv/app"}, runner.run, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Canceled || result.Rebuilt != 0 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if confirmer.calls != 1 {
+		t.Fatalf("confirm calls = %d, want 1", confirmer.calls)
+	}
+	if len(runner.calls) != 0 {
+		t.Fatalf("runner calls = %#v, want none", runner.calls)
+	}
+}
+
+func TestRebuildRunningComposeProjectsRunsDownThenUpInDirOrder(t *testing.T) {
+	confirmer := &fakeComposeRebuildConfirmer{confirmed: true}
+	runner := &fakeComposeRunner{}
+
+	result, err := rebuildRunningComposeProjects(
+		confirmer,
+		ComposeCommand{Name: "docker", Args: []string{"compose"}, Display: "docker compose"},
+		[]string{"/srv/app-one", "/srv/app-two"},
+		runner.run,
+		"confirm? ",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Rebuilt != 2 || result.Canceled {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+
+	want := []composeRunCall{
+		{dir: "/srv/app-one", args: []string{"down"}},
+		{dir: "/srv/app-one", args: []string{"up", "-d"}},
+		{dir: "/srv/app-two", args: []string{"down"}},
+		{dir: "/srv/app-two", args: []string{"up", "-d"}},
+	}
+	if !reflect.DeepEqual(runner.calls, want) {
+		t.Fatalf("runner calls mismatch\ngot:  %#v\nwant: %#v", runner.calls, want)
+	}
+}
+
+func TestRebuildRunningComposeProjectsStopsOnDownFailure(t *testing.T) {
+	confirmer := &fakeComposeRebuildConfirmer{confirmed: true}
+	runner := &fakeComposeRunner{failAt: 1, err: errors.New("boom")}
+
+	_, err := rebuildRunningComposeProjects(confirmer, ComposeCommand{Display: "docker compose"}, []string{"/srv/app"}, runner.run, "")
+	if err == nil || !strings.Contains(err.Error(), "/srv/app down 失败") {
+		t.Fatalf("expected down failure with dir, got %v", err)
+	}
+	if len(runner.calls) != 1 {
+		t.Fatalf("runner calls = %#v, want one down call", runner.calls)
+	}
+}
+
+func TestRebuildRunningComposeProjectsStopsOnUpFailure(t *testing.T) {
+	confirmer := &fakeComposeRebuildConfirmer{confirmed: true}
+	runner := &fakeComposeRunner{failAt: 2, err: errors.New("boom")}
+
+	_, err := rebuildRunningComposeProjects(confirmer, ComposeCommand{Display: "docker compose"}, []string{"/srv/app"}, runner.run, "")
+	if err == nil || !strings.Contains(err.Error(), "/srv/app up -d 失败") {
+		t.Fatalf("expected up failure with dir, got %v", err)
+	}
+	if len(runner.calls) != 2 {
+		t.Fatalf("runner calls = %#v, want down and up calls", runner.calls)
 	}
 }
 
@@ -192,4 +296,33 @@ func writeTestFile(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+type fakeComposeRebuildConfirmer struct {
+	confirmed bool
+	calls     int
+}
+
+func (f *fakeComposeRebuildConfirmer) Confirm(string) (bool, error) {
+	f.calls++
+	return f.confirmed, nil
+}
+
+type composeRunCall struct {
+	dir  string
+	args []string
+}
+
+type fakeComposeRunner struct {
+	calls  []composeRunCall
+	failAt int
+	err    error
+}
+
+func (f *fakeComposeRunner) run(_ ComposeCommand, dir string, args ...string) error {
+	f.calls = append(f.calls, composeRunCall{dir: dir, args: append([]string{}, args...)})
+	if f.failAt > 0 && len(f.calls) == f.failAt {
+		return f.err
+	}
+	return nil
 }
