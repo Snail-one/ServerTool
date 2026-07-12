@@ -27,6 +27,7 @@ import (
 const (
 	installRoot     = "/opt/go"
 	currentLink     = "/opt/go/current"
+	officialRoot    = "/usr/local/go"
 	releasesURL     = "https://go.dev/dl/?mode=json&include=all"
 	downloadBase    = "https://go.dev/dl/"
 	pathBegin       = "# ===== BEGIN SNAIL GO ENVIRONMENT ====="
@@ -69,6 +70,9 @@ func Run(view *ui.UI) error {
 			fmt.Println("当前版本：" + active)
 		}
 		fmt.Printf("已安装版本：%d 个\n", len(installed))
+		if officialMigrationDetected() {
+			fmt.Println("检测到 /usr/local/go 或其 ~/.bashrc 环境变量 [安装或更新时可迁移]")
+		}
 		fmt.Println()
 		fmt.Println("1) 安装 Go")
 		fmt.Println("2) 更新到最新稳定版")
@@ -90,7 +94,7 @@ func Run(view *ui.UI) error {
 			})
 		case "2":
 			shared.RunAction(view, "更新 Go 失败，已返回 Go 语言菜单", func() error {
-				return updateLatest()
+				return updateLatest(view)
 			})
 		case "3":
 			shared.RunAction(view, "切换 Go 版本失败，已返回 Go 语言菜单", func() error {
@@ -110,6 +114,10 @@ func Run(view *ui.UI) error {
 }
 
 func installSelected(view *ui.UI) error {
+	removeOfficial, err := confirmOfficialInstallRemoval(view)
+	if err != nil {
+		return err
+	}
 	releases, err := fetchReleases()
 	if err != nil {
 		return err
@@ -127,7 +135,10 @@ func installSelected(view *ui.UI) error {
 	if err != nil {
 		return err
 	}
-	return installRelease(selected)
+	if err := installRelease(selected); err != nil {
+		return err
+	}
+	return finishOfficialInstallRemoval(removeOfficial)
 }
 
 func selectRelease(view *ui.UI, releases []release, arch string) (release, error) {
@@ -183,7 +194,11 @@ func selectRelease(view *ui.UI, releases []release, arch string) (release, error
 	}
 }
 
-func updateLatest() error {
+func updateLatest(view *ui.UI) error {
+	removeOfficial, err := confirmOfficialInstallRemoval(view)
+	if err != nil {
+		return err
+	}
 	releases, err := fetchReleases()
 	if err != nil {
 		return err
@@ -199,9 +214,145 @@ func updateLatest() error {
 	latest := available[0]
 	if activeVersion(currentLink) == latest.Version {
 		log.Info("当前已是最新稳定版：", latest.Version)
+		return finishOfficialInstallRemoval(removeOfficial)
+	}
+	if err := installRelease(latest); err != nil {
+		return err
+	}
+	return finishOfficialInstallRemoval(removeOfficial)
+}
+
+func confirmOfficialInstallRemoval(view *ui.UI) (bool, error) {
+	detected, err := officialMigrationState()
+	if err != nil {
+		return false, err
+	}
+	if !detected {
+		return false, nil
+	}
+	confirmed, err := view.Confirm("检测到 /usr/local/go 或 ~/.bashrc 中的官方 Go 环境变量，是否清理并改用本工具安装？(y/N): ")
+	if err != nil {
+		return false, err
+	}
+	if !confirmed {
+		log.Info("已取消操作，未修改 /usr/local/go 和 ~/.bashrc")
+		return false, shared.ErrReturnToMenu
+	}
+	return true, nil
+}
+
+func finishOfficialInstallRemoval(remove bool) error {
+	if !remove {
 		return nil
 	}
-	return installRelease(latest)
+	if err := removeOfficialInstall(officialRoot); err != nil {
+		return err
+	}
+	account, err := system.CurrentTargetUser()
+	if err != nil {
+		return err
+	}
+	changed, err := cleanupOfficialGoBashrc(filepath.Join(account.Home, ".bashrc"))
+	if err != nil {
+		return err
+	}
+	if changed {
+		if err := system.ChownPath(filepath.Join(account.Home, ".bashrc"), account, false); err != nil {
+			return err
+		}
+		log.Info("已清理 ~/.bashrc 中引用 /usr/local/go 的 PATH 和 GOROOT")
+	}
+	log.Info("已完成官方位置 Go 迁移清理")
+	return nil
+}
+
+func officialMigrationDetected() bool {
+	detected, err := officialMigrationState()
+	return err == nil && detected
+}
+
+func officialMigrationState() (bool, error) {
+	if officialInstallDetected(officialRoot) {
+		return true, nil
+	}
+	account, err := system.CurrentTargetUser()
+	if err != nil {
+		return false, err
+	}
+	content, err := os.ReadFile(filepath.Join(account.Home, ".bashrc"))
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return hasOfficialGoEnv(string(content)), nil
+}
+
+func hasOfficialGoEnv(content string) bool {
+	_, changed := removeOfficialGoEnv(content)
+	return changed
+}
+
+func cleanupOfficialGoBashrc(path string) (bool, error) {
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	cleaned, changed := removeOfficialGoEnv(string(data))
+	if !changed {
+		return false, nil
+	}
+	if err := os.WriteFile(path, []byte(cleaned), 0644); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func removeOfficialGoEnv(content string) (string, bool) {
+	lines := strings.SplitAfter(content, "\n")
+	kept := make([]string, 0, len(lines))
+	changed := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		candidate := trimmed
+		if len(candidate) > len("export") && strings.HasPrefix(candidate, "export") &&
+			(candidate[len("export")] == ' ' || candidate[len("export")] == '\t') {
+			candidate = strings.TrimSpace(candidate[len("export"):])
+		}
+		equals := strings.IndexByte(candidate, '=')
+		variable := ""
+		if equals >= 0 {
+			variable = strings.TrimSpace(candidate[:equals])
+		}
+		isGoAssignment := variable == "PATH" || variable == "GOROOT"
+		if !strings.HasPrefix(trimmed, "#") && isGoAssignment && strings.Contains(candidate, "/usr/local/go") {
+			changed = true
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, ""), changed
+}
+
+func officialInstallDetected(root string) bool {
+	return system.FileExists(filepath.Join(root, "bin", "go"))
+}
+
+func removeOfficialInstall(root string) error {
+	if filepath.Clean(root) == string(os.PathSeparator) {
+		return errors.New("拒绝删除根目录")
+	}
+	if !officialInstallDetected(root) {
+		return nil
+	}
+	if err := os.RemoveAll(root); err != nil {
+		return fmt.Errorf("卸载官方位置 Go 失败: %w", err)
+	}
+	return nil
 }
 
 func switchSelected(view *ui.UI) error {

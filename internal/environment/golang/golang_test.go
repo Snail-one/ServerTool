@@ -51,6 +51,58 @@ func TestVersionValidationAndComparison(t *testing.T) {
 	}
 }
 
+func TestOfficialInstallDetectionAndRemoval(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "go")
+	if officialInstallDetected(root) {
+		t.Fatal("empty path should not be detected as an official install")
+	}
+	goBinary := filepath.Join(root, "bin", "go")
+	if err := os.MkdirAll(filepath.Dir(goBinary), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(goBinary, []byte("binary"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if !officialInstallDetected(root) {
+		t.Fatal("expected Go binary to be detected")
+	}
+	if err := removeOfficialInstall(root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("official install directory still exists: %v", err)
+	}
+}
+
+func TestRemoveOfficialGoEnvFromBashrc(t *testing.T) {
+	input := `export EDITOR=vim
+export PATH="$PATH:/usr/local/go/bin"
+export GOROOT=/usr/local/go
+# export PATH="/usr/local/go/bin:$PATH"
+alias goversion='/usr/local/go/bin/go version'
+export GOPATH="$HOME/go"
+export PATH="/opt/go/current/bin:$PATH"
+`
+	cleaned, changed := removeOfficialGoEnv(input)
+	if !changed {
+		t.Fatal("expected official Go environment lines to be detected")
+	}
+	if strings.Contains(cleaned, `PATH="$PATH:/usr/local/go/bin"`) || strings.Contains(cleaned, "GOROOT=/usr/local/go") {
+		t.Fatalf("official Go environment remained:\n%s", cleaned)
+	}
+	for _, wanted := range []string{
+		"export EDITOR=vim",
+		`# export PATH="/usr/local/go/bin:$PATH"`,
+		`alias goversion='/usr/local/go/bin/go version'`,
+		`export GOPATH="$HOME/go"`,
+		`export PATH="/opt/go/current/bin:$PATH"`,
+	} {
+		if !strings.Contains(cleaned, wanted) {
+			t.Fatalf("unrelated line %q was removed:\n%s", wanted, cleaned)
+		}
+	}
+}
+
 func TestInstalledVersionsAndActivation(t *testing.T) {
 	root := t.TempDir()
 	for _, version := range []string{"go1.9.9", "go1.24.1", "invalid"} {
