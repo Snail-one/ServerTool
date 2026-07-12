@@ -87,7 +87,9 @@ func ConfigureProxy(view *ui.UI) error {
 		return err
 	}
 
-	if err := shared.EnsureFile(bashrc); err != nil {
+	if err := shared.EnsureFileWithOptions(bashrc, shared.AtomicWriteOptions{
+		Mode: 0644, Owner: &shared.FileOwner{UID: account.UID, GID: account.GID},
+	}); err != nil {
 		return err
 	}
 	if err := writeProxyBlockReplacingUnmanaged(bashrc, proxyURL); err != nil {
@@ -239,7 +241,7 @@ export NO_PROXY="%s"
 `, proxyURL, proxyURL, proxyURL, proxyURL, noProxy, noProxy)
 	block := shared.FormatManagedBlock(proxyBegin, body, proxyEnd)
 
-	return os.WriteFile(path, []byte(shared.AppendBlock(content, block)), 0644)
+	return shared.AtomicWriteFile(path, []byte(shared.AppendBlock(content, block)), shared.AtomicWriteOptions{Mode: 0644})
 }
 
 func confirmUnmanagedProxyOverride(view *ui.UI, bashrc string) (bool, error) {

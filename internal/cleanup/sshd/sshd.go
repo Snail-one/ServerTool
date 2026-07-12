@@ -52,7 +52,7 @@ func cleanupSSHDConfig() (bool, error) {
 		return serviceChanged, nil
 	}
 
-	if err := os.WriteFile(customSSHDConfigPath, nil, 0644); err != nil {
+	if err := shared.AtomicWriteFile(customSSHDConfigPath, nil, shared.AtomicWriteOptions{Mode: 0644, ForceMode: true}); err != nil {
 		return serviceChanged, err
 	}
 	log.Info("已清空 SSH 自定义配置：", customSSHDConfigPath)
@@ -76,7 +76,7 @@ func cleanupSSHDInclude() (bool, error) {
 	}
 	cleaned = shared.NormalizeCleanedContent(cleaned)
 
-	if err := os.WriteFile(sshdConfigPath, []byte(cleaned), 0644); err != nil {
+	if err := shared.AtomicWriteFile(sshdConfigPath, []byte(cleaned), shared.AtomicWriteOptions{Mode: 0644}); err != nil {
 		return false, err
 	}
 	log.Info("已清理本工具写入的 SSH Include 配置")

@@ -408,7 +408,16 @@ func writeNUTConfigFile(file nutConfigFile, transform func(string) string) error
 		}
 	}
 
-	if err := os.WriteFile(path, []byte(updated), file.mode); err != nil {
+	options := shared.AtomicWriteOptions{Mode: file.mode}
+	if shouldEnforceFileMetadata(file) {
+		options.ForceMode = true
+		if uid, gid, ownerErr := lookupFileOwner(file.owner); ownerErr == nil {
+			options.Owner = &shared.FileOwner{UID: uid, GID: gid}
+		} else {
+			return ownerErr
+		}
+	}
+	if err := shared.AtomicWriteFile(path, []byte(updated), options); err != nil {
 		return err
 	}
 	if err := applyManagedFileMetadataIfNeeded(file); err != nil {
@@ -608,7 +617,7 @@ func copyNUTBackupFile(source, target string) error {
 		return err
 	}
 
-	return os.WriteFile(target, input, info.Mode().Perm())
+	return shared.AtomicWriteFile(target, input, shared.AtomicWriteOptions{Mode: info.Mode().Perm()})
 }
 
 func restoreUPSBackup(view *ui.UI) error {
@@ -720,7 +729,16 @@ func restoreNUTBackupFile(file nutConfigFile) error {
 	restoredFile := file
 	restoredFile.mode = mode
 
-	if err := os.WriteFile(restoredFile.path, data, restoredFile.mode); err != nil {
+	options := shared.AtomicWriteOptions{Mode: restoredFile.mode}
+	if shouldEnforceFileMetadata(restoredFile) {
+		options.ForceMode = true
+		uid, gid, ownerErr := lookupFileOwner(restoredFile.owner)
+		if ownerErr != nil {
+			return ownerErr
+		}
+		options.Owner = &shared.FileOwner{UID: uid, GID: gid}
+	}
+	if err := shared.AtomicWriteFile(restoredFile.path, data, options); err != nil {
 		return err
 	}
 	if err := applyManagedFileMetadataIfNeeded(restoredFile); err != nil {

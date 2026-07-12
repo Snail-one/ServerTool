@@ -159,13 +159,7 @@ func deleteSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		selected[index] = struct{}{}
 	}
 	cleaned := removeAuthorizedKeyIndexes(content, selected)
-	if err := os.WriteFile(authKeys, []byte(cleaned), 0600); err != nil {
-		return err
-	}
-	if err := os.Chmod(authKeys, 0600); err != nil {
-		return err
-	}
-	if err := system.ChownPath(authKeys, account, false); err != nil {
+	if err := shared.AtomicWriteFile(authKeys, []byte(cleaned), shared.AtomicWriteOptions{Mode: 0600, ForceMode: true}); err != nil {
 		return err
 	}
 
@@ -202,7 +196,9 @@ func installAuthorizedKey(account *system.Account, pubkey string) error {
 	if err := os.MkdirAll(sshDir, 0700); err != nil {
 		return err
 	}
-	if err := shared.EnsureFile(authKeys); err != nil {
+	if err := shared.EnsureFileWithOptions(authKeys, shared.AtomicWriteOptions{
+		Mode: 0600, Owner: &shared.FileOwner{UID: account.UID, GID: account.GID},
+	}); err != nil {
 		return err
 	}
 
@@ -234,7 +230,7 @@ func writeManagedAuthorizedKey(path, content, pubkey string) error {
 
 	cleaned := shared.RemoveManagedBlock(content, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd)
 	block := shared.FormatManagedBlock(sshAuthorizedKeysBegin, strings.Join(keys, "\n"), sshAuthorizedKeysEnd)
-	return os.WriteFile(path, []byte(shared.AppendBlock(cleaned, block)), 0600)
+	return shared.AtomicWriteFile(path, []byte(shared.AppendBlock(cleaned, block)), shared.AtomicWriteOptions{Mode: 0600, ForceMode: true})
 }
 
 func managedAuthorizedKeys(content string) []string {

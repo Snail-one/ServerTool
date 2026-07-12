@@ -52,7 +52,9 @@ func ConfigureBash() error {
 	fmt.Printf("当前用户：%s\n", account.Name)
 	fmt.Printf("配置文件：%s\n", bashrc)
 
-	if err := shared.EnsureFile(bashrc); err != nil {
+	if err := shared.EnsureFileWithOptions(bashrc, shared.AtomicWriteOptions{
+		Mode: 0644, Owner: &shared.FileOwner{UID: account.UID, GID: account.GID},
+	}); err != nil {
 		return err
 	}
 	if err := replaceAliases(bashrc); err != nil {
@@ -94,5 +96,5 @@ func replaceAliases(path string) error {
 	}
 
 	block := shared.FormatManagedBlock(bashAliasBegin, bashAliasBlock, bashAliasEnd)
-	return os.WriteFile(path, []byte(shared.AppendBlock(content, block)), 0644)
+	return shared.AtomicWriteFile(path, []byte(shared.AppendBlock(content, block)), shared.AtomicWriteOptions{Mode: 0644})
 }

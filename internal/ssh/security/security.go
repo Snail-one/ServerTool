@@ -430,22 +430,12 @@ func writeSSHDConfig(port int, permitRootLogin string, disableSSHDConfigPorts bo
 	}
 	includeRe := regexp.MustCompile(`(?m)^[[:space:]]*Include[[:space:]]+/etc/ssh/sshd_config\.d/\*\.conf`)
 	if !includeRe.Match(data) {
-		file, err := os.OpenFile(sshdConfigPath, os.O_APPEND|os.O_WRONLY, 0644)
-		if err != nil {
-			return err
-		}
+		updated := string(data)
 		if !strings.HasSuffix(string(data), "\n") {
-			if _, err := file.WriteString("\n"); err != nil {
-				_ = file.Close()
-				return err
-			}
+			updated += "\n"
 		}
-		block := buildSSHDIncludeBlock()
-		if _, err := file.WriteString(block); err != nil {
-			_ = file.Close()
-			return err
-		}
-		if err := file.Close(); err != nil {
+		updated += buildSSHDIncludeBlock()
+		if err := shared.AtomicWriteFile(sshdConfigPath, []byte(updated), shared.AtomicWriteOptions{Mode: 0644}); err != nil {
 			return err
 		}
 		log.Info("已自动添加 Include 配置")
@@ -461,10 +451,7 @@ func writeSSHDConfig(port int, permitRootLogin string, disableSSHDConfigPorts bo
 
 	fmt.Println()
 	log.Info("写入自定义 SSH 配置...")
-	if err := os.WriteFile(customSSHDConfigPath, []byte(content), 0644); err != nil {
-		return err
-	}
-	if err := os.Chmod(customSSHDConfigPath, 0644); err != nil {
+	if err := shared.AtomicWriteFile(customSSHDConfigPath, []byte(content), shared.AtomicWriteOptions{Mode: 0644, ForceMode: true}); err != nil {
 		return err
 	}
 	printSSHDConfig(customSSHDConfigPath, content)
@@ -512,7 +499,7 @@ func disableSSHDConfigPortsInFiles() error {
 			return err
 		}
 		log.Info("已备份 SSH 配置：", backup)
-		if err := os.WriteFile(path, []byte(cleaned), mode); err != nil {
+		if err := shared.AtomicWriteFile(path, []byte(cleaned), shared.AtomicWriteOptions{Mode: mode}); err != nil {
 			return err
 		}
 		log.Info("已注释 ", path, " 中的 Port 配置")

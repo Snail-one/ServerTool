@@ -8,6 +8,7 @@ import (
 
 	commonproxy "snail_tool/internal/common/proxy"
 	"snail_tool/internal/log"
+	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
 )
@@ -82,10 +83,7 @@ func writeDockerProxyConfig(path, proxyURL string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, []byte(buildDockerProxyConfig(proxyURL)), 0644); err != nil {
-		return err
-	}
-	return os.Chmod(path, 0644)
+	return shared.AtomicWriteFile(path, []byte(buildDockerProxyConfig(proxyURL)), shared.AtomicWriteOptions{Mode: 0644, ForceMode: true})
 }
 
 func buildDockerProxyConfig(proxyURL string) string {

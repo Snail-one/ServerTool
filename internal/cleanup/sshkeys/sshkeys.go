@@ -32,10 +32,7 @@ func Run(account *system.Account) error {
 	}
 
 	cleaned = shared.NormalizeCleanedContent(cleaned)
-	if err := os.WriteFile(authKeys, []byte(cleaned), 0600); err != nil {
-		return err
-	}
-	if err := os.Chmod(authKeys, 0600); err != nil {
+	if err := shared.AtomicWriteFile(authKeys, []byte(cleaned), shared.AtomicWriteOptions{Mode: 0600, ForceMode: true}); err != nil {
 		return err
 	}
 

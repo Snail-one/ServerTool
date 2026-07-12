@@ -81,10 +81,9 @@ func ConfigureVim(view *ui.UI) error {
 	}
 
 	fmt.Println("写入 ~/.vimrc ...")
-	if err := os.WriteFile(vimrc, []byte(vimrcContent), 0644); err != nil {
-		return err
-	}
-	if err := system.ChownPath(vimrc, account, false); err != nil {
+	if err := shared.AtomicWriteFile(vimrc, []byte(vimrcContent), shared.AtomicWriteOptions{
+		Mode: 0644, ForceMode: true, Owner: &shared.FileOwner{UID: account.UID, GID: account.GID},
+	}); err != nil {
 		return err
 	}
 

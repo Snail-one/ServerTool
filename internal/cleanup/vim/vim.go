@@ -1,7 +1,6 @@
 package vim
 
 import (
-	"os"
 	"path/filepath"
 
 	commonvim "snail_tool/internal/common/vim"
@@ -25,7 +24,7 @@ func Run(account *system.Account) error {
 		return nil
 	}
 
-	if err := os.WriteFile(vimrc, nil, 0644); err != nil {
+	if err := shared.AtomicWriteFile(vimrc, nil, shared.AtomicWriteOptions{Mode: 0644}); err != nil {
 		return err
 	}
 	log.Info("已清空 Vim 配置：", vimrc)

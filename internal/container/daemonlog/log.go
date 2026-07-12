@@ -262,10 +262,7 @@ func writeDockerDaemonLogConfig(path string, rotation logRotationConfig, confirm
 		return result, err
 	}
 	data = append(data, '\n')
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		return result, err
-	}
-	if err := os.Chmod(path, 0644); err != nil {
+	if err := shared.AtomicWriteFile(path, data, shared.AtomicWriteOptions{Mode: 0644, ForceMode: true}); err != nil {
 		return result, err
 	}
 

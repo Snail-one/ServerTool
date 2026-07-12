@@ -434,7 +434,7 @@ func cleanupOfficialGoBashrc(path string) (bool, error) {
 	if !changed {
 		return false, nil
 	}
-	if err := os.WriteFile(path, []byte(cleaned), 0644); err != nil {
+	if err := shared.AtomicWriteFile(path, []byte(cleaned), shared.AtomicWriteOptions{Mode: 0644}); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -1060,7 +1060,9 @@ func configureTargetUserPath() error {
 		return err
 	}
 	bashrc := filepath.Join(account.Home, ".bashrc")
-	if err := shared.EnsureFile(bashrc); err != nil {
+	if err := shared.EnsureFileWithOptions(bashrc, shared.AtomicWriteOptions{
+		Mode: 0644, Owner: &shared.FileOwner{UID: account.UID, GID: account.GID},
+	}); err != nil {
 		return err
 	}
 	if err := writeManagedPath(bashrc); err != nil {
@@ -1076,7 +1078,7 @@ func writeManagedPath(bashrc string) error {
 	}
 	content := shared.RemoveManagedBlock(string(data), pathBegin, pathEnd)
 	block := shared.FormatManagedBlock(pathBegin, pathBody, pathEnd)
-	if err := os.WriteFile(bashrc, []byte(shared.AppendBlock(content, block)), 0644); err != nil {
+	if err := shared.AtomicWriteFile(bashrc, []byte(shared.AppendBlock(content, block)), shared.AtomicWriteOptions{Mode: 0644}); err != nil {
 		return err
 	}
 	return nil

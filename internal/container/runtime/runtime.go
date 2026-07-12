@@ -27,7 +27,7 @@ func Ensure(view *ui.UI) error {
 		fmt.Println("未检测到 Docker 或 Podman。")
 		fmt.Println()
 		fmt.Println("请选择安装方式：")
-		fmt.Println("1) 安装 Docker（使用 https://get.docker.com 脚本）")
+		fmt.Println("1) 安装 Docker（使用 Docker 官方签名 stable 仓库）")
 		fmt.Println("2) 安装 Podman（使用 apt 安装）")
 		fmt.Println("3) 返回")
 		fmt.Println()
@@ -40,7 +40,7 @@ func Ensure(view *ui.UI) error {
 
 		switch strings.ToLower(strings.TrimSpace(choice)) {
 		case "1":
-			if err := installDockerRuntime(); err != nil {
+			if err := installDockerRuntime(view); err != nil {
 				return err
 			}
 		case "2":
@@ -71,20 +71,11 @@ func runtimeForCommands(hasDocker, hasPodman bool) (Runtime, bool) {
 	}
 }
 
-func installDockerRuntime() error {
+func installDockerRuntime(view *ui.UI) error {
 	if !system.IsRoot() {
 		return fmt.Errorf("安装 Docker 需要 root 权限，请使用 sudo 运行本工具")
 	}
-
-	log.Info("安装 Docker...")
-	switch {
-	case system.CommandExists("curl"):
-		return system.Run("sh", "-c", "curl -fsSL https://get.docker.com | sh")
-	case system.CommandExists("wget"):
-		return system.Run("sh", "-c", "wget -qO- https://get.docker.com | sh")
-	default:
-		return fmt.Errorf("未找到 curl 或 wget，无法下载 https://get.docker.com 安装脚本")
-	}
+	return newDockerInstaller(view).install()
 }
 
 func installPodmanRuntime() error {

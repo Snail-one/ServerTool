@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"snail_tool/internal/shared"
 )
 
 type Account struct {
@@ -164,7 +166,11 @@ func Backup(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return backup, os.WriteFile(backup, input, 0644)
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	return backup, shared.AtomicWriteFile(backup, input, shared.AtomicWriteOptions{Mode: info.Mode().Perm()})
 }
 
 func PortInUse(port int) bool {
