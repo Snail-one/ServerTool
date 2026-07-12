@@ -189,6 +189,67 @@ func TestActivateVersionRefusesExternalSymlink(t *testing.T) {
 	}
 }
 
+func TestReplaceManagedVersion(t *testing.T) {
+	root := t.TempDir()
+	destination := filepath.Join(root, "go1.24.1")
+	replacement := filepath.Join(root, ".repair")
+	writeManagedVersion(t, destination, "old")
+	writeManagedVersion(t, replacement, "new")
+
+	if err := replaceManagedVersion(destination, replacement); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, filepath.Join(destination, "bin", "go")); got != "new" {
+		t.Fatalf("replacement binary = %q", got)
+	}
+	if _, err := os.Stat(replacement); !os.IsNotExist(err) {
+		t.Fatalf("replacement path still exists: %v", err)
+	}
+}
+
+func TestReplaceManagedVersionRefusesUnmanagedReplacement(t *testing.T) {
+	root := t.TempDir()
+	destination := filepath.Join(root, "go1.24.1")
+	replacement := filepath.Join(root, ".repair")
+	writeManagedVersion(t, destination, "old")
+	if err := os.MkdirAll(filepath.Join(replacement, "bin"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(replacement, "bin", "go"), []byte("new"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := replaceManagedVersion(destination, replacement); err == nil {
+		t.Fatal("expected unmanaged replacement to be rejected")
+	}
+	if got := readFile(t, filepath.Join(destination, "bin", "go")); got != "old" {
+		t.Fatalf("original version changed: %q", got)
+	}
+}
+
+func TestInstallArtifactsOnlyReturnsKnownTemporaryEntries(t *testing.T) {
+	root := t.TempDir()
+	wanted := []string{
+		".backup-go1.24.1-123",
+		".current.tmp",
+		".download-123.tar.gz",
+		".install-123",
+		".repair-123",
+	}
+	other := []string{"current", "go1.24.1", ".download-not-an-archive", "notes.txt"}
+	for _, name := range append(append([]string{}, wanted...), other...) {
+		if err := os.MkdirAll(filepath.Join(root, name), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := installArtifacts(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, wanted) {
+		t.Fatalf("install artifacts = %#v, want %#v", got, wanted)
+	}
+}
+
 func TestManagedPathIsIdempotentAndCleanable(t *testing.T) {
 	bashrc := filepath.Join(t.TempDir(), ".bashrc")
 	if err := os.WriteFile(bashrc, []byte("export EDITOR=vim\n"), 0644); err != nil {
@@ -249,6 +310,19 @@ func archive(version, arch string) releaseFile {
 		Version:  version,
 		SHA256:   "abc",
 		Kind:     "archive",
+	}
+}
+
+func writeManagedVersion(t *testing.T, path, binary string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(path, "bin"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "bin", "go"), []byte(binary), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(path, managedFile), []byte("managed"), 0644); err != nil {
+		t.Fatal(err)
 	}
 }
 

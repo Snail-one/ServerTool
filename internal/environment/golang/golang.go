@@ -78,6 +78,8 @@ func Run(view *ui.UI) error {
 		fmt.Println("2) 更新到最新稳定版")
 		fmt.Println("3) 切换当前版本")
 		fmt.Println("4) 卸载 Go 版本")
+		fmt.Println("5) 修复当前 Go（重新安装并修复 PATH）")
+		fmt.Println("6) 清理 Go 安装残留")
 		fmt.Println("0/q) 返回")
 		fmt.Println()
 
@@ -104,6 +106,14 @@ func Run(view *ui.UI) error {
 			shared.RunAction(view, "卸载 Go 版本失败，已返回 Go 语言菜单", func() error {
 				return uninstallSelected(view)
 			})
+		case "5":
+			shared.RunAction(view, "修复当前 Go 失败，已返回 Go 语言菜单", func() error {
+				return repairCurrent(view)
+			})
+		case "6":
+			shared.RunAction(view, "清理 Go 安装残留失败，已返回 Go 语言菜单", func() error {
+				return cleanupInstallArtifacts(view)
+			})
 		case "0", "q", "exit":
 			return shared.ErrReturnToMenu
 		default:
@@ -111,6 +121,113 @@ func Run(view *ui.UI) error {
 			view.Pause()
 		}
 	}
+}
+
+func cleanupInstallArtifacts(view *ui.UI) error {
+	artifacts, err := installArtifacts(installRoot)
+	if err != nil {
+		return err
+	}
+	if len(artifacts) == 0 {
+		log.Info("未发现 Go 安装残留")
+		return nil
+	}
+	fmt.Println("检测到以下 Go 安装残留：")
+	containsBackup := false
+	for _, name := range artifacts {
+		fmt.Println("- " + filepath.Join(installRoot, name))
+		if strings.HasPrefix(name, ".backup-") {
+			containsBackup = true
+		}
+	}
+	if containsBackup {
+		log.Warn("备份目录可能包含异常中断前的旧版本，删除后无法通过该备份恢复")
+	}
+	confirmed, err := view.Confirm("确认删除以上安装残留？(y/N): ")
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		log.Info("已取消清理")
+		return nil
+	}
+	for _, name := range artifacts {
+		path := filepath.Join(installRoot, name)
+		if err := os.RemoveAll(path); err != nil {
+			return fmt.Errorf("清理 Go 安装残留 %s 失败: %w", path, err)
+		}
+		log.Info("已清理：", path)
+	}
+	log.Info("Go 安装残留清理完成，共清理 ", len(artifacts), " 项")
+	return nil
+}
+
+func installArtifacts(root string) ([]string, error) {
+	entries, err := os.ReadDir(root)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("读取 Go 安装目录失败: %w", err)
+	}
+	artifacts := make([]string, 0)
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == ".current.tmp" ||
+			strings.HasPrefix(name, ".backup-") ||
+			strings.HasPrefix(name, ".repair-") ||
+			strings.HasPrefix(name, ".install-") ||
+			(strings.HasPrefix(name, ".download-") && strings.HasSuffix(name, ".tar.gz")) {
+			artifacts = append(artifacts, name)
+		}
+	}
+	sort.Strings(artifacts)
+	return artifacts, nil
+}
+
+func repairCurrent(view *ui.UI) error {
+	current := activeVersion(currentLink)
+	if current == "" {
+		return errors.New("当前没有可修复的工具管理 Go 版本，请先安装 Go")
+	}
+	confirmed, err := view.Confirm(fmt.Sprintf("将重新下载并替换当前版本 %s，同时修复 PATH，是否继续？(y/N): ", current))
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		log.Info("已取消修复")
+		return nil
+	}
+	removeOfficial, err := confirmOfficialInstallRemoval(view)
+	if err != nil {
+		return err
+	}
+	fileArch, err := supportedArch(runtime.GOARCH)
+	if err != nil {
+		return err
+	}
+	log.Info("检测运行平台：linux/", fileArch)
+	releases, err := fetchReleases()
+	if err != nil {
+		return err
+	}
+	log.Info("查找当前版本的官方归档：", current)
+	var selected release
+	found := false
+	for _, item := range availableReleases(releases, fileArch) {
+		if item.Version == current {
+			selected = item
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("Go 官方 API 中未找到当前版本 %s 的 linux/%s 归档", current, fileArch)
+	}
+	if err := reinstallRelease(selected); err != nil {
+		return err
+	}
+	return finishOfficialInstallRemoval(removeOfficial)
 }
 
 func installSelected(view *ui.UI) error {
@@ -537,6 +654,79 @@ func installRelease(item release) error {
 	log.Info("Go PATH 配置完成")
 	log.Info("Go 安装完成，当前版本：", item.Version)
 	fmt.Println("重新登录或执行 source ~/.bashrc 后 PATH 生效")
+	return nil
+}
+
+func reinstallRelease(item release) error {
+	fileArch, err := supportedArch(runtime.GOARCH)
+	if err != nil {
+		return err
+	}
+	archive, ok := archiveFor(item, fileArch)
+	if !ok {
+		return fmt.Errorf("%s 没有适用于 linux/%s 的官方归档", item.Version, runtime.GOARCH)
+	}
+	destination := filepath.Join(installRoot, item.Version)
+	if !isManagedVersion(destination) {
+		return fmt.Errorf("当前版本目录不是本工具管理的有效 Go 版本：%s", destination)
+	}
+	replacement, err := unusedTempPath(installRoot, ".repair-*")
+	if err != nil {
+		return fmt.Errorf("创建修复临时路径失败: %w", err)
+	}
+	defer os.RemoveAll(replacement)
+	log.Info("下载并准备当前版本的全新副本...")
+	if err := downloadAndInstall(archive, replacement); err != nil {
+		return err
+	}
+	log.Info("下载、校验和解压完成，开始替换当前版本目录...")
+	if err := replaceManagedVersion(destination, replacement); err != nil {
+		return err
+	}
+	log.Info("重新建立当前版本软链接：", currentLink, " -> ", destination)
+	if err := activateVersion(installRoot, currentLink, item.Version); err != nil {
+		return err
+	}
+	log.Info("重新写入目标用户 ~/.bashrc 中的 Go PATH...")
+	if err := configureTargetUserPath(); err != nil {
+		return err
+	}
+	log.Info("当前 Go 版本和 PATH 修复完成：", item.Version)
+	fmt.Println("重新登录或执行 source ~/.bashrc 后 PATH 生效")
+	return nil
+}
+
+func unusedTempPath(root, pattern string) (string, error) {
+	path, err := os.MkdirTemp(root, pattern)
+	if err != nil {
+		return "", err
+	}
+	if err := os.Remove(path); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+func replaceManagedVersion(destination, replacement string) error {
+	if !isManagedVersion(destination) || !isManagedVersion(replacement) {
+		return errors.New("拒绝替换无效或非托管的 Go 版本目录")
+	}
+	backup, err := unusedTempPath(filepath.Dir(destination), ".backup-"+filepath.Base(destination)+"-*")
+	if err != nil {
+		return fmt.Errorf("创建版本备份路径失败: %w", err)
+	}
+	if err := os.Rename(destination, backup); err != nil {
+		return fmt.Errorf("备份当前 Go 版本失败: %w", err)
+	}
+	if err := os.Rename(replacement, destination); err != nil {
+		if rollbackErr := os.Rename(backup, destination); rollbackErr != nil {
+			return fmt.Errorf("替换 Go 版本失败: %v；恢复原版本也失败: %w", err, rollbackErr)
+		}
+		return fmt.Errorf("替换 Go 版本失败，已恢复原版本: %w", err)
+	}
+	if err := os.RemoveAll(backup); err != nil {
+		log.Warn("新版本已生效，但清理旧版本备份失败：", backup, "：", err)
+	}
 	return nil
 }
 
