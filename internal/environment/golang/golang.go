@@ -245,6 +245,10 @@ func finishOfficialInstallRemoval(remove bool) error {
 	if !remove {
 		return nil
 	}
+	return removeOfficialGoAndEnv()
+}
+
+func removeOfficialGoAndEnv() error {
 	if err := removeOfficialInstall(officialRoot); err != nil {
 		return err
 	}
@@ -262,7 +266,7 @@ func finishOfficialInstallRemoval(remove bool) error {
 		}
 		log.Info("已清理 ~/.bashrc 中引用 /usr/local/go 的 PATH 和 GOROOT")
 	}
-	log.Info("已完成官方位置 Go 迁移清理")
+	log.Info("已完成官方位置 Go 卸载和环境清理")
 	return nil
 }
 
@@ -379,10 +383,40 @@ func uninstallSelected(view *ui.UI) error {
 	if err != nil {
 		return err
 	}
-	selected, err := selectInstalled(view, versions, "选择要卸载的版本: ")
+	official, err := officialMigrationState()
 	if err != nil {
 		return err
 	}
+	if len(versions) == 0 && !official {
+		return errors.New("未发现可卸载的 Go 安装")
+	}
+
+	fmt.Println("请选择要卸载的 Go：")
+	offset := 0
+	if official {
+		fmt.Println("1) 官方位置 Go（/usr/local/go 及 ~/.bashrc 环境变量）")
+		offset = 1
+	}
+	for i, version := range versions {
+		fmt.Printf("%d) %s\n", i+1+offset, version)
+	}
+	fmt.Println("0/q) 返回")
+	fmt.Println()
+	raw, err := view.Ask("选择卸载项: ")
+	if err != nil {
+		return err
+	}
+	if shared.IsReturnChoice(raw) {
+		return shared.ErrReturnToMenu
+	}
+	index, err := strconv.Atoi(raw)
+	if err != nil || index < 1 || index > len(versions)+offset {
+		return fmt.Errorf("无效的卸载选项：%s", raw)
+	}
+	if official && index == 1 {
+		return uninstallOfficialGo(view)
+	}
+	selected := versions[index-1-offset]
 	confirmed, err := view.Confirm(fmt.Sprintf("确认卸载 %s？(y/N): ", selected))
 	if err != nil {
 		return err
@@ -420,6 +454,18 @@ func uninstallSelected(view *ui.UI) error {
 	}
 	log.Info("已清理 Go PATH 配置")
 	return nil
+}
+
+func uninstallOfficialGo(view *ui.UI) error {
+	confirmed, err := view.Confirm("确认卸载 /usr/local/go 并清理 ~/.bashrc 中的官方 Go 环境变量？(y/N): ")
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		log.Info("已取消卸载")
+		return nil
+	}
+	return removeOfficialGoAndEnv()
 }
 
 func selectInstalled(view *ui.UI, versions []string, prompt string) (string, error) {
