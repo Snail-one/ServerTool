@@ -7,6 +7,7 @@
 - 容器管理：检测 Docker/Podman，缺失时可选择安装 Docker 或 Podman；顶层按容器列表与操作、Compose 项目、Docker daemon 配置、清理容器资源分组；容器列表和 Compose 项目列表显示当前状态，并支持启动、停止、重启、进入容器、查看日志和实时日志；Compose 项目支持通过 `docker compose ls` 管理、扫描目录管理、批量更新运行中的应用和重建运行中的项目；Docker daemon 配置支持代理和日志轮转；支持容器无用资源一键清理和按容器、网络、镜像、构建缓存单项清理
 - SSH 管理：管理当前用户 SSH 公钥（查看、添加、删除）、写入 SSH 随机端口与禁用密码登录等安全配置、查看当前 SSH 生效安全配置
 - 集中写入配置文件：Vim `~/.vimrc`、Bash 环境、HTTP/HTTPS 代理环境变量、UPS(NUT) 配置
+- 环境配置：从 Go 官方 API 获取全部稳定版本，在 `/opt/go` 安装、更新、切换和卸载 amd64/arm64 Go，并为目标用户配置 PATH
 - 清理本工具写入的 SSH、Vim、Bash、代理配置，支持一键清理或按项清理
 
 一键下载安装
@@ -16,7 +17,20 @@ sudo wget -O /usr/local/sbin/snail https://github.com/Snail-one/ServerTool/relea
 ```
 
 ```bash
-sudo curl -L -o /usr/local/sbin/toolsnail https://github.com/Snail-one/ServerTool/releases/latest/download/snailtool_linux_amd64 && sudo chmod +x /usr/local/sbin/snail
+sudo curl -L -o /usr/local/sbin/snail https://github.com/Snail-one/ServerTool/releases/latest/download/snailtool_linux_amd64 && sudo chmod +x /usr/local/sbin/snail
+```
+
+## Go 环境管理
+
+从主菜单进入“环境配置 → Go 语言”后，可以安装任意官方稳定版本、更新到最新稳定版、切换当前版本或卸载指定版本。安装版本列表每页显示 10 个，可翻页选择；当前支持 Linux amd64 和 arm64。
+
+各版本保存在 `/opt/go/goX.Y.Z`，`/opt/go/current` 指向当前版本。旧版本会保留，卸载当前版本后会自动切换到剩余版本中版本号最高的一个。工具只管理 `/opt/go` 下的版本，不修改系统包管理器或 `/usr/local/go` 中的安装。
+
+PATH 配置写入 sudo 发起用户的 `~/.bashrc`。安装或切换后请重新登录，或者执行：
+
+```bash
+source ~/.bashrc
+```
 
 ## 构建
 
@@ -75,6 +89,7 @@ internal/app        交互菜单和流程编排
 internal/container  容器管理：容器列表与操作、Compose 项目、Docker daemon 配置、清理容器资源、安装运行时
 internal/ssh        SSH 管理：公钥、安全配置、生效安全配置查看
 internal/common     常用配置：Vim、Bash、HTTP/HTTPS 代理、UPS
+internal/environment 环境配置：Go 官方多版本安装、更新、切换、卸载及用户 PATH 管理
 internal/cleanup    清理配置：一键清理或按项清理本工具写入的配置
 internal/status     菜单状态检测汇总
 internal/shared     跨菜单复用的小型辅助能力

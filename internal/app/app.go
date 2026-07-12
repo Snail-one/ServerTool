@@ -7,6 +7,7 @@ import (
 	"snail_tool/internal/cleanup"
 	"snail_tool/internal/common"
 	"snail_tool/internal/container"
+	"snail_tool/internal/environment"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/ssh"
 	"snail_tool/internal/status"
@@ -48,6 +49,10 @@ func (a *App) Run() error {
 				return common.Run(a.ui)
 			})
 		case "4":
+			shared.RunAction(a.ui, "环境配置失败，已返回菜单", func() error {
+				return environment.Run(a.ui)
+			})
+		case "5":
 			shared.RunAction(a.ui, "清理配置失败，已返回菜单", func() error {
 				return cleanup.Run(a.ui)
 			})
@@ -74,7 +79,8 @@ func showMenu(status status.Status) {
 	fmt.Println("1) 容器管理")
 	fmt.Println("2) SSH 管理" + statusText(status.SSH))
 	fmt.Println("3) 常用配置")
-	fmt.Println("4) 清理配置")
+	fmt.Println("4) 环境配置")
+	fmt.Println("5) 清理配置")
 	fmt.Println("0/q) 退出")
 }
 

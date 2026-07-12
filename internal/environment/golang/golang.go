@@ -1,0 +1,689 @@
+package golang
+
+import (
+	"archive/tar"
+	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"snail_tool/internal/log"
+	"snail_tool/internal/shared"
+	"snail_tool/internal/system"
+	"snail_tool/internal/ui"
+)
+
+const (
+	installRoot     = "/opt/go"
+	currentLink     = "/opt/go/current"
+	releasesURL     = "https://go.dev/dl/?mode=json&include=all"
+	downloadBase    = "https://go.dev/dl/"
+	pathBegin       = "# ===== BEGIN SNAIL GO ENVIRONMENT ====="
+	pathEnd         = "# ===== END SNAIL GO ENVIRONMENT ====="
+	pathBody        = `export PATH="/opt/go/current/bin:$PATH"`
+	managedFile     = ".servertool-managed"
+	versionPageSize = 10
+)
+
+type release struct {
+	Version string        `json:"version"`
+	Stable  bool          `json:"stable"`
+	Files   []releaseFile `json:"files"`
+}
+
+type releaseFile struct {
+	Filename string `json:"filename"`
+	OS       string `json:"os"`
+	Arch     string `json:"arch"`
+	Version  string `json:"version"`
+	SHA256   string `json:"sha256"`
+	Kind     string `json:"kind"`
+}
+
+var apiClient = &http.Client{Timeout: 30 * time.Second}
+var downloadClient = &http.Client{Timeout: 30 * time.Minute}
+
+func Run(view *ui.UI) error {
+	for {
+		ui.ClearScreen()
+		installed, err := installedVersions(installRoot)
+		if err != nil {
+			return err
+		}
+		active := activeVersion(currentLink)
+		fmt.Println("Go 语言环境管理：")
+		if active == "" {
+			fmt.Println("当前版本：未配置")
+		} else {
+			fmt.Println("当前版本：" + active)
+		}
+		fmt.Printf("已安装版本：%d 个\n", len(installed))
+		fmt.Println()
+		fmt.Println("1) 安装 Go")
+		fmt.Println("2) 更新到最新稳定版")
+		fmt.Println("3) 切换当前版本")
+		fmt.Println("4) 卸载 Go 版本")
+		fmt.Println("0/q) 返回")
+		fmt.Println()
+
+		choice, err := view.Ask("输入选项: ")
+		if err != nil {
+			return err
+		}
+		fmt.Println()
+
+		switch strings.ToLower(strings.TrimSpace(choice)) {
+		case "1":
+			shared.RunAction(view, "安装 Go 失败，已返回 Go 语言菜单", func() error {
+				return installSelected(view)
+			})
+		case "2":
+			shared.RunAction(view, "更新 Go 失败，已返回 Go 语言菜单", func() error {
+				return updateLatest()
+			})
+		case "3":
+			shared.RunAction(view, "切换 Go 版本失败，已返回 Go 语言菜单", func() error {
+				return switchSelected(view)
+			})
+		case "4":
+			shared.RunAction(view, "卸载 Go 版本失败，已返回 Go 语言菜单", func() error {
+				return uninstallSelected(view)
+			})
+		case "0", "q", "exit":
+			return shared.ErrReturnToMenu
+		default:
+			fmt.Println("无效选项，请重新输入")
+			view.Pause()
+		}
+	}
+}
+
+func installSelected(view *ui.UI) error {
+	releases, err := fetchReleases()
+	if err != nil {
+		return err
+	}
+	fileArch, err := supportedArch(runtime.GOARCH)
+	if err != nil {
+		return err
+	}
+	available := availableReleases(releases, fileArch)
+	if len(available) == 0 {
+		return fmt.Errorf("Go 官方 API 未返回适用于 linux/%s 的稳定版本", runtime.GOARCH)
+	}
+
+	selected, err := selectRelease(view, available, runtime.GOARCH)
+	if err != nil {
+		return err
+	}
+	return installRelease(selected)
+}
+
+func selectRelease(view *ui.UI, releases []release, arch string) (release, error) {
+	page := 0
+	pageCount := (len(releases) + versionPageSize - 1) / versionPageSize
+	for {
+		start := page * versionPageSize
+		end := start + versionPageSize
+		if end > len(releases) {
+			end = len(releases)
+		}
+
+		fmt.Printf("可安装的 Go 稳定版本（linux/%s，第 %d/%d 页，共 %d 个）：\n", arch, page+1, pageCount, len(releases))
+		for i, item := range releases[start:end] {
+			fmt.Printf("%d) %s\n", i+1, item.Version)
+		}
+		if page+1 < pageCount {
+			fmt.Println("n) 下一页")
+		}
+		if page > 0 {
+			fmt.Println("p) 上一页")
+		}
+		fmt.Println("0/q) 返回")
+		fmt.Println()
+
+		raw, err := view.Ask("选择版本: ")
+		if err != nil {
+			return release{}, err
+		}
+		switch strings.ToLower(strings.TrimSpace(raw)) {
+		case "n":
+			if page+1 < pageCount {
+				page++
+				fmt.Println()
+				continue
+			}
+		case "p":
+			if page > 0 {
+				page--
+				fmt.Println()
+				continue
+			}
+		case "0", "q", "exit":
+			return release{}, shared.ErrReturnToMenu
+		default:
+			index, parseErr := strconv.Atoi(raw)
+			if parseErr == nil && index >= 1 && start+index <= end {
+				return releases[start+index-1], nil
+			}
+		}
+		fmt.Println("无效选项，请重新输入")
+		fmt.Println()
+	}
+}
+
+func updateLatest() error {
+	releases, err := fetchReleases()
+	if err != nil {
+		return err
+	}
+	fileArch, err := supportedArch(runtime.GOARCH)
+	if err != nil {
+		return err
+	}
+	available := availableReleases(releases, fileArch)
+	if len(available) == 0 {
+		return fmt.Errorf("Go 官方 API 未返回适用于 linux/%s 的稳定版本", runtime.GOARCH)
+	}
+	latest := available[0]
+	if activeVersion(currentLink) == latest.Version {
+		log.Info("当前已是最新稳定版：", latest.Version)
+		return nil
+	}
+	return installRelease(latest)
+}
+
+func switchSelected(view *ui.UI) error {
+	versions, err := installedVersions(installRoot)
+	if err != nil {
+		return err
+	}
+	selected, err := selectInstalled(view, versions, "选择要切换的版本: ")
+	if err != nil {
+		return err
+	}
+	if err := activateVersion(installRoot, currentLink, selected); err != nil {
+		return err
+	}
+	if err := configureTargetUserPath(); err != nil {
+		return err
+	}
+	log.Info("Go 当前版本已切换为：", selected)
+	return nil
+}
+
+func uninstallSelected(view *ui.UI) error {
+	versions, err := installedVersions(installRoot)
+	if err != nil {
+		return err
+	}
+	selected, err := selectInstalled(view, versions, "选择要卸载的版本: ")
+	if err != nil {
+		return err
+	}
+	confirmed, err := view.Confirm(fmt.Sprintf("确认卸载 %s？(y/N): ", selected))
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		log.Info("已取消卸载")
+		return nil
+	}
+
+	wasActive := activeVersion(currentLink) == selected
+	if err := os.RemoveAll(filepath.Join(installRoot, selected)); err != nil {
+		return fmt.Errorf("删除 %s 失败: %w", selected, err)
+	}
+	log.Info("已卸载 Go 版本：", selected)
+	if !wasActive {
+		return nil
+	}
+
+	remaining, err := installedVersions(installRoot)
+	if err != nil {
+		return err
+	}
+	if len(remaining) > 0 {
+		if err := activateVersion(installRoot, currentLink, remaining[0]); err != nil {
+			return err
+		}
+		log.Info("已自动切换到：", remaining[0])
+		return nil
+	}
+	if err := removeCurrentLink(currentLink); err != nil {
+		return err
+	}
+	if err := cleanupTargetUserPath(); err != nil {
+		return err
+	}
+	log.Info("已清理 Go PATH 配置")
+	return nil
+}
+
+func selectInstalled(view *ui.UI, versions []string, prompt string) (string, error) {
+	if len(versions) == 0 {
+		return "", errors.New("未发现由本工具管理的 Go 版本")
+	}
+	for i, version := range versions {
+		fmt.Printf("%d) %s\n", i+1, version)
+	}
+	fmt.Println("0/q) 返回")
+	fmt.Println()
+	raw, err := view.Ask(prompt)
+	if err != nil {
+		return "", err
+	}
+	if shared.IsReturnChoice(raw) {
+		return "", shared.ErrReturnToMenu
+	}
+	index, err := strconv.Atoi(raw)
+	if err != nil || index < 1 || index > len(versions) {
+		return "", fmt.Errorf("无效的版本选项：%s", raw)
+	}
+	return versions[index-1], nil
+}
+
+func installRelease(item release) error {
+	fileArch, err := supportedArch(runtime.GOARCH)
+	if err != nil {
+		return err
+	}
+	archive, ok := archiveFor(item, fileArch)
+	if !ok {
+		return fmt.Errorf("%s 没有适用于 linux/%s 的官方归档", item.Version, runtime.GOARCH)
+	}
+	if err := os.MkdirAll(installRoot, 0755); err != nil {
+		return fmt.Errorf("创建 Go 安装目录失败: %w", err)
+	}
+	destination := filepath.Join(installRoot, item.Version)
+	if info, err := os.Stat(destination); err == nil && info.IsDir() {
+		if !isManagedVersion(destination) {
+			return fmt.Errorf("%s 已存在但不是本工具管理的有效 Go 版本目录，拒绝覆盖", destination)
+		}
+		log.Info(item.Version, " 已安装，直接切换")
+	} else if err == nil {
+		return fmt.Errorf("%s 已存在且不是目录，拒绝覆盖", destination)
+	} else if err != nil && !os.IsNotExist(err) {
+		return err
+	} else {
+		if err := downloadAndInstall(archive, destination); err != nil {
+			return err
+		}
+	}
+	if err := activateVersion(installRoot, currentLink, item.Version); err != nil {
+		return err
+	}
+	if err := configureTargetUserPath(); err != nil {
+		return err
+	}
+	log.Info("Go 安装完成，当前版本：", item.Version)
+	fmt.Println("重新登录或执行 source ~/.bashrc 后 PATH 生效")
+	return nil
+}
+
+func fetchReleases() ([]release, error) {
+	response, err := apiClient.Get(releasesURL)
+	if err != nil {
+		return nil, fmt.Errorf("请求 Go 官方版本 API 失败: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Go 官方版本 API 返回 HTTP %d", response.StatusCode)
+	}
+	var releases []release
+	if err := json.NewDecoder(io.LimitReader(response.Body, 16<<20)).Decode(&releases); err != nil {
+		return nil, fmt.Errorf("解析 Go 官方版本 API 失败: %w", err)
+	}
+	return releases, nil
+}
+
+func availableReleases(input []release, arch string) []release {
+	result := make([]release, 0, len(input))
+	seen := make(map[string]bool)
+	for _, item := range input {
+		if !item.Stable || seen[item.Version] || !validVersion(item.Version) {
+			continue
+		}
+		if _, ok := archiveFor(item, arch); !ok {
+			continue
+		}
+		seen[item.Version] = true
+		result = append(result, item)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return compareVersions(result[i].Version, result[j].Version) > 0
+	})
+	return result
+}
+
+func archiveFor(item release, arch string) (releaseFile, bool) {
+	for _, file := range item.Files {
+		if file.OS == "linux" && file.Arch == arch && file.Kind == "archive" && file.SHA256 != "" {
+			return file, true
+		}
+	}
+	return releaseFile{}, false
+}
+
+func supportedArch(arch string) (string, error) {
+	switch arch {
+	case "amd64", "arm64":
+		return arch, nil
+	default:
+		return "", fmt.Errorf("暂不支持 Linux %s 架构，仅支持 amd64 和 arm64", arch)
+	}
+}
+
+func downloadAndInstall(file releaseFile, destination string) error {
+	log.Info("下载 ", file.Filename, "...")
+	archivePath, err := downloadArchive(downloadBase+file.Filename, file.SHA256)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(archivePath)
+
+	staging, err := os.MkdirTemp(installRoot, ".install-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(staging)
+	if err := extractGoArchive(archivePath, staging); err != nil {
+		return fmt.Errorf("解压 Go 归档失败: %w", err)
+	}
+	extracted := filepath.Join(staging, "go")
+	if info, err := os.Stat(filepath.Join(extracted, "bin", "go")); err != nil || info.IsDir() {
+		return errors.New("Go 归档缺少 go/bin/go，已取消安装")
+	}
+	if err := os.WriteFile(filepath.Join(extracted, managedFile), []byte("managed by ServerTool\n"), 0644); err != nil {
+		return fmt.Errorf("写入 Go 管理标记失败: %w", err)
+	}
+	if err := os.Rename(extracted, destination); err != nil {
+		return fmt.Errorf("写入 Go 版本目录失败: %w", err)
+	}
+	return nil
+}
+
+func downloadArchive(url, expectedSHA string) (string, error) {
+	response, err := downloadClient.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("下载 Go 归档失败: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("下载 Go 归档返回 HTTP %d", response.StatusCode)
+	}
+	file, err := os.CreateTemp(installRoot, ".download-*.tar.gz")
+	if err != nil {
+		return "", err
+	}
+	path := file.Name()
+	keep := false
+	defer func() {
+		_ = file.Close()
+		if !keep {
+			_ = os.Remove(path)
+		}
+	}()
+	hash := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(file, hash), response.Body); err != nil {
+		return "", fmt.Errorf("保存 Go 归档失败: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return "", err
+	}
+	actual := hex.EncodeToString(hash.Sum(nil))
+	if !strings.EqualFold(actual, expectedSHA) {
+		return "", fmt.Errorf("Go 归档 SHA-256 校验失败：期望 %s，实际 %s", expectedSHA, actual)
+	}
+	keep = true
+	return path, nil
+}
+
+func extractGoArchive(archivePath, destination string) error {
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	gz, err := gzip.NewReader(file)
+	if err != nil {
+		return err
+	}
+	defer gz.Close()
+	reader := tar.NewReader(gz)
+	cleanRoot := filepath.Clean(destination) + string(os.PathSeparator)
+	for {
+		header, err := reader.Next()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(destination, filepath.Clean(header.Name))
+		if !strings.HasPrefix(target, cleanRoot) {
+			return fmt.Errorf("归档包含不安全路径：%s", header.Name)
+		}
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, os.FileMode(header.Mode)&0755); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+			output, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode)&0755)
+			if err != nil {
+				return err
+			}
+			_, copyErr := io.Copy(output, reader)
+			closeErr := output.Close()
+			if copyErr != nil {
+				return copyErr
+			}
+			if closeErr != nil {
+				return closeErr
+			}
+		case tar.TypeSymlink:
+			linkTarget := filepath.Clean(filepath.Join(filepath.Dir(target), header.Linkname))
+			if !strings.HasPrefix(linkTarget, cleanRoot) {
+				return fmt.Errorf("归档包含不安全软链接：%s", header.Name)
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+			if err := os.Symlink(header.Linkname, target); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func installedVersions(root string) ([]string, error) {
+	entries, err := os.ReadDir(root)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("读取 Go 安装目录失败: %w", err)
+	}
+	versions := make([]string, 0)
+	for _, entry := range entries {
+		if entry.IsDir() && validVersion(entry.Name()) && isManagedVersion(filepath.Join(root, entry.Name())) {
+			versions = append(versions, entry.Name())
+		}
+	}
+	sort.Slice(versions, func(i, j int) bool { return compareVersions(versions[i], versions[j]) > 0 })
+	return versions, nil
+}
+
+func validVersion(version string) bool {
+	parts, ok := versionParts(version)
+	return ok && len(parts) >= 2
+}
+
+func versionParts(version string) ([]int, bool) {
+	if !strings.HasPrefix(version, "go") {
+		return nil, false
+	}
+	raw := strings.TrimPrefix(version, "go")
+	pieces := strings.Split(raw, ".")
+	if len(pieces) < 2 || len(pieces) > 3 {
+		return nil, false
+	}
+	result := make([]int, len(pieces))
+	for i, piece := range pieces {
+		if piece == "" || (len(piece) > 1 && piece[0] == '0') {
+			return nil, false
+		}
+		value, err := strconv.Atoi(piece)
+		if err != nil || value < 0 {
+			return nil, false
+		}
+		result[i] = value
+	}
+	return result, true
+}
+
+func compareVersions(left, right string) int {
+	a, _ := versionParts(left)
+	b, _ := versionParts(right)
+	for len(a) < 3 {
+		a = append(a, 0)
+	}
+	for len(b) < 3 {
+		b = append(b, 0)
+	}
+	for i := 0; i < 3; i++ {
+		if a[i] > b[i] {
+			return 1
+		}
+		if a[i] < b[i] {
+			return -1
+		}
+	}
+	return 0
+}
+
+func activeVersion(link string) string {
+	target, err := os.Readlink(link)
+	if err != nil {
+		return ""
+	}
+	version := filepath.Base(filepath.Clean(target))
+	if !validVersion(version) || !isManagedVersion(link) {
+		return ""
+	}
+	return version
+}
+
+func activateVersion(root, link, version string) error {
+	if !validVersion(version) || !isManagedVersion(filepath.Join(root, version)) {
+		return fmt.Errorf("Go 版本目录无效：%s", version)
+	}
+	if info, err := os.Lstat(link); err == nil && info.Mode()&os.ModeSymlink == 0 {
+		return fmt.Errorf("%s 已存在且不是软链接，拒绝覆盖", link)
+	} else if err == nil && !managedLinkPath(root, link) {
+		return fmt.Errorf("%s 指向非托管路径，拒绝覆盖", link)
+	} else if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	temporary := filepath.Join(filepath.Dir(link), ".current.tmp")
+	_ = os.Remove(temporary)
+	if err := os.Symlink(filepath.Join(root, version), temporary); err != nil {
+		return err
+	}
+	if err := os.Rename(temporary, link); err != nil {
+		_ = os.Remove(temporary)
+		return err
+	}
+	return nil
+}
+
+func managedLinkPath(root, link string) bool {
+	target, err := os.Readlink(link)
+	if err != nil {
+		return false
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(filepath.Dir(link), target)
+	}
+	target = filepath.Clean(target)
+	return filepath.Dir(target) == filepath.Clean(root) && validVersion(filepath.Base(target))
+}
+
+func isManagedVersion(path string) bool {
+	return system.FileExists(filepath.Join(path, "bin", "go")) &&
+		system.FileExists(filepath.Join(path, managedFile))
+}
+
+func removeCurrentLink(link string) error {
+	info, err := os.Lstat(link)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		return fmt.Errorf("%s 不是本工具可安全删除的软链接", link)
+	}
+	return os.Remove(link)
+}
+
+func configureTargetUserPath() error {
+	account, err := system.CurrentTargetUser()
+	if err != nil {
+		return err
+	}
+	bashrc := filepath.Join(account.Home, ".bashrc")
+	if err := shared.EnsureFile(bashrc); err != nil {
+		return err
+	}
+	if err := writeManagedPath(bashrc); err != nil {
+		return err
+	}
+	return system.ChownPath(bashrc, account, false)
+}
+
+func writeManagedPath(bashrc string) error {
+	data, err := os.ReadFile(bashrc)
+	if err != nil {
+		return err
+	}
+	content := shared.RemoveManagedBlock(string(data), pathBegin, pathEnd)
+	block := shared.FormatManagedBlock(pathBegin, pathBody, pathEnd)
+	if err := os.WriteFile(bashrc, []byte(shared.AppendBlock(content, block)), 0644); err != nil {
+		return err
+	}
+	return nil
+}
+
+func cleanupTargetUserPath() error {
+	account, err := system.CurrentTargetUser()
+	if err != nil {
+		return err
+	}
+	bashrc := filepath.Join(account.Home, ".bashrc")
+	changed, err := cleanupManagedPath(bashrc)
+	if err != nil || !changed {
+		return err
+	}
+	return system.ChownPath(bashrc, account, false)
+}
+
+func cleanupManagedPath(bashrc string) (bool, error) {
+	return shared.CleanupManagedBlocks(bashrc, shared.BlockMarker{Begin: pathBegin, End: pathEnd})
+}
