@@ -174,6 +174,93 @@ func EnsureFileWithOptions(path string, options AtomicWriteOptions) error {
 	return AtomicWriteFile(path, nil, options)
 }
 
+// RemoveRegularFile removes a regular file without following symlinks and
+// syncs its parent directory. A missing file is treated as already removed.
+func RemoveRegularFile(path string) error {
+	_, exists, err := validateAtomicTarget(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("删除文件失败 %s: %w", path, err)
+	}
+	dir := filepath.Dir(filepath.Clean(path))
+	directory, err := os.Open(dir)
+	if err != nil {
+		return fmt.Errorf("打开父目录以同步失败 %s: %w", dir, err)
+	}
+	defer directory.Close()
+	if err := syncAtomicDir(directory); err != nil {
+		return fmt.Errorf("同步父目录失败 %s: %w", dir, err)
+	}
+	return nil
+}
+
+// RemovePathTree recursively removes a regular file or directory tree after
+// verifying that neither the target nor any existing parent is a symlink.
+func RemovePathTree(path string) error {
+	exists, err := validateRemovalTarget(path)
+	if err != nil || !exists {
+		return err
+	}
+	path = filepath.Clean(path)
+	if err := os.RemoveAll(path); err != nil {
+		return fmt.Errorf("递归删除路径失败 %s: %w", path, err)
+	}
+	dir := filepath.Dir(path)
+	directory, err := os.Open(dir)
+	if err != nil {
+		return fmt.Errorf("打开父目录以同步失败 %s: %w", dir, err)
+	}
+	defer directory.Close()
+	if err := syncAtomicDir(directory); err != nil {
+		return fmt.Errorf("同步父目录失败 %s: %w", dir, err)
+	}
+	return nil
+}
+
+func validateRemovalTarget(path string) (bool, error) {
+	abs, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return false, fmt.Errorf("解析删除路径失败 %s: %w", path, err)
+	}
+	current := filepath.VolumeName(abs) + string(os.PathSeparator)
+	parts := strings.Split(strings.TrimPrefix(abs, current), string(os.PathSeparator))
+	for index, part := range parts {
+		if part == "" {
+			continue
+		}
+		current = filepath.Join(current, part)
+		info, statErr := os.Lstat(current)
+		isTarget := index == len(parts)-1
+		if os.IsNotExist(statErr) {
+			return false, nil
+		}
+		if statErr != nil {
+			return false, fmt.Errorf("检查删除路径失败 %s: %w", current, statErr)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return false, fmt.Errorf("拒绝通过软链接删除路径: %s", current)
+		}
+		if isTarget {
+			if !info.IsDir() && !info.Mode().IsRegular() {
+				return false, fmt.Errorf("拒绝删除非普通文件或目录: %s", path)
+			}
+			return true, nil
+		}
+		if !info.IsDir() {
+			return false, fmt.Errorf("删除路径父级不是目录: %s", current)
+		}
+	}
+	return false, fmt.Errorf("无效的删除路径: %s", path)
+}
+
 func RemoveManagedBlock(content, begin, end string) string {
 	re := regexp.MustCompile(`(?s)\n?` + regexp.QuoteMeta(begin) + `.*?` + regexp.QuoteMeta(end) + `\n?`)
 	return re.ReplaceAllString(content, "")

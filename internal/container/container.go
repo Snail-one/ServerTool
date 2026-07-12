@@ -26,6 +26,7 @@ func Run(view *ui.UI) error {
 		fmt.Println("2) Compose 项目")
 		fmt.Println("3) Docker daemon 配置")
 		fmt.Println("4) 清理容器资源")
+		fmt.Println("5) 卸载 Docker（可选保留或彻底删除数据）")
 		fmt.Println("0/q) 返回")
 		fmt.Println()
 
@@ -52,6 +53,15 @@ func Run(view *ui.UI) error {
 			shared.RunAction(view, "容器资源清理失败，已返回容器管理", func() error {
 				return containercleanup.Run(view)
 			})
+		case "5":
+			uninstalled, err := runtime.UninstallDocker(view)
+			if err != nil {
+				return err
+			}
+			if uninstalled {
+				return shared.ErrReturnToMenu
+			}
+			view.Pause()
 		case "0", "q", "exit":
 			return shared.ErrReturnToMenu
 		default:
