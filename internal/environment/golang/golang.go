@@ -118,18 +118,22 @@ func installSelected(view *ui.UI) error {
 	if err != nil {
 		return err
 	}
-	releases, err := fetchReleases()
-	if err != nil {
-		return err
-	}
 	fileArch, err := supportedArch(runtime.GOARCH)
 	if err != nil {
 		return err
 	}
+	log.Info("检测运行平台：linux/", fileArch)
+	releases, err := fetchReleases()
+	if err != nil {
+		return err
+	}
+	log.Info("筛选适用于 linux/", fileArch, " 的稳定归档...")
 	available := availableReleases(releases, fileArch)
 	if len(available) == 0 {
 		return fmt.Errorf("Go 官方 API 未返回适用于 linux/%s 的稳定版本", runtime.GOARCH)
 	}
+	log.Info("筛选完成，可安装稳定版本：", len(available), " 个")
+	fmt.Println()
 
 	selected, err := selectRelease(view, available, runtime.GOARCH)
 	if err != nil {
@@ -199,19 +203,22 @@ func updateLatest(view *ui.UI) error {
 	if err != nil {
 		return err
 	}
-	releases, err := fetchReleases()
-	if err != nil {
-		return err
-	}
 	fileArch, err := supportedArch(runtime.GOARCH)
 	if err != nil {
 		return err
 	}
+	log.Info("检测运行平台：linux/", fileArch)
+	releases, err := fetchReleases()
+	if err != nil {
+		return err
+	}
+	log.Info("筛选适用于 linux/", fileArch, " 的稳定归档...")
 	available := availableReleases(releases, fileArch)
 	if len(available) == 0 {
 		return fmt.Errorf("Go 官方 API 未返回适用于 linux/%s 的稳定版本", runtime.GOARCH)
 	}
 	latest := available[0]
+	log.Info("官方最新稳定版：", latest.Version)
 	if activeVersion(currentLink) == latest.Version {
 		log.Info("当前已是最新稳定版：", latest.Version)
 		return finishOfficialInstallRemoval(removeOfficial)
@@ -492,6 +499,7 @@ func selectInstalled(view *ui.UI, versions []string, prompt string) (string, err
 }
 
 func installRelease(item release) error {
+	log.Info("准备安装 Go 版本：", item.Version)
 	fileArch, err := supportedArch(runtime.GOARCH)
 	if err != nil {
 		return err
@@ -518,18 +526,22 @@ func installRelease(item release) error {
 			return err
 		}
 	}
+	log.Info("切换当前版本软链接：", currentLink, " -> ", destination)
 	if err := activateVersion(installRoot, currentLink, item.Version); err != nil {
 		return err
 	}
+	log.Info("更新目标用户 ~/.bashrc 中的 Go PATH...")
 	if err := configureTargetUserPath(); err != nil {
 		return err
 	}
+	log.Info("Go PATH 配置完成")
 	log.Info("Go 安装完成，当前版本：", item.Version)
 	fmt.Println("重新登录或执行 source ~/.bashrc 后 PATH 生效")
 	return nil
 }
 
 func fetchReleases() ([]release, error) {
+	log.Info("请求 Go 官方版本 API：", releasesURL)
 	response, err := apiClient.Get(releasesURL)
 	if err != nil {
 		return nil, fmt.Errorf("请求 Go 官方版本 API 失败: %w", err)
@@ -538,10 +550,13 @@ func fetchReleases() ([]release, error) {
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("Go 官方版本 API 返回 HTTP %d", response.StatusCode)
 	}
+	log.Info("Go 官方版本 API 响应成功：", response.Status)
+	log.Info("解析官方版本数据...")
 	var releases []release
 	if err := json.NewDecoder(io.LimitReader(response.Body, 16<<20)).Decode(&releases); err != nil {
 		return nil, fmt.Errorf("解析 Go 官方版本 API 失败: %w", err)
 	}
+	log.Info("官方版本数据解析完成，发行记录：", len(releases), " 条")
 	return releases, nil
 }
 
@@ -583,7 +598,7 @@ func supportedArch(arch string) (string, error) {
 }
 
 func downloadAndInstall(file releaseFile, destination string) error {
-	log.Info("下载 ", file.Filename, "...")
+	log.Info("选定官方归档：", file.Filename)
 	archivePath, err := downloadArchive(downloadBase+file.Filename, file.SHA256)
 	if err != nil {
 		return err
@@ -595,6 +610,7 @@ func downloadAndInstall(file releaseFile, destination string) error {
 		return err
 	}
 	defer os.RemoveAll(staging)
+	log.Info("解压已校验归档到临时目录...")
 	if err := extractGoArchive(archivePath, staging); err != nil {
 		return fmt.Errorf("解压 Go 归档失败: %w", err)
 	}
@@ -605,13 +621,16 @@ func downloadAndInstall(file releaseFile, destination string) error {
 	if err := os.WriteFile(filepath.Join(extracted, managedFile), []byte("managed by ServerTool\n"), 0644); err != nil {
 		return fmt.Errorf("写入 Go 管理标记失败: %w", err)
 	}
+	log.Info("归档结构检查完成，写入版本目录：", destination)
 	if err := os.Rename(extracted, destination); err != nil {
 		return fmt.Errorf("写入 Go 版本目录失败: %w", err)
 	}
+	log.Info("版本目录写入完成")
 	return nil
 }
 
 func downloadArchive(url, expectedSHA string) (string, error) {
+	log.Info("访问官方下载地址：", url)
 	response, err := downloadClient.Get(url)
 	if err != nil {
 		return "", fmt.Errorf("下载 Go 归档失败: %w", err)
@@ -620,6 +639,7 @@ func downloadArchive(url, expectedSHA string) (string, error) {
 	if response.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("下载 Go 归档返回 HTTP %d", response.StatusCode)
 	}
+	log.Info("官方下载响应成功：", response.Status, "，开始接收文件...")
 	file, err := os.CreateTemp(installRoot, ".download-*.tar.gz")
 	if err != nil {
 		return "", err
@@ -633,16 +653,20 @@ func downloadArchive(url, expectedSHA string) (string, error) {
 		}
 	}()
 	hash := sha256.New()
-	if _, err := io.Copy(io.MultiWriter(file, hash), response.Body); err != nil {
+	written, err := io.Copy(io.MultiWriter(file, hash), response.Body)
+	if err != nil {
 		return "", fmt.Errorf("保存 Go 归档失败: %w", err)
 	}
+	log.Info("下载完成，接收字节数：", written)
 	if err := file.Close(); err != nil {
 		return "", err
 	}
+	log.Info("计算并核对官方 SHA-256...")
 	actual := hex.EncodeToString(hash.Sum(nil))
 	if !strings.EqualFold(actual, expectedSHA) {
 		return "", fmt.Errorf("Go 归档 SHA-256 校验失败：期望 %s，实际 %s", expectedSHA, actual)
 	}
+	log.Info("SHA-256 校验通过：", actual)
 	keep = true
 	return path, nil
 }
