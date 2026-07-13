@@ -36,6 +36,14 @@ func TestRuntimeForCommands(t *testing.T) {
 	}
 }
 
+func TestRuntimesForCommands(t *testing.T) {
+	got := runtimesForCommands(true, true)
+	want := []Runtime{{Name: "docker", Display: "Docker"}, {Name: "podman", Display: "Podman"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("runtimes=%v want=%v", got, want)
+	}
+}
+
 func TestEnsureContainerRuntimeAbsent(t *testing.T) {
 	tests := []struct {
 		name       string
