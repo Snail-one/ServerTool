@@ -20,13 +20,20 @@ func Run(view *ui.UI) error {
 	}
 
 	for {
+		installedRuntimes := runtime.DetectAll()
+		uninstallName := "容器运行时"
+		if len(installedRuntimes) == 1 {
+			uninstallName = installedRuntimes[0].Display
+		} else if len(installedRuntimes) > 1 {
+			uninstallName = "Docker 或 Podman"
+		}
 		ui.ClearScreen()
 		fmt.Println("请选择容器管理操作：")
 		fmt.Println("1) 容器列表与操作")
 		fmt.Println("2) Compose 项目")
 		fmt.Println("3) Docker daemon 配置")
 		fmt.Println("4) 清理容器资源")
-		fmt.Println("5) 卸载 Docker（可选保留或彻底删除数据）")
+		fmt.Printf("5) 卸载 %s（可选保留或彻底删除数据）\n", uninstallName)
 		fmt.Println("0/q) 返回")
 		fmt.Println()
 
@@ -54,7 +61,7 @@ func Run(view *ui.UI) error {
 				return containercleanup.Run(view)
 			})
 		case "5":
-			uninstalled, err := runtime.UninstallDocker(view)
+			uninstalled, err := runtime.Uninstall(view)
 			if err != nil {
 				return err
 			}

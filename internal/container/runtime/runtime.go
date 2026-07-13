@@ -65,6 +65,21 @@ func Detect() (Runtime, bool) {
 	return runtimeForCommands(system.CommandExists("docker"), system.CommandExists("podman"))
 }
 
+func DetectAll() []Runtime {
+	return runtimesForCommands(system.CommandExists("docker"), system.CommandExists("podman"))
+}
+
+func runtimesForCommands(hasDocker, hasPodman bool) []Runtime {
+	var runtimes []Runtime
+	if hasDocker {
+		runtimes = append(runtimes, Runtime{Name: "docker", Display: "Docker"})
+	}
+	if hasPodman {
+		runtimes = append(runtimes, Runtime{Name: "podman", Display: "Podman"})
+	}
+	return runtimes
+}
+
 func runtimeForCommands(hasDocker, hasPodman bool) (Runtime, bool) {
 	switch {
 	case hasDocker:
