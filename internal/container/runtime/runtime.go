@@ -77,6 +77,9 @@ func runtimeForCommands(hasDocker, hasPodman bool) (Runtime, bool) {
 }
 
 func installDockerRuntime(view *ui.UI) error {
+	if err := ensureContainerRuntimeAbsent(system.CommandExists); err != nil {
+		return err
+	}
 	if !system.IsRoot() {
 		return fmt.Errorf("安装 Docker 需要 root 权限，请使用 sudo 运行本工具")
 	}
@@ -84,6 +87,9 @@ func installDockerRuntime(view *ui.UI) error {
 }
 
 func installDockerScriptRuntime(view *ui.UI) error {
+	if err := ensureContainerRuntimeAbsent(system.CommandExists); err != nil {
+		return err
+	}
 	if !system.IsRoot() {
 		return fmt.Errorf("使用官方脚本安装 Docker 需要 root 权限，请使用 sudo 运行本工具")
 	}
@@ -91,6 +97,9 @@ func installDockerScriptRuntime(view *ui.UI) error {
 }
 
 func installPodmanRuntime() error {
+	if err := ensureContainerRuntimeAbsent(system.CommandExists); err != nil {
+		return err
+	}
 	if !system.IsRoot() {
 		return fmt.Errorf("安装 Podman 需要 root 权限，请使用 sudo 运行本工具")
 	}
@@ -110,4 +119,18 @@ func installPodmanRuntime() error {
 	default:
 		return fmt.Errorf("未找到 apt 或 apt-get，无法自动安装 Podman")
 	}
+}
+
+func ensureContainerRuntimeAbsent(commandExists func(string) bool) error {
+	var installed []string
+	if commandExists("docker") {
+		installed = append(installed, "Docker")
+	}
+	if commandExists("podman") {
+		installed = append(installed, "Podman")
+	}
+	if len(installed) > 0 {
+		return fmt.Errorf("安装已取消：检测到已安装的容器运行时：%s", strings.Join(installed, "、"))
+	}
+	return nil
 }
