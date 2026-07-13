@@ -47,3 +47,16 @@ func ClearScreen() {
 	// \033[2J 清屏, \033[H 光标移到左上角, \033[3J 尝试清除回滚缓冲 (部分终端支持)
 	fmt.Print("\033[2J\033[H\033[3J")
 }
+
+// MenuTitle prints a consistent breadcrumb for nested terminal menus.
+func MenuTitle(parts ...string) {
+	clean := make([]string, 0, len(parts)+1)
+	clean = append(clean, "ServerTool")
+	for _, part := range parts {
+		if part = strings.TrimSpace(part); part != "" {
+			clean = append(clean, part)
+		}
+	}
+	fmt.Println(strings.Join(clean, " > "))
+	fmt.Println()
+}

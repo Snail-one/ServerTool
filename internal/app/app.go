@@ -35,6 +35,11 @@ func (a *App) Run() error {
 		}
 		fmt.Println()
 
+		if shared.IsReturnChoice(choice) {
+			fmt.Println("已退出")
+			return nil
+		}
+
 		switch strings.ToLower(choice) {
 		case "1":
 			shared.RunAction(a.ui, "容器管理失败，已返回菜单", func() error {
@@ -45,20 +50,17 @@ func (a *App) Run() error {
 				return ssh.Run(a.ui)
 			})
 		case "3":
-			shared.RunAction(a.ui, "常用配置失败，已返回菜单", func() error {
+			shared.RunAction(a.ui, "系统与用户配置失败，已返回菜单", func() error {
 				return common.Run(a.ui)
 			})
 		case "4":
-			shared.RunAction(a.ui, "环境配置失败，已返回菜单", func() error {
+			shared.RunAction(a.ui, "开发环境管理失败，已返回菜单", func() error {
 				return environment.Run(a.ui)
 			})
 		case "5":
-			shared.RunAction(a.ui, "清理配置失败，已返回菜单", func() error {
+			shared.RunAction(a.ui, "清理本工具配置失败，已返回菜单", func() error {
 				return cleanup.Run(a.ui)
 			})
-		case "0", "q", "exit":
-			fmt.Println("已退出")
-			return nil
 		default:
 			fmt.Println("无效选项，请重新输入")
 			a.ui.Pause()
@@ -69,19 +71,26 @@ func (a *App) Run() error {
 func currentStatus() status.Status {
 	account, err := system.CurrentTargetUser()
 	if err != nil {
-		return status.Status{}
+		return status.DetectStatus(nil)
 	}
 	return status.DetectStatus(account)
 }
 
 func showMenu(status status.Status) {
-	fmt.Println("请选择操作：")
-	fmt.Println("1) 容器管理")
+	ui.MenuTitle()
+	fmt.Println("1) 容器管理 [" + defaultStatus(status.Runtime, "未安装") + "]")
 	fmt.Println("2) SSH 管理" + statusText(status.SSH))
-	fmt.Println("3) 常用配置")
-	fmt.Println("4) 环境配置")
-	fmt.Println("5) 清理配置")
+	fmt.Printf("3) 系统与用户配置 [已配置 %d/%d]\n", status.Configured, status.ConfigTotal)
+	fmt.Println("4) 开发环境管理 [Go " + defaultStatus(status.GoVersion, "未配置") + "]")
+	fmt.Println("5) 清理本工具配置")
 	fmt.Println("0/q) 退出")
+}
+
+func defaultStatus(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
 }
 
 func statusText(configured bool) string {

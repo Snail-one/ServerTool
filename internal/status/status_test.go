@@ -8,6 +8,7 @@ import (
 	commonbash "snail_tool/internal/common/bash"
 	commonproxy "snail_tool/internal/common/proxy"
 	commonvim "snail_tool/internal/common/vim"
+	containerruntime "snail_tool/internal/container/runtime"
 	"snail_tool/internal/system"
 )
 
@@ -38,6 +39,27 @@ func TestDetectStatusForUserFiles(t *testing.T) {
 	}
 	if !status.Proxy {
 		t.Fatal("expected Proxy status to be configured")
+	}
+}
+
+func TestRuntimeSummary(t *testing.T) {
+	tests := []struct {
+		name string
+		in   []containerruntime.Runtime
+		want string
+	}{
+		{name: "none", want: "未安装"},
+		{name: "docker", in: []containerruntime.Runtime{{Name: "docker", Display: "Docker"}}, want: "Docker"},
+		{name: "docker abnormal", in: []containerruntime.Runtime{{Name: "docker", Display: "Docker（服务异常）"}}, want: "Docker（服务异常）"},
+		{name: "podman", in: []containerruntime.Runtime{{Name: "podman", Display: "Podman"}}, want: "Podman"},
+		{name: "both", in: []containerruntime.Runtime{{Name: "docker", Display: "Docker"}, {Name: "podman", Display: "Podman"}}, want: "Docker、Podman；容器操作优先 Docker"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := RuntimeSummary(tt.in); got != tt.want {
+				t.Fatalf("summary = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

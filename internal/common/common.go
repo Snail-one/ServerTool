@@ -17,11 +17,11 @@ func Run(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
 		status := currentStatus()
-		fmt.Println("请选择配置操作：")
-		fmt.Println("1) Vim ~/.vimrc" + statusText(status.vim))
-		fmt.Println("2) Bash 环境" + statusText(status.bash))
-		fmt.Println("3) HTTP/HTTPS 代理设置" + proxyStatusText(status.proxy))
-		fmt.Println("4) UPS 配置" + statusText(status.ups))
+		ui.MenuTitle("系统与用户配置")
+		fmt.Println("1) Vim 配置（~/.vimrc）" + statusText(status.vim))
+		fmt.Println("2) Bash 配置" + statusText(status.bash))
+		fmt.Println("3) HTTP/HTTPS 代理" + proxyStatusText(status.proxy))
+		fmt.Println("4) UPS（NUT）" + statusText(status.ups))
 		fmt.Println("0/q) 返回")
 		fmt.Println()
 
@@ -31,25 +31,26 @@ func Run(view *ui.UI) error {
 		}
 		fmt.Println()
 
+		if shared.IsReturnChoice(choice) {
+			return shared.ErrReturnToMenu
+		}
 		switch strings.ToLower(choice) {
 		case "1":
-			shared.RunAction(view, "Vim 配置失败，已返回常用配置", func() error {
+			shared.RunAction(view, "Vim 配置失败，已返回系统与用户配置", func() error {
 				return commonvim.Run(view)
 			})
 		case "2":
-			shared.RunAction(view, "Bash 环境配置失败，已返回常用配置", func() error {
+			shared.RunAction(view, "Bash 配置失败，已返回系统与用户配置", func() error {
 				return commonbash.Run()
 			})
 		case "3":
-			shared.RunAction(view, "代理配置失败，已返回常用配置", func() error {
+			shared.RunAction(view, "代理配置失败，已返回系统与用户配置", func() error {
 				return commonproxy.Run(view)
 			})
 		case "4":
-			shared.RunAction(view, "UPS 配置失败，已返回常用配置", func() error {
+			shared.RunAction(view, "UPS 配置失败，已返回系统与用户配置", func() error {
 				return commonups.Run(view)
 			})
-		case "0", "q", "exit":
-			return shared.ErrReturnToMenu
 		default:
 			fmt.Println("无效选项，请重新输入")
 			view.Pause()

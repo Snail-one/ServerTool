@@ -28,13 +28,14 @@ func Ensure(view *ui.UI) error {
 		}
 
 		ui.ClearScreen()
+		ui.MenuTitle("容器管理", "安装容器运行时")
 		fmt.Println("未检测到 Docker 或 Podman。")
 		fmt.Println()
 		fmt.Println("请选择安装方式：")
 		fmt.Println("1) 安装 Docker（使用 Docker 官方签名 stable 仓库）")
 		fmt.Println("2) 安装 Docker（使用 Docker 官方安装脚本 get.docker.com）")
 		fmt.Println("3) 安装 Podman（使用 apt 安装）")
-		fmt.Println("4) 返回")
+		fmt.Println("0/q) 返回")
 		fmt.Println()
 
 		choice, err := view.Ask("输入选项: ")
@@ -43,6 +44,9 @@ func Ensure(view *ui.UI) error {
 		}
 		fmt.Println()
 
+		if shared.IsReturnChoice(choice) {
+			return shared.ErrReturnToMenu
+		}
 		switch strings.ToLower(strings.TrimSpace(choice)) {
 		case "1":
 			if err := installDockerRuntime(view); err != nil {
@@ -56,13 +60,26 @@ func Ensure(view *ui.UI) error {
 			if err := installPodmanRuntime(); err != nil {
 				return err
 			}
-		case "4", "0", "q", "exit":
-			return shared.ErrReturnToMenu
 		default:
 			fmt.Println("无效选项，请重新输入")
 			continue
 		}
 	}
+}
+
+func DisplaySummary(runtimes []Runtime) string {
+	if len(runtimes) == 0 {
+		return "未安装"
+	}
+	displays := make([]string, 0, len(runtimes))
+	for _, item := range runtimes {
+		displays = append(displays, item.Display)
+	}
+	result := strings.Join(displays, "、")
+	if len(runtimes) > 1 && runtimes[0].Name == "docker" {
+		result += "（容器操作优先 Docker）"
+	}
+	return result
 }
 
 func Detect() (Runtime, bool) {

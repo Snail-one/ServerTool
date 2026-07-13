@@ -55,6 +55,11 @@ type releaseFile struct {
 var apiClient = &http.Client{Timeout: 30 * time.Second}
 var downloadClient = &http.Client{Timeout: 30 * time.Minute}
 
+// CurrentVersion returns the Go version selected by ServerTool.
+func CurrentVersion() string {
+	return activeVersion(currentLink)
+}
+
 func Run(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
@@ -63,7 +68,7 @@ func Run(view *ui.UI) error {
 			return err
 		}
 		active := activeVersion(currentLink)
-		fmt.Println("Go 语言环境管理：")
+		ui.MenuTitle("开发环境管理", "Go 语言")
 		if active == "" {
 			fmt.Println("当前版本：未配置")
 		} else {
@@ -89,6 +94,9 @@ func Run(view *ui.UI) error {
 		}
 		fmt.Println()
 
+		if shared.IsReturnChoice(choice) {
+			return shared.ErrReturnToMenu
+		}
 		switch strings.ToLower(strings.TrimSpace(choice)) {
 		case "1":
 			shared.RunAction(view, "安装 Go 失败，已返回 Go 语言菜单", func() error {
@@ -114,8 +122,6 @@ func Run(view *ui.UI) error {
 			shared.RunAction(view, "清理 Go 安装残留失败，已返回 Go 语言菜单", func() error {
 				return cleanupInstallArtifacts(view)
 			})
-		case "0", "q", "exit":
-			return shared.ErrReturnToMenu
 		default:
 			fmt.Println("无效选项，请重新输入")
 			view.Pause()
@@ -289,6 +295,9 @@ func selectRelease(view *ui.UI, releases []release, arch string) (release, error
 		if err != nil {
 			return release{}, err
 		}
+		if shared.IsReturnChoice(raw) {
+			return release{}, shared.ErrReturnToMenu
+		}
 		switch strings.ToLower(strings.TrimSpace(raw)) {
 		case "n":
 			if page+1 < pageCount {
@@ -302,8 +311,6 @@ func selectRelease(view *ui.UI, releases []release, arch string) (release, error
 				fmt.Println()
 				continue
 			}
-		case "0", "q", "exit":
-			return release{}, shared.ErrReturnToMenu
 		default:
 			index, parseErr := strconv.Atoi(raw)
 			if parseErr == nil && index >= 1 && start+index <= end {
@@ -515,32 +522,40 @@ func uninstallSelected(view *ui.UI) error {
 		return errors.New("未发现可卸载的 Go 安装")
 	}
 
-	fmt.Println("请选择要卸载的 Go：")
 	offset := 0
 	if official {
-		fmt.Println("1) 官方位置 Go（/usr/local/go 及 ~/.bashrc 环境变量）")
 		offset = 1
 	}
-	for i, version := range versions {
-		fmt.Printf("%d) %s\n", i+1+offset, version)
+	selected := ""
+	for {
+		fmt.Println("请选择要卸载的 Go：")
+		if official {
+			fmt.Println("1) 官方位置 Go（/usr/local/go 及 ~/.bashrc 环境变量）")
+		}
+		for i, version := range versions {
+			fmt.Printf("%d) %s\n", i+1+offset, version)
+		}
+		fmt.Println("0/q) 返回")
+		fmt.Println()
+		raw, err := view.Ask("选择卸载项: ")
+		if err != nil {
+			return err
+		}
+		if shared.IsReturnChoice(raw) {
+			return shared.ErrReturnToMenu
+		}
+		index, err := strconv.Atoi(raw)
+		if err != nil || index < 1 || index > len(versions)+offset {
+			fmt.Println("无效选项，请重新输入")
+			fmt.Println()
+			continue
+		}
+		if official && index == 1 {
+			return uninstallOfficialGo(view)
+		}
+		selected = versions[index-1-offset]
+		break
 	}
-	fmt.Println("0/q) 返回")
-	fmt.Println()
-	raw, err := view.Ask("选择卸载项: ")
-	if err != nil {
-		return err
-	}
-	if shared.IsReturnChoice(raw) {
-		return shared.ErrReturnToMenu
-	}
-	index, err := strconv.Atoi(raw)
-	if err != nil || index < 1 || index > len(versions)+offset {
-		return fmt.Errorf("无效的卸载选项：%s", raw)
-	}
-	if official && index == 1 {
-		return uninstallOfficialGo(view)
-	}
-	selected := versions[index-1-offset]
 	confirmed, err := view.Confirm(fmt.Sprintf("确认卸载 %s？(y/N): ", selected))
 	if err != nil {
 		return err
@@ -596,23 +611,27 @@ func selectInstalled(view *ui.UI, versions []string, prompt string) (string, err
 	if len(versions) == 0 {
 		return "", errors.New("未发现由本工具管理的 Go 版本")
 	}
-	for i, version := range versions {
-		fmt.Printf("%d) %s\n", i+1, version)
+	for {
+		for i, version := range versions {
+			fmt.Printf("%d) %s\n", i+1, version)
+		}
+		fmt.Println("0/q) 返回")
+		fmt.Println()
+		raw, err := view.Ask(prompt)
+		if err != nil {
+			return "", err
+		}
+		if shared.IsReturnChoice(raw) {
+			return "", shared.ErrReturnToMenu
+		}
+		index, err := strconv.Atoi(raw)
+		if err != nil || index < 1 || index > len(versions) {
+			fmt.Println("无效选项，请重新输入")
+			fmt.Println()
+			continue
+		}
+		return versions[index-1], nil
 	}
-	fmt.Println("0/q) 返回")
-	fmt.Println()
-	raw, err := view.Ask(prompt)
-	if err != nil {
-		return "", err
-	}
-	if shared.IsReturnChoice(raw) {
-		return "", shared.ErrReturnToMenu
-	}
-	index, err := strconv.Atoi(raw)
-	if err != nil || index < 1 || index > len(versions) {
-		return "", fmt.Errorf("无效的版本选项：%s", raw)
-	}
-	return versions[index-1], nil
 }
 
 func installRelease(item release) error {

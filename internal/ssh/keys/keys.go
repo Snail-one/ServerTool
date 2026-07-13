@@ -50,6 +50,8 @@ func IsConfigured(account *system.Account) bool {
 
 func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 	for {
+		ui.ClearScreen()
+		ui.MenuTitle("SSH 管理", "SSH 公钥")
 		if err := printAuthorizedKeys(account); err != nil {
 			return err
 		}
@@ -66,6 +68,9 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		}
 		fmt.Println()
 
+		if shared.IsReturnChoice(choice) {
+			return shared.ErrReturnToMenu
+		}
 		switch strings.ToLower(choice) {
 		case "1":
 			if err := addSSHAuthorizedKeys(view, account); err != nil {
@@ -75,8 +80,6 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 			if err := deleteSSHAuthorizedKeys(view, account); err != nil {
 				return err
 			}
-		case "0", "q", "exit":
-			return shared.ErrReturnToMenu
 		default:
 			fmt.Println("无效选项，请重新输入")
 		}

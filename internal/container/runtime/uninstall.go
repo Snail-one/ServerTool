@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"snail_tool/internal/shared"
 	"snail_tool/internal/ui"
 )
 
@@ -39,6 +40,9 @@ func selectRuntimeToUninstall(view dockerUninstallPrompter, runtimes []Runtime) 
 		if err != nil {
 			return Runtime{}, false, err
 		}
+		if shared.IsReturnChoice(choice) {
+			return Runtime{}, false, nil
+		}
 		switch strings.ToLower(strings.TrimSpace(choice)) {
 		case "1":
 			return runtimes[0], true, nil
@@ -46,8 +50,6 @@ func selectRuntimeToUninstall(view dockerUninstallPrompter, runtimes []Runtime) 
 			if len(runtimes) > 1 {
 				return runtimes[1], true, nil
 			}
-		case "0", "q", "exit":
-			return Runtime{}, false, nil
 		}
 		fmt.Println("无效选项，请重新输入")
 		fmt.Println()

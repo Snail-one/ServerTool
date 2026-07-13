@@ -2,6 +2,7 @@ package list
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -66,6 +67,7 @@ func TestNormalizeContainerState(t *testing.T) {
 		{name: "restarting from status", status: "Restarting (1) 3 seconds ago", want: containerStateRestarting},
 		{name: "exited from status", status: "Exited (0) 2 hours ago", want: containerStateExited},
 		{name: "created from status", status: "Created", want: containerStateCreated},
+		{name: "dead from status", status: "Dead", want: containerStateDead},
 		{name: "unknown", status: "Something else", want: containerStateUnknown},
 	}
 
@@ -80,17 +82,20 @@ func TestNormalizeContainerState(t *testing.T) {
 
 func TestContainerActionAvailability(t *testing.T) {
 	tests := []struct {
-		name      string
-		state     string
-		wantStart bool
-		wantStop  bool
-		wantEnter bool
+		name       string
+		state      string
+		wantStart  bool
+		wantStop   bool
+		wantEnter  bool
+		wantRemove bool
+		wantPause  string
 	}{
-		{name: "running", state: containerStateRunning, wantStop: true, wantEnter: true},
-		{name: "paused", state: containerStatePaused, wantStop: true},
+		{name: "running", state: containerStateRunning, wantStop: true, wantEnter: true, wantPause: "pause"},
+		{name: "paused", state: containerStatePaused, wantStop: true, wantPause: "unpause"},
 		{name: "restarting", state: containerStateRestarting, wantStop: true},
-		{name: "exited", state: containerStateExited, wantStart: true},
-		{name: "created", state: containerStateCreated, wantStart: true},
+		{name: "exited", state: containerStateExited, wantStart: true, wantRemove: true},
+		{name: "created", state: containerStateCreated, wantStart: true, wantRemove: true},
+		{name: "dead", state: containerStateDead, wantStart: true, wantRemove: true},
 	}
 
 	for _, tt := range tests {
@@ -104,6 +109,19 @@ func TestContainerActionAvailability(t *testing.T) {
 			}
 			if got := canEnterContainer(c); got != tt.wantEnter {
 				t.Fatalf("canEnter = %v, want %v", got, tt.wantEnter)
+			}
+			if got := canRemoveContainer(c); got != tt.wantRemove {
+				t.Fatalf("canRemove = %v, want %v", got, tt.wantRemove)
+			}
+			keys := make(map[string]bool)
+			for _, action := range availableContainerActions(c, false) {
+				keys[action.Key] = true
+			}
+			if tt.wantPause != "" && !keys[tt.wantPause] {
+				t.Fatalf("actions = %#v, want %s", keys, tt.wantPause)
+			}
+			if tt.wantPause == "" && (keys["pause"] || keys["unpause"]) {
+				t.Fatalf("actions = %#v, did not want pause action", keys)
 			}
 		})
 	}
@@ -120,6 +138,9 @@ func TestContainerCommandArgs(t *testing.T) {
 		{name: "inspect", got: containerInspectArgs("web"), want: []string{"inspect", "web"}},
 		{name: "logs", got: containerLogsArgs("web", false), want: []string{"logs", "--tail", "200", "web"}},
 		{name: "follow logs", got: containerLogsArgs("web", true), want: []string{"logs", "-f", "--tail", "100", "web"}},
+		{name: "pause", got: containerLifecycleArgs("pause", "web"), want: []string{"pause", "web"}},
+		{name: "unpause", got: containerLifecycleArgs("unpause", "web"), want: []string{"unpause", "web"}},
+		{name: "rm", got: containerRemoveArgs("web"), want: []string{"rm", "web"}},
 	}
 
 	for _, tt := range tests {
@@ -128,6 +149,37 @@ func TestContainerCommandArgs(t *testing.T) {
 				t.Fatalf("args = %#v, want %#v", tt.got, tt.want)
 			}
 		})
+	}
+}
+
+func TestRemoveContainerSafety(t *testing.T) {
+	c := containerInfo{ID: "abcdef", Name: "web", State: containerStateExited}
+	runs := 0
+	executed, err := removeContainer(
+		func(prompt string) (bool, error) {
+			if !strings.Contains(prompt, "web") || !strings.Contains(prompt, "abcdef") {
+				t.Fatalf("confirmation omits identity: %q", prompt)
+			}
+			return false, nil
+		},
+		func(string, ...string) error { runs++; return nil },
+		"docker",
+		c,
+	)
+	if err != nil || executed || runs != 0 {
+		t.Fatalf("cancel result: executed=%v runs=%d err=%v", executed, runs, err)
+	}
+
+	c.State = containerStateRunning
+	confirmed := 0
+	_, err = removeContainer(
+		func(string) (bool, error) { confirmed++; return true, nil },
+		func(string, ...string) error { runs++; return nil },
+		"docker",
+		c,
+	)
+	if err == nil || confirmed != 0 || runs != 0 {
+		t.Fatalf("running rm was not blocked: confirmed=%d runs=%d err=%v", confirmed, runs, err)
 	}
 }
 
@@ -224,9 +276,9 @@ func TestComposeProjectActionForChoice(t *testing.T) {
 		want   composeProjectAction
 	}{
 		{choice: "1", wantOK: true, want: composeProjectAction{Name: "up -d", Args: []string{"up", "-d"}}},
-		{choice: "2", wantOK: true, want: composeProjectAction{Name: "down", Args: []string{"down"}}},
-		{choice: "3", wantOK: true, want: composeProjectAction{Name: "stop", Args: []string{"stop"}}},
-		{choice: "4", wantOK: true, want: composeProjectAction{Name: "restart", Args: []string{"restart"}}},
+		{choice: "2", wantOK: true, want: composeProjectAction{Name: "stop", Args: []string{"stop"}}},
+		{choice: "3", wantOK: true, want: composeProjectAction{Name: "restart", Args: []string{"restart"}}},
+		{choice: "4", wantOK: true, want: composeProjectAction{Name: "down", Args: []string{"down"}}},
 		{choice: "x", wantOK: false},
 	}
 

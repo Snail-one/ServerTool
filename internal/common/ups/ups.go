@@ -86,31 +86,34 @@ func ConfigureUPS(view *ui.UI) error {
 		return fmt.Errorf("UPS 配置需要 root 权限，请使用 sudo 运行 snail_tool")
 	}
 
-	fmt.Println("请选择 UPS 操作：")
-	fmt.Println("1) 配置或更新 UPS")
-	fmt.Println("2) 恢复首次备份（官方默认配置）")
-	fmt.Println("3) 删除 UPS 配置备份")
-	fmt.Println("0/q) 返回")
-	fmt.Println()
+	for {
+		ui.MenuTitle("系统与用户配置", "UPS（NUT）")
+		fmt.Println("1) 配置或更新 UPS")
+		fmt.Println("2) 恢复首次备份（官方默认配置）")
+		fmt.Println("3) 删除 UPS 配置备份")
+		fmt.Println("0/q) 返回")
+		fmt.Println()
 
-	choice, err := view.Ask("输入选项: ")
-	if err != nil {
-		return err
-	}
-	fmt.Println()
+		choice, err := view.Ask("输入选项: ")
+		if err != nil {
+			return err
+		}
+		fmt.Println()
 
-	switch strings.ToLower(choice) {
-	case "1":
-		return configureUPS(view)
-	case "2":
-		return restoreUPSBackup(view)
-	case "3":
-		return deleteUPSBackups(view)
-	case "0", "q", "exit":
-		return shared.ErrReturnToMenu
-	default:
-		fmt.Println("无效选项，已返回菜单")
-		return nil
+		if shared.IsReturnChoice(choice) {
+			return shared.ErrReturnToMenu
+		}
+		switch strings.ToLower(choice) {
+		case "1":
+			return configureUPS(view)
+		case "2":
+			return restoreUPSBackup(view)
+		case "3":
+			return deleteUPSBackups(view)
+		default:
+			fmt.Println("无效选项，请重新输入")
+			fmt.Println()
+		}
 	}
 }
 
@@ -164,29 +167,31 @@ func ensureNUTInstalled(view *ui.UI) (bool, error) {
 	fmt.Println("0/q) 取消")
 	fmt.Println()
 
-	choice, err := view.Ask("输入选项: ")
-	if err != nil {
-		return false, err
-	}
-	fmt.Println()
-
-	switch strings.ToLower(choice) {
-	case "1":
-		printNUTManualInstallHint()
-		return false, nil
-	case "2":
-		if err := installNUT(); err != nil {
+	for {
+		choice, err := view.Ask("输入选项: ")
+		if err != nil {
 			return false, err
 		}
-		if !isNUTInstalled() {
-			return false, fmt.Errorf("NUT 自动安装后仍未检测到服务端组件，请检查安装输出")
+		fmt.Println()
+		if shared.IsReturnChoice(choice) {
+			return false, nil
 		}
-		return true, nil
-	case "0", "q", "exit":
-		return false, nil
-	default:
-		fmt.Println("无效选项，已取消 UPS 配置")
-		return false, nil
+
+		switch strings.ToLower(choice) {
+		case "1":
+			printNUTManualInstallHint()
+			return false, nil
+		case "2":
+			if err := installNUT(); err != nil {
+				return false, err
+			}
+			if !isNUTInstalled() {
+				return false, fmt.Errorf("NUT 自动安装后仍未检测到服务端组件，请检查安装输出")
+			}
+			return true, nil
+		default:
+			fmt.Println("无效选项，请重新输入")
+		}
 	}
 }
 

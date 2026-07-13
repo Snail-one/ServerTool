@@ -24,13 +24,13 @@ func Run(view *ui.UI) error {
 
 func ConfigureDockerDaemonProxy(view *ui.UI) error {
 	if !system.IsRoot() {
-		return fmt.Errorf("配置 Docker daemon 代理需要 root 权限，请使用 sudo 运行本工具")
+		return fmt.Errorf("配置 Docker 服务代理需要 root 权限，请使用 sudo 运行本工具")
 	}
 	if !system.SystemdUnitExists("docker.service") {
-		return fmt.Errorf("未检测到 docker.service，无法配置 Docker daemon 代理")
+		return fmt.Errorf("未检测到 docker.service，无法配置 Docker 服务代理")
 	}
 
-	fmt.Println("\033[32m[INFO]\033[0m 配置 Docker daemon 代理")
+	fmt.Println("\033[32m[INFO]\033[0m 配置 Docker 服务代理")
 	fmt.Println()
 	if currentContent := dockerProxyConfigContent(dockerProxyPath); strings.TrimSpace(currentContent) != "" {
 		fmt.Printf("当前配置文件：%s\n", dockerProxyPath)
@@ -70,7 +70,7 @@ func ConfigureDockerDaemonProxy(view *ui.UI) error {
 	}
 
 	fmt.Println()
-	fmt.Println("Docker daemon 代理配置完成")
+	fmt.Println("Docker 服务代理配置完成")
 	fmt.Printf("配置文件：%s\n", dockerProxyPath)
 	fmt.Printf("写入地址：%s\n", dockerProxyDir)
 	fmt.Printf("代理地址：%s\n", commonproxy.MaskProxyURL(proxyURL))

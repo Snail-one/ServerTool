@@ -52,12 +52,18 @@ type composeProjectAction struct {
 	Args []string
 }
 
+type containerAction struct {
+	Key   string
+	Label string
+}
+
 const (
 	containerStateRunning    = "running"
 	containerStateExited     = "exited"
 	containerStatePaused     = "paused"
 	containerStateCreated    = "created"
 	containerStateRestarting = "restarting"
+	containerStateDead       = "dead"
 	containerStateUnknown    = "unknown"
 )
 
@@ -101,6 +107,7 @@ func manageContainers(view *ui.UI, rt runtime.Runtime) error {
 
 	for {
 		ui.ClearScreen()
+		ui.MenuTitle("容器管理", "容器列表与操作")
 		printContainers(conts)
 		fmt.Println()
 
@@ -110,7 +117,7 @@ func manageContainers(view *ui.UI, rt runtime.Runtime) error {
 		}
 		fmt.Println()
 
-		if shared.IsReturnChoice(raw) || strings.TrimSpace(raw) == "0" {
+		if shared.IsReturnChoice(raw) {
 			return shared.ErrReturnToMenu
 		}
 
@@ -331,6 +338,9 @@ func normalizeContainerState(state, status string) string {
 	case strings.HasPrefix(lowerStatus, "up") || strings.Contains(lowerStatus, "running"):
 		return containerStateRunning
 	case strings.HasPrefix(lowerStatus, "exited") || strings.HasPrefix(lowerStatus, "dead"):
+		if strings.HasPrefix(lowerStatus, "dead") {
+			return containerStateDead
+		}
 		return containerStateExited
 	case strings.HasPrefix(lowerStatus, "created"):
 		return containerStateCreated
@@ -363,26 +373,14 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 
 	for {
 		ui.ClearScreen()
-		fmt.Printf("\n容器: %s (%s)\n", c.Name, c.ID)
+		ui.MenuTitle("容器管理", "容器列表与操作", defaultText(c.Name))
+		fmt.Printf("容器: %s (%s)\n", c.Name, c.ID)
 		fmt.Printf("状态: %s | 端口: %s\n", containerDetailStatus(c), defaultText(c.Ports))
 		fmt.Println()
 
-		fmt.Println("请选择操作：")
-		if canStartContainer(c) {
-			fmt.Println("1) 启动")
-		}
-		if canStopContainer(c) {
-			fmt.Println("2) 停止")
-		}
-		fmt.Println("3) 重启")
-		fmt.Println("4) 查看容器信息（inspect）")
-		fmt.Println("5) 查看日志（最近 200 行）")
-		fmt.Println("6) 实时日志（Ctrl+C 返回操作界面）")
-		if canEnterContainer(c) {
-			fmt.Println("7) 进入容器 Shell（exit/Ctrl+D 返回操作界面）")
-		}
-		if canComposeDown {
-			fmt.Println("8) Down（compose down）")
+		actions := availableContainerActions(c, canComposeDown)
+		for index, action := range actions {
+			fmt.Printf("%d) %s\n", index+1, action.Label)
 		}
 		fmt.Println("0/q) 返回")
 		fmt.Println()
@@ -393,81 +391,115 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 		}
 		fmt.Println()
 
-		ch := strings.ToLower(strings.TrimSpace(raw))
-		if shared.IsReturnChoice(ch) || ch == "0" {
+		if shared.IsReturnChoice(raw) {
 			return nil
 		}
+		index, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil || index < 1 || index > len(actions) {
+			fmt.Println("无效选项，请重新输入")
+			view.PauseWithPrompt("按回车返回容器操作...")
+			continue
+		}
 
-		switch ch {
-		case "1":
-			if !canStartContainer(c) {
-				fmt.Println("当前状态不支持启动")
-				view.PauseWithPrompt("按回车返回容器操作...")
-				continue
-			}
+		switch actions[index-1].Key {
+		case "start":
 			runContainerLifecycle(rt, c, "start", "启动失败: ", "已启动: ")
-		case "2":
-			if !canStopContainer(c) {
-				fmt.Println("当前状态不支持停止")
-				view.PauseWithPrompt("按回车返回容器操作...")
-				continue
-			}
+		case "stop":
 			runContainerLifecycle(rt, c, "stop", "停止失败: ", "已停止: ")
-		case "3":
+		case "restart":
 			runContainerLifecycle(rt, c, "restart", "重启失败: ", "已重启: ")
-		case "4":
+		case "pause":
+			runContainerLifecycle(rt, c, "pause", "暂停失败: ", "已暂停: ")
+		case "unpause":
+			runContainerLifecycle(rt, c, "unpause", "恢复失败: ", "已恢复: ")
+		case "inspect":
 			runContainerInspect(rt, c)
 			view.PauseWithPrompt("按回车返回容器操作...")
 			continue
-		case "5":
+		case "logs":
 			runContainerLogs(rt, c, false)
 			view.PauseWithPrompt("按回车返回容器操作...")
 			continue
-		case "6":
+		case "logs-follow":
 			if !runContainerLogs(rt, c, true) {
 				view.PauseWithPrompt("按回车返回容器操作...")
 			}
 			continue
-		case "7":
-			if !canEnterContainer(c) {
-				fmt.Println("当前状态不支持进入容器")
-				view.PauseWithPrompt("按回车返回容器操作...")
-				continue
-			}
+		case "exec":
 			if !runContainerShell(rt, c) {
 				view.PauseWithPrompt("按回车返回容器操作...")
 			}
 			continue
-		case "8":
-			if canComposeDown {
-				dir, _ := findProjectDirForContainer(compose, project)
-				if dir != "" {
-					confirmed, _ := view.Confirm(fmt.Sprintf("确认对项目 %s 执行 down？(y/N): ", project))
-					if confirmed {
-						if err := update.RunCompose(compose, dir, "down"); err != nil {
-							log.Error("Down 失败: ", err)
-						} else {
-							log.Info("已 down 项目: ", project)
-						}
-					}
-				} else {
-					log.Warn("未能找到项目目录，跳过 down")
-				}
-			} else if project != "" {
-				log.Warn("未检测到 Compose 命令，无法执行 down")
-			} else {
-				fmt.Println("当前容器未检测到 Compose 项目")
+		case "down":
+			dir, _ := findProjectDirForContainer(compose, project)
+			if dir == "" {
+				log.Warn("未能找到项目目录，跳过 down")
 				view.PauseWithPrompt("按回车返回容器操作...")
 				continue
 			}
-		default:
-			fmt.Println("无效选项")
-			view.PauseWithPrompt("按回车返回容器操作...")
-			continue
+			confirmed, err := view.Confirm(fmt.Sprintf("项目目录：%s\n确认对项目 %s 执行 down（不会删除卷）？(y/N): ", dir, project))
+			if err != nil {
+				return err
+			}
+			if !confirmed {
+				fmt.Println("已取消")
+				view.PauseWithPrompt("按回车返回容器操作...")
+				continue
+			}
+			if err := update.RunCompose(compose, dir, "down"); err != nil {
+				log.Error("down 失败: ", err)
+			} else {
+				log.Info("已 down 项目: ", project)
+			}
+		case "rm":
+			executed, err := removeContainer(
+				view.Confirm,
+				system.Run,
+				rt.Name,
+				c,
+			)
+			if err != nil {
+				log.Error("删除容器失败: ", err)
+			}
+			if !executed {
+				view.PauseWithPrompt("按回车返回容器操作...")
+				continue
+			}
 		}
 		view.Pause()
 		return nil // return after action to refresh outer list
 	}
+}
+
+func availableContainerActions(c containerInfo, canComposeDown bool) []containerAction {
+	actions := make([]containerAction, 0, 11)
+	if canStartContainer(c) {
+		actions = append(actions, containerAction{Key: "start", Label: "start — 启动容器"})
+	}
+	if canStopContainer(c) {
+		actions = append(actions, containerAction{Key: "stop", Label: "stop — 停止容器"})
+	}
+	actions = append(actions, containerAction{Key: "restart", Label: "restart — 重启容器"})
+	if c.State == containerStateRunning {
+		actions = append(actions, containerAction{Key: "pause", Label: "pause — 暂停容器"})
+	} else if c.State == containerStatePaused {
+		actions = append(actions, containerAction{Key: "unpause", Label: "unpause — 恢复容器"})
+	}
+	actions = append(actions,
+		containerAction{Key: "inspect", Label: "inspect — 查看容器信息"},
+		containerAction{Key: "logs", Label: "logs — 查看最近 200 行"},
+		containerAction{Key: "logs-follow", Label: "logs -f — 实时跟随日志"},
+	)
+	if canEnterContainer(c) {
+		actions = append(actions, containerAction{Key: "exec", Label: "exec — 进入容器 Shell"})
+	}
+	if canComposeDown {
+		actions = append(actions, containerAction{Key: "down", Label: "down — 停止并删除所属 Compose 项目容器和默认网络"})
+	}
+	if canRemoveContainer(c) {
+		actions = append(actions, containerAction{Key: "rm", Label: "rm — 删除已停止容器"})
+	}
+	return actions
 }
 
 func canEnterContainer(c containerInfo) bool {
@@ -490,6 +522,31 @@ func canStopContainer(c containerInfo) bool {
 	default:
 		return false
 	}
+}
+
+func canRemoveContainer(c containerInfo) bool {
+	switch c.State {
+	case containerStateExited, containerStateCreated, containerStateDead:
+		return true
+	default:
+		return false
+	}
+}
+
+func removeContainer(confirm func(string) (bool, error), run func(string, ...string) error, runtimeName string, c containerInfo) (bool, error) {
+	if !canRemoveContainer(c) {
+		return false, fmt.Errorf("当前状态不允许删除容器")
+	}
+	prompt := fmt.Sprintf("容器：%s\nID：%s\n确认执行 rm（不会强制删除）？(y/N): ", defaultText(c.Name), defaultText(c.ID))
+	confirmed, err := confirm(prompt)
+	if err != nil || !confirmed {
+		return false, err
+	}
+	if err := run(runtimeName, containerRemoveArgs(containerRef(c))...); err != nil {
+		return true, err
+	}
+	log.Info("已删除容器: ", containerRef(c))
+	return true, nil
 }
 
 func runContainerLifecycle(rt runtime.Runtime, c containerInfo, action, failureMessage, successMessage string) {
@@ -560,6 +617,10 @@ func containerLogsArgs(ref string, follow bool) []string {
 
 func containerInspectArgs(ref string) []string {
 	return []string{"inspect", ref}
+}
+
+func containerRemoveArgs(ref string) []string {
+	return []string{"rm", ref}
 }
 
 func containerRef(c containerInfo) string {
@@ -991,6 +1052,7 @@ func manageComposeProjects(view *ui.UI, rt runtime.Runtime, useLS bool) error {
 
 	for {
 		ui.ClearScreen()
+		ui.MenuTitle("容器管理", "Compose 项目")
 		printComposeProjects(projects)
 		fmt.Println()
 
@@ -1000,7 +1062,7 @@ func manageComposeProjects(view *ui.UI, rt runtime.Runtime, useLS bool) error {
 		}
 		fmt.Println()
 
-		if shared.IsReturnChoice(raw) || strings.TrimSpace(raw) == "0" {
+		if shared.IsReturnChoice(raw) {
 			return shared.ErrReturnToMenu
 		}
 
@@ -1021,47 +1083,57 @@ func manageComposeProjects(view *ui.UI, rt runtime.Runtime, useLS bool) error {
 }
 
 func manageSingleProject(view *ui.UI, compose update.ComposeCommand, dir string) error {
-	fmt.Printf("\n项目目录: %s\n", dir)
-	fmt.Println("请选择操作：")
-	fmt.Println("1) Start/Up（compose up -d）")
-	fmt.Println("2) Down")
-	fmt.Println("3) Stop")
-	fmt.Println("4) Restart")
-	fmt.Println("0/q) 返回")
-	fmt.Println()
+	for {
+		ui.ClearScreen()
+		ui.MenuTitle("容器管理", "Compose 项目", filepath.Base(dir))
+		fmt.Printf("项目目录: %s\n", dir)
+		fmt.Println()
+		fmt.Println("1) up -d — 创建并后台启动")
+		fmt.Println("2) stop — 停止服务容器")
+		fmt.Println("3) restart — 重启服务容器")
+		fmt.Println("4) down — 停止并删除项目容器和默认网络")
+		fmt.Println("0/q) 返回")
+		fmt.Println()
 
-	raw, err := view.Ask("输入选项: ")
-	if err != nil {
-		return err
-	}
-	fmt.Println()
+		raw, err := view.Ask("输入选项: ")
+		if err != nil {
+			return err
+		}
+		fmt.Println()
 
-	ch := strings.ToLower(strings.TrimSpace(raw))
-	if shared.IsReturnChoice(ch) || ch == "0" {
-		return shared.ErrReturnToMenu
-	}
+		if shared.IsReturnChoice(raw) {
+			return shared.ErrReturnToMenu
+		}
 
-	action, ok := composeProjectActionForChoice(ch)
-	if !ok {
-		fmt.Println("无效选项")
+		action, ok := composeProjectActionForChoice(strings.ToLower(strings.TrimSpace(raw)))
+		if !ok {
+			fmt.Println("无效选项，请重新输入")
+			view.Pause()
+			continue
+		}
+
+		prompt := fmt.Sprintf("项目目录：%s\n确认执行 compose %s？(y/N): ", dir, action.Name)
+		if action.Name == "down" {
+			prompt = fmt.Sprintf("项目目录：%s\n确认执行 compose down（不会删除卷）？(y/N): ", dir)
+		}
+		confirmed, err := view.Confirm(prompt)
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			fmt.Println("已取消")
+			view.Pause()
+			continue
+		}
+
+		if err := update.RunCompose(compose, dir, action.Args...); err != nil {
+			log.Error("执行失败: ", err)
+		} else {
+			log.Info("已执行 compose ", action.Name, " 于 ", dir)
+		}
 		view.Pause()
 		return shared.ErrReturnToMenu
 	}
-
-	confirmed, _ := view.Confirm(fmt.Sprintf("确认执行 compose %s 于 %s ？(y/N): ", action.Name, dir))
-	if !confirmed {
-		fmt.Println("已取消")
-		view.Pause()
-		return shared.ErrReturnToMenu
-	}
-
-	if err := update.RunCompose(compose, dir, action.Args...); err != nil {
-		log.Error("执行失败: ", err)
-	} else {
-		log.Info("已执行 compose ", action.Name, " 于 ", dir)
-	}
-	view.Pause()
-	return shared.ErrReturnToMenu
 }
 
 func composeProjectActionForChoice(choice string) (composeProjectAction, bool) {
@@ -1069,11 +1141,11 @@ func composeProjectActionForChoice(choice string) (composeProjectAction, bool) {
 	case "1":
 		return composeProjectAction{Name: "up -d", Args: []string{"up", "-d"}}, true
 	case "2":
-		return composeProjectAction{Name: "down", Args: []string{"down"}}, true
-	case "3":
 		return composeProjectAction{Name: "stop", Args: []string{"stop"}}, true
-	case "4":
+	case "3":
 		return composeProjectAction{Name: "restart", Args: []string{"restart"}}, true
+	case "4":
+		return composeProjectAction{Name: "down", Args: []string{"down"}}, true
 	default:
 		return composeProjectAction{}, false
 	}

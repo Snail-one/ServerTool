@@ -12,7 +12,7 @@ import (
 func Run(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
-		fmt.Println("请选择环境配置：")
+		ui.MenuTitle("开发环境管理")
 		fmt.Println("1) Go 语言")
 		fmt.Println("0/q) 返回")
 		fmt.Println()
@@ -23,13 +23,14 @@ func Run(view *ui.UI) error {
 		}
 		fmt.Println()
 
+		if shared.IsReturnChoice(choice) {
+			return shared.ErrReturnToMenu
+		}
 		switch strings.ToLower(strings.TrimSpace(choice)) {
 		case "1":
-			shared.RunAction(view, "Go 语言环境管理失败，已返回环境配置", func() error {
+			shared.RunAction(view, "Go 语言环境管理失败，已返回开发环境管理", func() error {
 				return golang.Run(view)
 			})
-		case "0", "q", "exit":
-			return shared.ErrReturnToMenu
 		default:
 			fmt.Println("无效选项，请重新输入")
 			view.Pause()

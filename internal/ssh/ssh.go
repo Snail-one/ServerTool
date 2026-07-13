@@ -16,10 +16,10 @@ func Run(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
 		status := currentStatus()
-		fmt.Println("请选择 SSH 管理操作：")
-		fmt.Println("1) SSH 公钥管理" + statusText(status.keys))
-		fmt.Println("2) SSH 常用安全配置" + statusText(status.security))
-		fmt.Println("3) 查看当前 SSH 安全配置")
+		ui.MenuTitle("SSH 管理")
+		fmt.Println("1) SSH 公钥" + statusText(status.keys))
+		fmt.Println("2) SSH 安全策略" + statusText(status.security))
+		fmt.Println("3) 查看生效配置")
 		fmt.Println("0/q) 返回")
 		fmt.Println()
 
@@ -29,21 +29,22 @@ func Run(view *ui.UI) error {
 		}
 		fmt.Println()
 
+		if shared.IsReturnChoice(choice) {
+			return shared.ErrReturnToMenu
+		}
 		switch strings.ToLower(choice) {
 		case "1":
 			shared.RunAction(view, "SSH 公钥管理失败，已返回 SSH 管理", func() error {
 				return keys.Run(view)
 			})
 		case "2":
-			shared.RunAction(view, "SSH 常用安全配置失败，已返回 SSH 管理", func() error {
+			shared.RunAction(view, "SSH 安全策略配置失败，已返回 SSH 管理", func() error {
 				return security.Run(view)
 			})
 		case "3":
-			shared.RunAction(view, "查看 SSH 安全配置失败，已返回 SSH 管理", func() error {
+			shared.RunAction(view, "查看 SSH 生效配置失败，已返回 SSH 管理", func() error {
 				return sshstatus.Show()
 			})
-		case "0", "q", "exit":
-			return shared.ErrReturnToMenu
 		default:
 			fmt.Println("无效选项，请重新输入")
 			view.Pause()

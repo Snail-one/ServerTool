@@ -263,20 +263,25 @@ func confirmUnmanagedProxyOverride(view *ui.UI, bashrc string) (bool, error) {
 	fmt.Println("0/q) 取消")
 	fmt.Println()
 
-	choice, err := view.Ask("输入选项: ")
-	if err != nil {
-		return false, err
-	}
+	for {
+		choice, err := view.Ask("输入选项: ")
+		if err != nil {
+			return false, err
+		}
+		if shared.IsReturnChoice(choice) {
+			fmt.Println("已保留现有代理配置")
+			return false, nil
+		}
 
-	switch strings.ToLower(choice) {
-	case "2":
-		return true, nil
-	case "1", "", "0", "q", "exit":
-		fmt.Println("已保留现有代理配置")
-		return false, nil
-	default:
-		fmt.Println("无效选项，已取消代理配置")
-		return false, nil
+		switch strings.ToLower(choice) {
+		case "2":
+			return true, nil
+		case "1":
+			fmt.Println("已保留现有代理配置")
+			return false, nil
+		default:
+			fmt.Println("无效选项，请重新输入")
+		}
 	}
 }
 

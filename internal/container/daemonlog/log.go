@@ -139,29 +139,33 @@ func configureDockerLogRotation(
 }
 
 func promptLogRotationConfig(view promptReader) (logRotationConfig, bool, error) {
-	fmt.Println("请选择 Docker 日志轮转配置：")
-	fmt.Println("1) 推荐：100m x 3")
-	fmt.Println("2) 保守：50m x 5")
-	fmt.Println("3) 节省空间：10m x 3")
-	fmt.Println("4) 自定义 max-size / max-file")
-	fmt.Println("0/q) 返回")
-	fmt.Println()
-	fmt.Println("说明：log-driver 固定为 json-file。")
-	fmt.Println()
+	for {
+		fmt.Println("请选择 Docker 日志轮转配置：")
+		fmt.Println("1) 推荐：100m x 3")
+		fmt.Println("2) 保守：50m x 5")
+		fmt.Println("3) 节省空间：10m x 3")
+		fmt.Println("4) 自定义 max-size / max-file")
+		fmt.Println("0/q) 返回")
+		fmt.Println()
+		fmt.Println("说明：log-driver 固定为 json-file。")
+		fmt.Println()
 
-	choice, err := view.Ask("输入选项: ")
-	if err != nil {
-		return logRotationConfig{}, false, err
-	}
+		choice, err := view.Ask("输入选项: ")
+		if err != nil {
+			return logRotationConfig{}, false, err
+		}
 
-	if shared.IsReturnChoice(choice) {
-		return logRotationConfig{}, true, nil
-	}
-	if rotation, ok := logRotationPreset(strings.TrimSpace(choice)); ok {
-		return rotation, false, nil
-	}
-	if strings.TrimSpace(choice) != "4" {
-		return logRotationConfig{}, false, fmt.Errorf("无效 Docker 日志轮转选项: %s", choice)
+		if shared.IsReturnChoice(choice) {
+			return logRotationConfig{}, true, nil
+		}
+		if rotation, ok := logRotationPreset(strings.TrimSpace(choice)); ok {
+			return rotation, false, nil
+		}
+		if strings.TrimSpace(choice) == "4" {
+			break
+		}
+		fmt.Println("无效选项，请重新输入")
+		fmt.Println()
 	}
 
 	maxSize, err := view.Ask("请输入 max-size（正整数 + k/m/g，例如 100m）: ")

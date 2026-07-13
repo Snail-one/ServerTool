@@ -6,15 +6,16 @@ import (
 
 	"snail_tool/internal/container/runtime"
 	"snail_tool/internal/log"
+	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
 )
 
 type dockerCleanupPlan struct {
 	name         string
+	impact       string
 	args         []string
 	needsConfirm bool
-	skip         bool
 }
 
 func Run(view *ui.UI) error {
@@ -31,104 +32,125 @@ func CleanupDockerResources(view *ui.UI) error {
 }
 
 func runDockerCleanup(view *ui.UI, rt runtime.Runtime) error {
-	fmt.Println()
-	log.Info("当前 ", rt.Display, " 磁盘占用")
-	printContainerDiskUsage(rt)
-	fmt.Println()
-	fmt.Println("请选择容器清理操作：")
-	fmt.Println("1) 一键清理无用资源（默认，停止容器、无用网络、悬空镜像和构建缓存）")
-	fmt.Printf("2) 只清理停止容器（%s container prune -f）\n", rt.Name)
-	fmt.Printf("3) 只清理无用网络（%s network prune -f）\n", rt.Name)
-	fmt.Printf("4) 只清理悬空镜像（%s image prune -f）\n", rt.Name)
-	fmt.Printf("5) 清理所有未被容器使用的镜像（%s image prune -a -f）\n", rt.Name)
-	fmt.Printf("6) 只清理构建缓存（%s builder prune -f）\n", rt.Name)
-	fmt.Println("7) 深度一键清理：停止容器、无用网络、所有未使用镜像和构建缓存")
-	fmt.Println("0/q) 返回")
-	fmt.Println()
-	fmt.Println("说明：以上选项都不会清理 volume。")
-	fmt.Println()
+	for {
+		ui.ClearScreen()
+		ui.MenuTitle("容器管理", "清理容器资源")
+		log.Info("当前 ", rt.Display, " 磁盘占用")
+		printContainerDiskUsage(rt)
+		fmt.Println()
+		fmt.Println("1) container prune — 删除所有已停止容器")
+		fmt.Println("2) network prune — 删除所有未使用网络")
+		fmt.Println("3) image prune — 删除悬空镜像")
+		fmt.Println("4) builder prune — 删除构建缓存")
+		fmt.Println("5) system prune — 删除已停止容器、未使用网络、悬空镜像和构建缓存")
+		fmt.Println("6) image prune -a — 删除所有未被容器使用的镜像")
+		fmt.Println("7) system prune -a — 删除已停止容器、未使用网络、所有未使用镜像和构建缓存")
+		fmt.Println("0/q) 返回")
+		fmt.Println()
+		fmt.Printf("实际命令由 %s 执行；所有选项都不会删除卷。\n", rt.Name)
+		fmt.Println()
 
-	choice, err := view.Ask("输入选项（直接回车默认 1）: ")
-	if err != nil {
-		return err
-	}
-	fmt.Println()
-
-	plan, err := dockerCleanupPlanForChoice(choice)
-	if err != nil {
-		fmt.Println(err)
-		fmt.Println("已返回容器管理")
-		return nil
-	}
-	if plan.skip {
-		fmt.Println("已返回容器管理")
-		return nil
-	}
-
-	if plan.needsConfirm {
-		confirmed, err := view.Confirm(fmt.Sprintf("%s 可能需要后续重新拉取镜像，确认继续？(y/N): ", plan.name))
+		choice, err := view.Ask("输入选项: ")
 		if err != nil {
 			return err
 		}
-		if !confirmed {
+		fmt.Println()
+		if shared.IsReturnChoice(choice) {
+			return shared.ErrReturnToMenu
+		}
+
+		plan, err := dockerCleanupPlanForChoice(choice)
+		if err != nil {
+			fmt.Println(err)
+			view.Pause()
+			continue
+		}
+
+		fmt.Println("影响摘要：" + plan.impact)
+		executed, err := executeDockerCleanupPlan(plan, view.Confirm, system.Run, rt.Name)
+		if err != nil {
+			if executed {
+				return fmt.Errorf("%s 清理失败: %w", rt.Display, err)
+			}
+			return err
+		}
+		if !executed {
 			fmt.Println("已取消容器清理")
-			return nil
+			view.Pause()
+			continue
 		}
 		fmt.Println()
-	}
 
-	log.Info(plan.name)
-	if err := system.Run(rt.Name, plan.args...); err != nil {
-		return fmt.Errorf("%s 清理失败: %w", rt.Display, err)
+		log.Info(plan.name)
+		fmt.Println()
+		log.Info("清理后 ", rt.Display, " 磁盘占用")
+		printContainerDiskUsage(rt)
+		return nil
 	}
+}
 
-	fmt.Println()
-	log.Info("清理后 ", rt.Display, " 磁盘占用")
-	printContainerDiskUsage(rt)
-	return nil
+func executeDockerCleanupPlan(plan dockerCleanupPlan, confirm func(string) (bool, error), run func(string, ...string) error, runtimeName string) (bool, error) {
+	confirmed, err := confirm("确认继续？(y/N): ")
+	if err != nil || !confirmed {
+		return false, err
+	}
+	if err := run(runtimeName, plan.args...); err != nil {
+		return true, err
+	}
+	return true, nil
 }
 
 func dockerCleanupPlanForChoice(choice string) (dockerCleanupPlan, error) {
 	switch strings.ToLower(strings.TrimSpace(choice)) {
-	case "", "1":
+	case "1":
 		return dockerCleanupPlan{
-			name: "一键清理容器无用资源",
-			args: []string{"system", "prune", "-f"},
+			name:         "清理停止容器",
+			impact:       "永久删除所有已停止容器；运行中容器和卷不受影响。",
+			args:         []string{"container", "prune", "-f"},
+			needsConfirm: true,
 		}, nil
 	case "2":
 		return dockerCleanupPlan{
-			name: "清理停止容器",
-			args: []string{"container", "prune", "-f"},
+			name:         "清理无用网络",
+			impact:       "永久删除未被容器使用的网络；卷不受影响。",
+			args:         []string{"network", "prune", "-f"},
+			needsConfirm: true,
 		}, nil
 	case "3":
 		return dockerCleanupPlan{
-			name: "清理无用网络",
-			args: []string{"network", "prune", "-f"},
+			name:         "清理悬空镜像",
+			impact:       "永久删除无标签且未使用的悬空镜像；卷不受影响。",
+			args:         []string{"image", "prune", "-f"},
+			needsConfirm: true,
 		}, nil
 	case "4":
 		return dockerCleanupPlan{
-			name: "清理悬空镜像",
-			args: []string{"image", "prune", "-f"},
+			name:         "清理构建缓存",
+			impact:       "永久删除未使用的构建缓存；镜像、容器和卷不受影响。",
+			args:         []string{"builder", "prune", "-f"},
+			needsConfirm: true,
 		}, nil
 	case "5":
 		return dockerCleanupPlan{
-			name:         "清理所有未被容器使用的镜像",
-			args:         []string{"image", "prune", "-a", "-f"},
+			name:         "清理容器无用资源",
+			impact:       "永久删除已停止容器、未使用网络、悬空镜像和构建缓存；卷不受影响。",
+			args:         []string{"system", "prune", "-f"},
 			needsConfirm: true,
 		}, nil
 	case "6":
 		return dockerCleanupPlan{
-			name: "清理构建缓存",
-			args: []string{"builder", "prune", "-f"},
+			name:         "清理所有未使用镜像",
+			impact:       "永久删除所有未被容器使用的镜像，后续可能需要重新拉取；卷不受影响。",
+			args:         []string{"image", "prune", "-a", "-f"},
+			needsConfirm: true,
 		}, nil
 	case "7":
 		return dockerCleanupPlan{
 			name:         "深度清理容器无用资源",
+			impact:       "永久删除已停止容器、未使用网络、所有未使用镜像和构建缓存；卷不受影响。",
 			args:         []string{"system", "prune", "-a", "-f"},
 			needsConfirm: true,
 		}, nil
-	case "0", "q", "exit":
-		return dockerCleanupPlan{skip: true}, nil
 	default:
 		return dockerCleanupPlan{}, fmt.Errorf("无效容器清理选项: %s", choice)
 	}

@@ -4,11 +4,13 @@
 
 ## 功能
 
-- 容器管理：检测 Docker/Podman，缺失时可通过 Docker 官方签名 stable 仓库、Docker 官方安装脚本或 apt 安装容器运行时；顶层按容器列表与操作、Compose 项目、Docker daemon 配置、清理容器资源分组；容器列表和 Compose 项目列表显示当前状态，并支持启动、停止、重启、进入容器、查看日志和实时日志；Compose 项目支持通过 `docker compose ls` 管理、扫描目录管理、批量更新运行中的应用和重建运行中的项目；Docker daemon 配置支持代理和日志轮转；支持容器无用资源一键清理和按容器、网络、镜像、构建缓存单项清理；卸载 Docker 或 Podman 时可选择保留容器数据和自定义配置的安全模式，或经过强确认后彻底删除对应运行时数据
+- 容器管理：检测 Docker/Podman，并在二者并存时明确优先使用 Docker；容器操作以真实子命令显示，支持 `start`、`stop`、`restart`、`pause`/`unpause`、`inspect`、`logs`、`logs -f`、`exec`、Compose `down` 和非强制 `rm`；Compose 项目支持 `up -d`、`stop`、`restart`、不删除卷的 `down`，以及项目扫描、批量更新和重建；Docker 服务配置支持代理和日志轮转；资源清理按影响展示各类 prune 命令并逐次确认；卸载运行时可选择保留数据，完全卸载则经过强确认后永久删除对应数据
 - SSH 管理：管理当前用户 SSH 公钥（查看、添加、删除）、写入 SSH 随机端口与禁用密码登录等安全配置、查看当前 SSH 生效安全配置
-- 集中写入配置文件：Vim `~/.vimrc`、Bash 环境、HTTP/HTTPS 代理环境变量、UPS(NUT) 配置
-- 环境配置：从 Go 官方 API 获取全部稳定版本，在 `/opt/go` 安装、更新、切换和卸载 amd64/arm64 Go，并为目标用户配置 PATH
-- 清理本工具写入的 SSH、Vim、Bash、代理配置，支持一键清理或按项清理
+- 系统与用户配置：集中管理 Vim `~/.vimrc`、Bash、HTTP/HTTPS 代理环境变量和 UPS（NUT）配置
+- 开发环境管理：从 Go 官方 API 获取全部稳定版本，在 `/opt/go` 安装、更新、切换和卸载 amd64/arm64 Go，并为目标用户配置 PATH
+- 清理本工具配置：支持按项清理 SSH、Vim、Bash、代理配置，或在最后一项清理全部
+
+主菜单会显示容器运行时、SSH 配置、系统与用户配置数量和当前 Go 版本。所有二级菜单使用 `ServerTool > 功能 > 子功能` 路径标题，并统一以 `0/q) 返回`（同时兼容 `exit`）退出当前菜单；主菜单使用 `0/q) 退出`。直接对应 CLI 的维护操作采用“命令 — 影响说明”格式，空输入或无效输入不会执行容器清理。
 
 一键下载安装
 
@@ -22,7 +24,7 @@ sudo curl -L -o /usr/local/sbin/snail https://github.com/Snail-one/ServerTool/re
 
 ## Go 环境管理
 
-从主菜单进入“环境配置 → Go 语言”后，可以安装任意官方稳定版本、更新到最新稳定版、切换当前版本、卸载指定版本、重新下载安装当前版本并修复 PATH，或清理异常中断遗留的下载、解压、修复和备份文件。安装版本列表每页显示 10 个，可翻页选择；当前支持 Linux amd64 和 arm64。
+从主菜单进入“开发环境管理 → Go 语言”后，可以安装任意官方稳定版本、更新到最新稳定版、切换当前版本、卸载指定版本、重新下载安装当前版本并修复 PATH，或清理异常中断遗留的下载、解压、修复和备份文件。安装版本列表每页显示 10 个，可翻页选择；当前支持 Linux amd64 和 arm64。
 
 各版本保存在 `/opt/go/goX.Y.Z`，`/opt/go/current` 指向当前版本。旧版本会保留，卸载当前版本后会自动切换到剩余版本中版本号最高的一个。除下述经用户确认的迁移外，工具只管理 `/opt/go` 下的版本。
 
@@ -88,11 +90,11 @@ sudo ./snail_tool
 ```text
 cmd/snail_tool      程序入口
 internal/app        交互菜单和流程编排
-internal/container  容器管理：容器列表与操作、Compose 项目、Docker daemon 配置、清理容器资源、安装运行时
+internal/container  容器管理：容器列表与操作、Compose 项目、Docker 服务配置、清理容器资源、安装运行时
 internal/ssh        SSH 管理：公钥、安全配置、生效安全配置查看
-internal/common     常用配置：Vim、Bash、HTTP/HTTPS 代理、UPS
-internal/environment 环境配置：Go 官方多版本安装、更新、切换、卸载及用户 PATH 管理
-internal/cleanup    清理配置：一键清理或按项清理本工具写入的配置
+internal/common     系统与用户配置：Vim、Bash、HTTP/HTTPS 代理、UPS（NUT）
+internal/environment 开发环境管理：Go 官方多版本安装、更新、切换、卸载及用户 PATH 管理
+internal/cleanup    清理本工具配置：按项或全部清理本工具写入的配置
 internal/status     菜单状态检测汇总
 internal/shared     跨菜单复用的小型辅助能力
 internal/system     系统命令、用户、端口、文件辅助能力
