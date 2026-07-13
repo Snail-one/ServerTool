@@ -159,13 +159,13 @@ func TestDockerInstallConflictCancelDoesNotChangeSystem(t *testing.T) {
 	installer, calls := fakeDockerInstaller(t)
 	installer.output = func(name string, args ...string) (string, error) {
 		if name == "dpkg-query" && args[len(args)-1] == "docker.io" {
-			return "docker.io", nil
+			return "ii docker.io", nil
 		}
 		return "", errors.New("not installed")
 	}
-	installer.confirm = func(packages []string) (bool, error) {
-		if !reflect.DeepEqual(packages, []string{"docker.io"}) {
-			t.Fatalf("conflicts = %v", packages)
+	installer.confirm = func(summary []string) (bool, error) {
+		if !strings.Contains(strings.Join(summary, "\n"), "docker.io") {
+			t.Fatalf("summary does not include conflict: %v", summary)
 		}
 		return false, nil
 	}
@@ -183,18 +183,24 @@ func TestDockerInstallFingerprintMismatchStopsBeforeRepository(t *testing.T) {
 	if err := installer.install(); err == nil || !strings.Contains(err.Error(), "指纹不匹配") {
 		t.Fatalf("error = %v", err)
 	}
-	if len(*calls) != 0 {
-		t.Fatalf("calls after mismatch = %v", *calls)
+	for _, call := range *calls {
+		if strings.HasPrefix(call, "write ") || strings.Contains(call, " install ") || strings.Contains(call, " remove ") {
+			t.Fatalf("dangerous call after mismatch = %v", *calls)
+		}
 	}
 }
 
 func TestDockerInstallRunsAllStagesAndShortCircuits(t *testing.T) {
 	installer, calls := fakeDockerInstaller(t)
 	installer.output = dockerFakeOutput(dockerDebFingerprint)
+	updates := 0
 	installer.run = func(name string, args ...string) error {
 		*calls = append(*calls, strings.Join(append([]string{name}, args...), " "))
 		if name == "apt-get" && reflect.DeepEqual(args, []string{"update"}) {
-			return errors.New("metadata unavailable")
+			updates++
+			if updates == 2 {
+				return errors.New("metadata unavailable")
+			}
 		}
 		return nil
 	}
@@ -238,10 +244,22 @@ func fakeDockerInstaller(t *testing.T) (*dockerInstaller, *[]string) {
 			}
 			return os.ReadFile(path)
 		},
-		download:      func(_ string, path string) error { return os.WriteFile(path, []byte("key"), 0600) },
-		commandExists: func(name string) bool { return name == "gpg" || name == "apt-get" || name == "dpkg-query" },
+		download: func(_ string, path string) error { return os.WriteFile(path, []byte("key"), 0600) },
+		commandExists: func(name string) bool {
+			return name == "gpg" || name == "apt-get" || name == "dpkg-query" || name == "systemctl"
+		},
 		confirm:       func([]string) (bool, error) { return true, nil },
+		confirmOnline: func() (bool, error) { return false, nil },
 		mkdirAll:      func(string, os.FileMode) error { return nil },
+		platformCheck: func(distribution *dockerDistribution) error {
+			distribution.Architecture = "amd64"
+			return nil
+		},
+		dependencyCheck: func(dockerDistribution) ([]string, error) { return nil, nil },
+		firewallDetect: func() (dockerFirewallReport, error) {
+			return dockerFirewallReport{}, nil
+		},
+		repositoryCheck: func(dockerDistribution) error { return nil },
 		writeFile: func(path string, _ []byte, _ shared.AtomicWriteOptions) error {
 			calls = append(calls, "write "+path)
 			return nil

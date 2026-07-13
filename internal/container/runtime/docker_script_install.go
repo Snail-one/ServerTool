@@ -83,12 +83,9 @@ func (installer *dockerScriptInstaller) install() error {
 		}
 	}
 
-	log.Info("[Docker 脚本安装/版本验证] docker version")
-	version, err := installer.output("docker", "version")
-	if err != nil {
-		return fmt.Errorf("Docker 脚本安装在版本验证阶段失败: %w（输出：%s）", err, strings.TrimSpace(version))
+	if err := verifyDockerInstallation(installer.output); err != nil {
+		return fmt.Errorf("Docker 脚本安装在本地验证阶段失败: %w", err)
 	}
-	fmt.Println(version)
 	log.Info("Docker 官方脚本安装完成")
 	return nil
 }

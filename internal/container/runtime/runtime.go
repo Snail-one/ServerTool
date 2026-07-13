@@ -17,9 +17,13 @@ type Runtime struct {
 
 func Ensure(view *ui.UI) error {
 	for {
-		runtime, ok := Detect()
-		if ok {
-			log.Info("已检测到容器运行时：", runtime.Display)
+		runtimes := DetectAll()
+		if len(runtimes) > 0 {
+			displays := make([]string, 0, len(runtimes))
+			for _, item := range runtimes {
+				displays = append(displays, item.Display)
+			}
+			log.Info("已检测到容器运行时：", strings.Join(displays, "、"))
 			return nil
 		}
 
@@ -62,11 +66,15 @@ func Ensure(view *ui.UI) error {
 }
 
 func Detect() (Runtime, bool) {
-	return runtimeForCommands(system.CommandExists("docker"), system.CommandExists("podman"))
+	runtimes := probeContainerRuntimes(system.CommandExists, system.Output)
+	if len(runtimes) == 0 {
+		return Runtime{}, false
+	}
+	return runtimes[0], true
 }
 
 func DetectAll() []Runtime {
-	return runtimesForCommands(system.CommandExists("docker"), system.CommandExists("podman"))
+	return probeContainerRuntimes(system.CommandExists, system.Output)
 }
 
 func runtimesForCommands(hasDocker, hasPodman bool) []Runtime {
@@ -92,7 +100,7 @@ func runtimeForCommands(hasDocker, hasPodman bool) (Runtime, bool) {
 }
 
 func installDockerRuntime(view *ui.UI) error {
-	if err := ensureContainerRuntimeAbsent(system.CommandExists); err != nil {
+	if err := ensureContainerRuntimeAbsentWithProbe(system.CommandExists, system.Output); err != nil {
 		return err
 	}
 	if !system.IsRoot() {
@@ -102,7 +110,7 @@ func installDockerRuntime(view *ui.UI) error {
 }
 
 func installDockerScriptRuntime(view *ui.UI) error {
-	if err := ensureContainerRuntimeAbsent(system.CommandExists); err != nil {
+	if err := ensureContainerRuntimeAbsentWithProbe(system.CommandExists, system.Output); err != nil {
 		return err
 	}
 	if !system.IsRoot() {
@@ -112,7 +120,7 @@ func installDockerScriptRuntime(view *ui.UI) error {
 }
 
 func installPodmanRuntime() error {
-	if err := ensureContainerRuntimeAbsent(system.CommandExists); err != nil {
+	if err := ensureContainerRuntimeAbsentWithProbe(system.CommandExists, system.Output); err != nil {
 		return err
 	}
 	if !system.IsRoot() {
@@ -137,15 +145,57 @@ func installPodmanRuntime() error {
 }
 
 func ensureContainerRuntimeAbsent(commandExists func(string) bool) error {
-	var installed []string
+	return ensureContainerRuntimeAbsentWithProbe(commandExists, func(string, ...string) (string, error) { return "", nil })
+}
+
+func ensureContainerRuntimeAbsentWithProbe(commandExists func(string) bool, output func(string, ...string) (string, error)) error {
+	runtimes := probeContainerRuntimes(commandExists, output)
+	if len(runtimes) == 0 {
+		return nil
+	}
+	installed := make([]string, 0, len(runtimes))
+	for _, item := range runtimes {
+		installed = append(installed, item.Display)
+	}
+	return fmt.Errorf("安装已取消：检测到已安装的容器运行时：%s；检测到 Podman 时请先使用现有卸载功能，Docker 服务异常时请先检查 systemctl status docker", strings.Join(installed, "、"))
+}
+
+func probeContainerRuntimes(commandExists func(string) bool, output func(string, ...string) (string, error)) []Runtime {
+	var runtimes []Runtime
+	hasPodman := commandExists("podman")
 	if commandExists("docker") {
-		installed = append(installed, "Docker")
+		version, versionErr := output("docker", "--version")
+		if strings.Contains(strings.ToLower(version), "podman") {
+			hasPodman = true
+		} else {
+			display := "Docker"
+			if versionErr != nil {
+				display = "Docker（CLI 异常）"
+			} else if info, err := output("docker", "info"); err != nil {
+				detail := firstOutputLine(info)
+				if detail == "" {
+					detail = "daemon 不可达"
+				}
+				display = "Docker（服务异常：" + detail + "）"
+			}
+			runtimes = append(runtimes, Runtime{Name: "docker", Display: display})
+		}
 	}
-	if commandExists("podman") {
-		installed = append(installed, "Podman")
+	if hasPodman {
+		runtimes = append(runtimes, Runtime{Name: "podman", Display: "Podman"})
 	}
-	if len(installed) > 0 {
-		return fmt.Errorf("安装已取消：检测到已安装的容器运行时：%s", strings.Join(installed, "、"))
+	return runtimes
+}
+
+func firstOutputLine(value string) string {
+	value = strings.TrimSpace(value)
+	if line, _, ok := strings.Cut(value, "\n"); ok {
+		value = strings.TrimSpace(line)
 	}
-	return nil
+	const maxRunes = 160
+	runes := []rune(value)
+	if len(runes) > maxRunes {
+		return string(runes[:maxRunes]) + "…"
+	}
+	return value
 }
