@@ -4,7 +4,7 @@
 
 ## 功能
 
-- 容器管理：检测 Docker/Podman，缺失时可选择安装 Docker 或 Podman；顶层按容器列表与操作、Compose 项目、Docker daemon 配置、清理容器资源分组；容器列表和 Compose 项目列表显示当前状态，并支持启动、停止、重启、进入容器、查看日志和实时日志；Compose 项目支持通过 `docker compose ls` 管理、扫描目录管理、批量更新运行中的应用和重建运行中的项目；Docker daemon 配置支持代理和日志轮转；支持容器无用资源一键清理和按容器、网络、镜像、构建缓存单项清理；卸载 Docker 时可选择保留镜像、容器、卷和自定义配置的安全模式，或经过强确认后彻底删除全部 Docker 数据
+- 容器管理：检测 Docker/Podman，缺失时可通过 Docker 官方签名 stable 仓库、Docker 官方安装脚本或 apt 安装容器运行时；顶层按容器列表与操作、Compose 项目、Docker daemon 配置、清理容器资源分组；容器列表和 Compose 项目列表显示当前状态，并支持启动、停止、重启、进入容器、查看日志和实时日志；Compose 项目支持通过 `docker compose ls` 管理、扫描目录管理、批量更新运行中的应用和重建运行中的项目；Docker daemon 配置支持代理和日志轮转；支持容器无用资源一键清理和按容器、网络、镜像、构建缓存单项清理；卸载 Docker 时可选择保留镜像、容器、卷和自定义配置的安全模式，或经过强确认后彻底删除全部 Docker 数据
 - SSH 管理：管理当前用户 SSH 公钥（查看、添加、删除）、写入 SSH 随机端口与禁用密码登录等安全配置、查看当前 SSH 生效安全配置
 - 集中写入配置文件：Vim `~/.vimrc`、Bash 环境、HTTP/HTTPS 代理环境变量、UPS(NUT) 配置
 - 环境配置：从 Go 官方 API 获取全部稳定版本，在 `/opt/go` 安装、更新、切换和卸载 amd64/arm64 Go，并为目标用户配置 PATH

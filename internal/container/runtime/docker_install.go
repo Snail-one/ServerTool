@@ -349,6 +349,14 @@ func (installer *dockerInstaller) installPackages(distribution dockerDistributio
 }
 
 func downloadDockerKey(url, path string) error {
+	return downloadDockerArtifact(url, path, 1024*1024)
+}
+
+func downloadDockerInstallScript(url, path string) error {
+	return downloadDockerArtifact(url, path, 2*1024*1024)
+}
+
+func downloadDockerArtifact(url, path string, maxSize int64) error {
 	client := &http.Client{Timeout: 30 * time.Second}
 	response, err := client.Get(url)
 	if err != nil {
@@ -362,7 +370,7 @@ func downloadDockerKey(url, path string) error {
 	if err != nil {
 		return err
 	}
-	_, copyErr := io.Copy(file, io.LimitReader(response.Body, 1024*1024+1))
+	_, copyErr := io.Copy(file, io.LimitReader(response.Body, maxSize+1))
 	closeErr := file.Close()
 	if copyErr != nil {
 		return copyErr
@@ -374,8 +382,8 @@ func downloadDockerKey(url, path string) error {
 	if err != nil {
 		return err
 	}
-	if info.Size() == 0 || info.Size() > 1024*1024 {
-		return fmt.Errorf("下载的密钥大小异常: %d 字节", info.Size())
+	if info.Size() == 0 || info.Size() > maxSize {
+		return fmt.Errorf("下载内容大小异常: %d 字节", info.Size())
 	}
 	return nil
 }

@@ -28,8 +28,9 @@ func Ensure(view *ui.UI) error {
 		fmt.Println()
 		fmt.Println("请选择安装方式：")
 		fmt.Println("1) 安装 Docker（使用 Docker 官方签名 stable 仓库）")
-		fmt.Println("2) 安装 Podman（使用 apt 安装）")
-		fmt.Println("3) 返回")
+		fmt.Println("2) 安装 Docker（使用 Docker 官方安装脚本 get.docker.com）")
+		fmt.Println("3) 安装 Podman（使用 apt 安装）")
+		fmt.Println("4) 返回")
 		fmt.Println()
 
 		choice, err := view.Ask("输入选项: ")
@@ -44,10 +45,14 @@ func Ensure(view *ui.UI) error {
 				return err
 			}
 		case "2":
+			if err := installDockerScriptRuntime(view); err != nil {
+				return err
+			}
+		case "3":
 			if err := installPodmanRuntime(); err != nil {
 				return err
 			}
-		case "3", "0", "q", "exit":
+		case "4", "0", "q", "exit":
 			return shared.ErrReturnToMenu
 		default:
 			fmt.Println("无效选项，请重新输入")
@@ -76,6 +81,13 @@ func installDockerRuntime(view *ui.UI) error {
 		return fmt.Errorf("安装 Docker 需要 root 权限，请使用 sudo 运行本工具")
 	}
 	return newDockerInstaller(view).install()
+}
+
+func installDockerScriptRuntime(view *ui.UI) error {
+	if !system.IsRoot() {
+		return fmt.Errorf("使用官方脚本安装 Docker 需要 root 权限，请使用 sudo 运行本工具")
+	}
+	return newDockerScriptInstaller(view).install()
 }
 
 func installPodmanRuntime() error {
