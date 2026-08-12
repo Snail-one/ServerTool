@@ -135,10 +135,16 @@ TARGET="${INSTALL_DIR}/${BINARY_NAME}"
 
 if [ -e "$TARGET" ]; then
 	CURRENT_VERSION=""
+	CURRENT_RELEASE=""
 	if [ -x "$TARGET" ]; then
 		CURRENT_VERSION="$("$TARGET" --version 2>/dev/null | sed -n '1p' || true)"
+		CURRENT_RELEASE="$(printf '%s\n' "$CURRENT_VERSION" | awk '$1 == "snailtool" { print $2; exit }')"
 	fi
 	info "当前版本：${CURRENT_VERSION:-未知}"
+	if [ "$CURRENT_RELEASE" = "$RELEASE_VERSION" ]; then
+		info "当前已是最新版本，无需更新"
+		exit 0
+	fi
 	ACTION="更新"
 else
 	ACTION="安装"

@@ -39,6 +39,8 @@ sudo sh scripts/install.sh v1.2.0
 sudo snail update
 ```
 
+更新时会先比较当前版本和最新 Release；版本相同时直接退出，不会重复下载二进制文件。
+
 Release 文件名会在末尾包含版本号，例如：
 
 ```text
