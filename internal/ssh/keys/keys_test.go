@@ -1,6 +1,7 @@
 package keys
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -9,7 +10,36 @@ import (
 
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
+	"snail_tool/internal/ui"
 )
+
+func TestEnsureSSHAuthorizedKeysAllowsQToReturn(t *testing.T) {
+	home := t.TempDir()
+	account := &system.Account{Name: "test", Home: home}
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.WriteString("q\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	previousStdin := os.Stdin
+	os.Stdin = reader
+	view := ui.New()
+	os.Stdin = previousStdin
+	t.Cleanup(func() { _ = reader.Close() })
+
+	err = ensureSSHAuthorizedKeys(view, account)
+	if !errors.Is(err, shared.ErrReturnToMenu) {
+		t.Fatalf("输入 q 应返回菜单，得到：%v", err)
+	}
+	if system.DirExists(filepath.Join(home, ".ssh")) {
+		t.Fatal("取消一键配置时不应创建 .ssh 目录")
+	}
+}
 
 func TestAuthorizedKeyEntriesMarksManagedKeys(t *testing.T) {
 	content := "ssh-ed25519 AAAAmanual user@example\n\n" +

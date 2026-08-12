@@ -65,7 +65,10 @@ func EnsureSSHAuthorizedKeys(view *ui.UI) error {
 	if err != nil {
 		return err
 	}
+	return ensureSSHAuthorizedKeys(view, account)
+}
 
+func ensureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 	log.Info("当前配置用户：", account.Name)
 	if err := printAuthorizedKeys(account); err != nil {
 		return err
@@ -79,9 +82,13 @@ func EnsureSSHAuthorizedKeys(view *ui.UI) error {
 
 	log.Warn("一键配置必须先添加至少一把有效 SSH 公钥")
 	for {
-		pubkey, err := view.Ask("请粘贴 SSH 公钥（必填）: ")
+		pubkey, err := view.Ask("请粘贴 SSH 公钥（必填，输入 q 返回）: ")
 		if err != nil {
 			return err
+		}
+		if shared.IsReturnChoice(pubkey) {
+			log.Info("已取消一键配置")
+			return shared.ErrReturnToMenu
 		}
 		if strings.TrimSpace(pubkey) == "" {
 			log.Warn("SSH 公钥不能为空；未添加公钥不会继续配置 SSH 安全策略")
