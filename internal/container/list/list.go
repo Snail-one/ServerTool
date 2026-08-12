@@ -351,13 +351,14 @@ func normalizeContainerState(state, status string) string {
 }
 
 func printContainers(conts []containerInfo) {
-	fmt.Println("容器列表：")
-	fmt.Printf("%-4s %-8s %-12s %-24s %-34s %-18s %s\n", "编号", "状态", "ID", "名称", "端口", "运行/退出时间", "创建时间")
+	fmt.Println(ui.PrimaryBoldText("容器列表："))
+	fmt.Println(ui.InfoText(fmt.Sprintf("%-4s %-8s %-12s %-24s %-34s %-18s %s", "编号", "状态", "ID", "名称", "端口", "运行/退出时间", "创建时间")))
 	for i, c := range conts {
+		state := colorContainerState(c.State, containerStateDisplay(c.State))
 		fmt.Printf(
-			"%-4s %-8s %-12s %-24s %-34s %-18s %s\n",
+			"%-4s %s %-12s %-24s %-34s %-18s %s\n",
 			fmt.Sprintf("%d)", i+1),
-			containerStateDisplay(c.State),
+			ui.TableCell(state, 8),
 			shortContainerID(c.ID),
 			truncateText(defaultText(c.Name), 24),
 			truncateText(defaultText(c.Ports), 34),
@@ -375,8 +376,11 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("容器管理", "容器列表与操作", defaultText(c.Name))
-		fmt.Printf("容器：%s（%s）\n", c.Name, c.ID)
-		fmt.Printf("状态：%s  |  端口：%s\n", containerDetailStatus(c), defaultText(c.Ports))
+		ui.PrintInfoCard("容器关键信息",
+			ui.CardField{Label: "容器", Value: fmt.Sprintf("%s（%s）", c.Name, c.ID)},
+			ui.CardField{Label: "状态", Value: containerDetailStatus(c)},
+			ui.CardField{Label: "端口", Value: defaultText(c.Ports)},
+		)
 		fmt.Println()
 
 		actions := availableContainerActions(c, canComposeDown)
@@ -659,9 +663,24 @@ func containerStateDisplay(state string) string {
 func containerDetailStatus(c containerInfo) string {
 	display := containerStateDisplay(c.State)
 	if c.Status == "" {
-		return display
+		return colorContainerState(c.State, display)
 	}
-	return fmt.Sprintf("%s（%s）", display, c.Status)
+	return colorContainerState(c.State, fmt.Sprintf("%s（%s）", display, c.Status))
+}
+
+func colorContainerState(state, text string) string {
+	switch state {
+	case containerStateRunning:
+		return ui.SuccessText(text)
+	case containerStateExited, containerStatePaused, containerStateCreated:
+		return ui.WarningText(text)
+	case containerStateRestarting:
+		return ui.InfoText(text)
+	case containerStateDead, "removing":
+		return ui.DangerText(text)
+	default:
+		return ui.MutedText(text)
+	}
 }
 
 func shortContainerID(id string) string {
@@ -997,17 +1016,33 @@ func composeContainerSummaryDisplay(summary composeContainerSummary) string {
 }
 
 func printComposeProjects(projects []composeProjectInfo) {
-	fmt.Println("Compose 项目列表：")
-	fmt.Printf("%-4s %-16s %-28s %-24s %s\n", "编号", "项目状态", "容器状态", "项目名", "目录")
+	fmt.Println(ui.PrimaryBoldText("Compose 项目列表："))
+	fmt.Println(ui.InfoText(fmt.Sprintf("%-4s %-16s %-28s %-24s %s", "编号", "项目状态", "容器状态", "项目名", "目录")))
 	for i, project := range projects {
+		projectStatus := colorComposeStatus(composeProjectStatusDisplay(project))
 		fmt.Printf(
-			"%-4s %-16s %-28s %-24s %s\n",
+			"%-4s %s %-28s %-24s %s\n",
 			fmt.Sprintf("%d)", i+1),
-			truncateText(defaultText(composeProjectStatusDisplay(project)), 16),
+			ui.TableCell(projectStatus, 16),
 			truncateText(defaultText(composeContainerSummaryDisplay(project.Containers)), 28),
 			truncateText(defaultText(project.Name), 24),
 			defaultText(project.Dir),
 		)
+	}
+}
+
+func colorComposeStatus(status string) string {
+	switch status {
+	case "运行中":
+		return ui.SuccessText(status)
+	case "部分运行", "重启中":
+		return ui.InfoText(status)
+	case "已暂停", "已停止", "无容器":
+		return ui.WarningText(status)
+	case "状态获取失败":
+		return ui.DangerText(status)
+	default:
+		return ui.MutedText(status)
 	}
 }
 

@@ -189,6 +189,46 @@ func TestReportPaletteUsesSemanticColors(t *testing.T) {
 	}
 }
 
+func TestSemanticCardsUseSharedLayoutAndColors(t *testing.T) {
+	t.Setenv("CLICOLOR_FORCE", "1")
+	t.Setenv("NO_COLOR", "")
+	os.Unsetenv("NO_COLOR")
+
+	output := captureStdout(t, func() {
+		PrintSuccessCard("配置完成",
+			CardField{Label: "端口", Value: "30948"},
+			CardField{Label: "SSH 配置", Value: "/usr/sbin/sshd -T", Detail: "实际生效配置"},
+		)
+		PrintDangerCard("永久删除", CardField{Label: "路径", Value: "/var/lib/docker"})
+	})
+	if !strings.Contains(output, bold+green+"配置完成"+reset) {
+		t.Fatalf("成功卡片标题未使用绿色加粗：%q", output)
+	}
+	if !strings.Contains(output, bold+red+"永久删除"+reset) {
+		t.Fatalf("危险卡片标题未使用红色加粗：%q", output)
+	}
+	if !strings.Contains(output, blue+"端口："+reset+"30948") {
+		t.Fatalf("卡片字段名未使用蓝色：%q", output)
+	}
+	if !strings.Contains(output, gray+"实际生效配置"+reset) {
+		t.Fatalf("卡片详情未使用灰色：%q", output)
+	}
+}
+
+func TestTableCellPadsColoredTextByVisibleWidth(t *testing.T) {
+	t.Setenv("CLICOLOR_FORCE", "1")
+	t.Setenv("NO_COLOR", "")
+	os.Unsetenv("NO_COLOR")
+
+	cell := TableCell(SuccessText("运行中"), 8)
+	if got := displayWidth(cell); got != 8 {
+		t.Fatalf("TableCell visible width = %d, want 8: %q", got, cell)
+	}
+	if !strings.Contains(cell, green+"运行中"+reset) {
+		t.Fatalf("TableCell did not preserve color: %q", cell)
+	}
+}
+
 func TestPauseNormalizesEllipsis(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	view := &UI{reader: bufio.NewReader(strings.NewReader("\n"))}

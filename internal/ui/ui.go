@@ -23,6 +23,14 @@ type UI struct {
 	reader *bufio.Reader
 }
 
+// CardField is one labeled value in a terminal information card. Detail is
+// rendered on a muted continuation line and is useful for paths or directives.
+type CardField struct {
+	Label  string
+	Value  string
+	Detail string
+}
+
 func New() *UI {
 	return &UI{reader: bufio.NewReader(os.Stdin)}
 }
@@ -191,8 +199,79 @@ func SuccessBoldText(text string) string {
 	return paint(bold+green, text)
 }
 
+func WarningBoldText(text string) string {
+	return paint(bold+yellow, text)
+}
+
+func DangerBoldText(text string) string {
+	return paint(bold+red, text)
+}
+
+func SuccessText(text string) string {
+	return paint(green, text)
+}
+
+func WarningText(text string) string {
+	return paint(yellow, text)
+}
+
+func DangerText(text string) string {
+	return paint(red, text)
+}
+
 func MutedText(text string) string {
 	return paint(gray, text)
+}
+
+// PrintInfoCard and the semantic variants keep results and key information in
+// one consistent ServerTool card. Values may already contain colored badges.
+func PrintInfoCard(title string, fields ...CardField) {
+	printCard(PrimaryBoldText(strings.TrimSpace(title)), fields)
+}
+
+func PrintSuccessCard(title string, fields ...CardField) {
+	printCard(SuccessBoldText(strings.TrimSpace(title)), fields)
+}
+
+func PrintWarningCard(title string, fields ...CardField) {
+	printCard(WarningBoldText(strings.TrimSpace(title)), fields)
+}
+
+func PrintDangerCard(title string, fields ...CardField) {
+	printCard(DangerBoldText(strings.TrimSpace(title)), fields)
+}
+
+func printCard(title string, fields []CardField) {
+	fmt.Println(PrimaryBoldText("╭─ ServerTool"))
+	fmt.Println(PrimaryText("│") + " " + title)
+	for _, field := range fields {
+		label := strings.TrimSpace(field.Label)
+		value := strings.TrimSpace(field.Value)
+		if label == "" {
+			fmt.Println(PrimaryText("│") + " " + value)
+		} else {
+			fmt.Println(PrimaryText("│") + " " + InfoText(label+"：") + value)
+		}
+		if detail := strings.TrimSpace(field.Detail); detail != "" {
+			fmt.Println(PrimaryText("│") + "   " + MutedText(detail))
+		}
+	}
+	fmt.Println(PrimaryText("╰" + strings.Repeat("─", 46)))
+}
+
+// PrintField applies the shared field-label color outside a card.
+func PrintField(label, value string) {
+	fmt.Println(InfoText(strings.TrimSpace(label)+"：") + value)
+}
+
+// TableCell pads colored terminal text by visible width so ANSI sequences do
+// not break table alignment.
+func TableCell(text string, width int) string {
+	padding := width - displayWidth(text)
+	if padding < 0 {
+		padding = 0
+	}
+	return text + strings.Repeat(" ", padding)
 }
 
 // StatusBadge colors report states consistently by their meaning.

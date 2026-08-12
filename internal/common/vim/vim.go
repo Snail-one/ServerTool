@@ -60,7 +60,7 @@ func ConfigureVim(view *ui.UI) error {
 	fmt.Println()
 
 	if system.FileNonEmpty(vimrc) {
-		fmt.Printf("检测到已有 Vim 配置：%s\n", vimrc)
+		ui.PrintInfoCard("检测到已有 Vim 配置", ui.CardField{Label: "配置文件", Value: vimrc})
 		if err := printExistingVimConfig(vimrc); err != nil {
 			return err
 		}
@@ -88,8 +88,7 @@ func ConfigureVim(view *ui.UI) error {
 	}
 
 	fmt.Println()
-	fmt.Println("Vim 配置完成")
-	fmt.Printf("配置文件：%s\n", vimrc)
+	ui.PrintSuccessCard("Vim 配置完成", ui.CardField{Label: "配置文件", Value: vimrc})
 	return nil
 }
 
@@ -99,13 +98,13 @@ func printExistingVimConfig(path string) error {
 		return err
 	}
 
-	fmt.Println("当前 Vim 配置内容：")
-	fmt.Println("----------")
+	fmt.Println(ui.PrimaryBoldText("当前 Vim 配置内容："))
+	fmt.Println(ui.MutedText("----------------------------------------"))
 	fmt.Print(string(content))
 	if len(content) > 0 && content[len(content)-1] != '\n' {
 		fmt.Println()
 	}
-	fmt.Println("----------")
+	fmt.Println(ui.MutedText("----------------------------------------"))
 	fmt.Println()
 	return nil
 }

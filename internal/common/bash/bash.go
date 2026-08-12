@@ -10,6 +10,7 @@ import (
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
+	"snail_tool/internal/ui"
 )
 
 const (
@@ -243,8 +244,10 @@ func ConfigureBash() error {
 
 	bashrc := filepath.Join(account.Home, ".bashrc")
 	log.Info("配置 Bash 环境...")
-	fmt.Printf("当前用户：%s\n", account.Name)
-	fmt.Printf("配置文件：%s\n", bashrc)
+	ui.PrintInfoCard("Bash 配置信息",
+		ui.CardField{Label: "当前用户", Value: account.Name},
+		ui.CardField{Label: "配置文件", Value: bashrc},
+	)
 
 	if err := shared.EnsureFileWithOptions(bashrc, shared.AtomicWriteOptions{
 		Mode: 0644, Owner: &shared.FileOwner{UID: account.UID, GID: account.GID},
@@ -272,7 +275,7 @@ func ConfigureBash() error {
 	}
 
 	fmt.Println()
-	fmt.Println("已经修改 ~/.bashrc，新的 Bash 配置如下：")
+	fmt.Println(ui.PrimaryBoldText("已经写入以下 Bash 配置："))
 	fmt.Println(bashBlock)
 	if preservedPrompt {
 		fmt.Println("保留了已有的 PS1 配置")
@@ -281,8 +284,17 @@ func ConfigureBash() error {
 		fmt.Println("保留了已有的颜色配置")
 	}
 	fmt.Println()
-	fmt.Println("重新登录或执行 source ~/.bashrc 后生效")
-	fmt.Println("Bash 配置完成")
+	fields := []ui.CardField{
+		{Label: "配置文件", Value: bashrc},
+		{Label: "立即生效", Value: "source " + bashrc},
+	}
+	if preservedPrompt {
+		fields = append(fields, ui.CardField{Label: "已有 PS1", Value: "已保留"})
+	}
+	if preservedColor {
+		fields = append(fields, ui.CardField{Label: "已有颜色配置", Value: "已保留"})
+	}
+	ui.PrintSuccessCard("Bash 配置完成", fields...)
 	return nil
 }
 

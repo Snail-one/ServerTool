@@ -197,9 +197,12 @@ func configureSSHDHardening(view *ui.UI, account *system.Account) error {
 	}
 
 	fmt.Println()
-	log.Info("SSH 服务安全配置完成")
-	fmt.Println()
-	fmt.Printf("用户：%s\n", account.Name)
+	ui.PrintSuccessCard("SSH 服务安全配置完成",
+		ui.CardField{Label: "用户", Value: account.Name},
+		ui.CardField{Label: "生效配置", Value: source},
+		ui.CardField{Label: "SSH 端口", Value: effectivePort},
+		ui.CardField{Label: "SSH 登录", Value: fmt.Sprintf("ssh -p %s %s@服务器IP", effectivePort, account.Name)},
+	)
 	fmt.Println()
 	fmt.Println(ui.PrimaryBoldText("本次写入 SSH 配置："))
 	printSSHDConfig(customSSHDConfigPath, buildSSHDConfig(port, permitRootLogin))
@@ -213,9 +216,6 @@ func configureSSHDHardening(view *ui.UI, account *system.Account) error {
 	fmt.Println()
 	fmt.Println(ui.PrimaryBoldText("生效 SSH 安全配置："))
 	printSSHSecurityRows(settings)
-	fmt.Println()
-	fmt.Println(ui.PrimaryBoldText("连接方式："))
-	fmt.Printf("ssh -p %s %s@服务器IP\n", effectivePort, account.Name)
 	fmt.Println()
 	log.Warn("请先新开一个终端测试 SSH 登录成功后，再关闭当前会话。")
 	return nil
@@ -275,7 +275,7 @@ func confirmDisableSSHDConfigPorts(view *ui.UI, port int) (bool, error) {
 	}
 
 	fmt.Println()
-	fmt.Println("检测到已有 Port 配置：")
+	fmt.Println(ui.PrimaryBoldText("检测到已有 Port 配置："))
 	for _, directive := range directives {
 		fmt.Printf("- %s 第 %d 行：%s\n", directive.path, directive.line, strings.TrimSpace(directive.text))
 	}
@@ -793,11 +793,11 @@ func reloadSSHService() error {
 
 func printSSHDConfig(path, content string) {
 	fmt.Println()
-	fmt.Printf("当前 SSH 配置文件：%s\n", path)
-	fmt.Println("----------")
+	ui.PrintField("当前 SSH 配置文件", path)
+	fmt.Println(ui.MutedText("----------------------------------------"))
 	fmt.Print(content)
 	if !strings.HasSuffix(content, "\n") {
 		fmt.Println()
 	}
-	fmt.Println("----------")
+	fmt.Println(ui.MutedText("----------------------------------------"))
 }

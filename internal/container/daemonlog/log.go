@@ -101,7 +101,7 @@ func configureDockerLogRotation(
 
 	result, err := writeDockerDaemonLogConfig(daemonPath, rotation, func(status dockerLogStatus) (bool, error) {
 		fmt.Println()
-		fmt.Println("检测到当前 daemon.json 已包含 Docker 日志配置：")
+		fmt.Println(ui.PrimaryBoldText("检测到当前 daemon.json 已包含 Docker 日志配置："))
 		printDockerLogStatus(status)
 		fmt.Println()
 		return view.Confirm("是否覆盖当前 Docker 日志配置？(y/N)：")
@@ -120,16 +120,20 @@ func configureDockerLogRotation(
 	}
 
 	fmt.Println()
-	fmt.Println("Docker 日志轮转配置完成")
-	fmt.Printf("配置文件：%s\n", daemonPath)
-	fmt.Printf("写入目录：%s\n", daemonDir)
-	if result.backupPath != "" {
-		fmt.Printf("备份文件：%s\n", result.backupPath)
+	fields := []ui.CardField{
+		{Label: "配置文件", Value: daemonPath},
+		{Label: "写入目录", Value: daemonDir},
 	}
-	fmt.Printf("日志驱动：%s\n", dockerLogDriver)
-	fmt.Printf("轮转配置：max-size=%s, max-file=%s\n", rotation.maxSize, rotation.maxFile)
-	fmt.Println("已执行：systemctl restart docker")
-	fmt.Println("说明：该配置只影响后续新建容器；已有容器通常需要重建后才会应用。")
+	if result.backupPath != "" {
+		fields = append(fields, ui.CardField{Label: "备份文件", Value: result.backupPath})
+	}
+	fields = append(fields,
+		ui.CardField{Label: "日志驱动", Value: dockerLogDriver},
+		ui.CardField{Label: "轮转配置", Value: fmt.Sprintf("max-size=%s, max-file=%s", rotation.maxSize, rotation.maxFile)},
+		ui.CardField{Label: "已执行", Value: "systemctl restart docker"},
+		ui.CardField{Label: "说明", Value: "仅影响后续新建容器；已有容器通常需要重建"},
+	)
+	ui.PrintSuccessCard("Docker 日志轮转配置完成", fields...)
 	if rebuildRunningCompose != nil {
 		if err := rebuildRunningCompose(view, "是否立即重建运行中的 Compose 项目使配置生效？(y/N)："); err != nil {
 			return err
@@ -147,7 +151,7 @@ func promptLogRotationConfig(view promptReader) (logRotationConfig, bool, error)
 		ui.MenuOptionHint("4", "自定义配置", "max-size / max-file")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
-		fmt.Println("说明：log-driver 固定为 json-file。")
+		ui.PrintField("说明", "log-driver 固定为 json-file")
 		fmt.Println()
 
 		choice, err := view.Ask("请选择：")
@@ -309,21 +313,21 @@ func dockerLogConfigStatus(config map[string]any) (dockerLogStatus, bool) {
 }
 
 func printDockerDaemonJSON(path string) {
-	fmt.Printf("当前配置文件：%s\n", path)
+	ui.PrintField("当前配置文件", path)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			fmt.Println("当前配置内容：文件不存在，将创建新文件")
+			ui.PrintField("当前配置内容", "文件不存在，将创建新文件")
 			return
 		}
-		fmt.Printf("当前配置内容：读取失败：%v\n", err)
+		ui.PrintField("当前配置内容", fmt.Sprintf("读取失败：%v", err))
 		return
 	}
 	if strings.TrimSpace(string(data)) == "" {
-		fmt.Println("当前配置内容：（空文件）")
+		ui.PrintField("当前配置内容", "（空文件）")
 		return
 	}
-	fmt.Println("当前配置内容：")
+	fmt.Println(ui.PrimaryBoldText("当前配置内容："))
 	fmt.Print(string(data))
 	if !strings.HasSuffix(string(data), "\n") {
 		fmt.Println()

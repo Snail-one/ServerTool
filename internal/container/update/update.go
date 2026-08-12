@@ -109,14 +109,14 @@ func updateDockerComposeApps(view *ui.UI, mode int) error {
 	}
 
 	if len(scanRoots) > 0 {
-		fmt.Println("扫描目录：")
+		fmt.Println(ui.PrimaryBoldText("扫描目录："))
 		for _, root := range scanRoots {
 			fmt.Printf("- %s\n", root)
 		}
 	} else {
-		fmt.Println("来源：docker compose ls")
+		ui.PrintField("来源", "docker compose ls")
 	}
-	fmt.Printf("Compose 命令：%s\n", compose.Display)
+	ui.PrintField("Compose 命令", compose.Display)
 	fmt.Printf("找到 %d 个 Compose 目录：\n", len(dirs))
 	for _, dir := range dirs {
 		fmt.Printf("- %s\n", dir)
@@ -146,8 +146,10 @@ func updateDockerComposeApps(view *ui.UI, mode int) error {
 	}
 
 	fmt.Println()
-	log.Info("完成")
-	fmt.Printf("已更新：%d，已跳过：%d\n", updated, skipped)
+	ui.PrintSuccessCard("Compose 应用更新完成",
+		ui.CardField{Label: "已更新", Value: fmt.Sprintf("%d 个", updated)},
+		ui.CardField{Label: "已跳过", Value: fmt.Sprintf("%d 个", skipped)},
+	)
 	return nil
 }
 
@@ -304,12 +306,15 @@ func rebuildRunningComposeProjects(confirmer ComposeRebuildConfirmer, compose Co
 		confirmPrompt = fmt.Sprintf("将依次执行 %s down 和 %s up -d（不会删除卷），是否继续？(y/N)：", compose.Display, compose.Display)
 	}
 
-	fmt.Printf("Compose 命令：%s\n", compose.Display)
+	ui.PrintInfoCard("Compose 重建信息",
+		ui.CardField{Label: "Compose 命令", Value: compose.Display},
+		ui.CardField{Label: "运行中项目", Value: fmt.Sprintf("%d 个", len(dirs))},
+	)
 	fmt.Printf("找到 %d 个运行中的 Compose 项目：\n", len(dirs))
 	for _, dir := range dirs {
 		fmt.Printf("- %s\n", dir)
 	}
-	fmt.Println("说明：只会重建 Docker Compose 项目；非 Compose 创建的容器需要按原 docker run 参数手动重建。")
+	ui.PrintField("说明", "只会重建 Docker Compose 项目；非 Compose 创建的容器需按原 docker run 参数手动重建")
 	fmt.Println()
 
 	if len(dirs) == 0 {
@@ -324,7 +329,7 @@ func rebuildRunningComposeProjects(confirmer ComposeRebuildConfirmer, compose Co
 	if !confirmed {
 		result.Canceled = true
 		fmt.Println("已取消重建")
-		fmt.Println("说明：已有容器通常需要重建后才会应用。")
+		ui.PrintField("说明", "已有容器通常需要重建后才会应用")
 		return result, nil
 	}
 
@@ -340,8 +345,9 @@ func rebuildRunningComposeProjects(confirmer ComposeRebuildConfirmer, compose Co
 	}
 
 	fmt.Println()
-	log.Info("重建完成")
-	fmt.Printf("已重建：%d\n", result.Rebuilt)
+	ui.PrintSuccessCard("Compose 项目重建完成",
+		ui.CardField{Label: "已重建", Value: fmt.Sprintf("%d 个", result.Rebuilt)},
+	)
 	return result, nil
 }
 

@@ -62,7 +62,7 @@ func ConfigureProxy(view *ui.UI) error {
 	log.Info("配置代理环境变量")
 	fmt.Println()
 	if currentProxy, ok := CurrentProxyURL(account); ok {
-		fmt.Printf("当前代理服务器：%s\n", maskProxyURL(currentProxy))
+		ui.PrintInfoCard("当前代理配置", ui.CardField{Label: "代理服务器", Value: maskProxyURL(currentProxy)})
 		fmt.Println()
 	}
 
@@ -104,12 +104,11 @@ func ConfigureProxy(view *ui.UI) error {
 	}
 
 	fmt.Println()
-	fmt.Println("代理配置完成")
-	fmt.Println()
-	fmt.Printf("代理地址：%s\n", maskProxyURL(proxyURL))
-	fmt.Println()
-	fmt.Println("立即生效请执行：")
-	fmt.Println("source ~/.bashrc")
+	ui.PrintSuccessCard("代理配置完成",
+		ui.CardField{Label: "配置文件", Value: bashrc},
+		ui.CardField{Label: "代理地址", Value: maskProxyURL(proxyURL)},
+		ui.CardField{Label: "立即生效", Value: "source " + bashrc},
+	)
 	return nil
 }
 

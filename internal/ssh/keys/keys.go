@@ -232,7 +232,10 @@ func deleteSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		return err
 	}
 
-	log.Info("已删除选中的 SSH 公钥")
+	ui.PrintSuccessCard("SSH 公钥删除完成",
+		ui.CardField{Label: "删除数量", Value: fmt.Sprintf("%d 把", len(indexes))},
+		ui.CardField{Label: "配置文件", Value: authKeys},
+	)
 	return nil
 }
 
@@ -346,7 +349,7 @@ func authorizedKeyEntries(content string) []authorizedKeyEntry {
 }
 
 func printAuthorizedKeyEntries(entries []authorizedKeyEntry) {
-	fmt.Println("当前 SSH 公钥：")
+	fmt.Println(ui.PrimaryBoldText("当前 SSH 公钥："))
 	for _, entry := range entries {
 		source := "手动"
 		if entry.managed {

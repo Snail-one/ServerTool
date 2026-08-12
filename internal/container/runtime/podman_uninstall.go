@@ -113,7 +113,7 @@ func runPodmanAsAccount(account *system.Account, name string, args ...string) er
 }
 
 func confirmPodmanUninstall(view dockerUninstallPrompter, plan podmanUninstallPlan) (bool, error) {
-	fmt.Println("即将卸载 Podman：")
+	fmt.Println(ui.PrimaryBoldText("即将卸载 Podman："))
 	if len(plan.packages) > 0 {
 		fmt.Println("软件包：")
 		for _, name := range plan.packages {
@@ -122,21 +122,24 @@ func confirmPodmanUninstall(view dockerUninstallPrompter, plan podmanUninstallPl
 	}
 	fmt.Println()
 	if !plan.removeData {
-		fmt.Println("Podman 的 rootful/rootless 容器数据和用户配置将保留。")
+		ui.PrintInfoCard("Podman 数据将保留",
+			ui.CardField{Label: "保留内容", Value: "rootful/rootless 容器数据和用户配置"},
+		)
 		fmt.Println()
 		return view.Confirm("确认卸载 Podman 运行时并保留数据？请输入 y 确认，默认取消 (y/N)：")
 	}
 
-	fmt.Println("警告：Podman system reset 将永久删除 rootful 和当前用户的：")
-	fmt.Println("- pods、容器、镜像、网络、卷、构建缓存")
-	fmt.Println("- Podman graphRoot 和 runRoot 存储目录")
+	fields := []ui.CardField{
+		{Label: "永久删除", Value: "pods、容器、镜像、网络、卷、构建缓存"},
+		{Label: "永久删除", Value: "Podman graphRoot 和 runRoot 存储目录"},
+	}
 	if len(plan.configPaths) > 0 {
-		fmt.Println("以下用户配置目录也将被永久删除：")
 		for _, path := range plan.configPaths {
-			fmt.Println("- " + path)
+			fields = append(fields, ui.CardField{Label: "用户配置", Value: path})
 		}
 	}
-	fmt.Println("注意：Podman 与 Buildah 等工具可能共享容器存储。")
+	fields = append(fields, ui.CardField{Label: "注意", Value: "Podman 与 Buildah 等工具可能共享容器存储"})
+	ui.PrintDangerCard("Podman 数据将被永久删除", fields...)
 	fmt.Println()
 	answer, err := view.Ask("请输入 DELETE PODMAN DATA 确认完全卸载：")
 	if err != nil {
@@ -206,9 +209,16 @@ func (uninstaller *podmanUninstaller) uninstall() (bool, error) {
 		log.Info("[Podman 卸载/结果验证] 已不再检测到 podman 命令")
 	}
 	if plan.removeData {
-		log.Info("Podman 完全卸载完成；Podman 软件包、容器数据和当前用户配置均已清理")
+		ui.PrintSuccessCard("Podman 完全卸载完成",
+			ui.CardField{Label: "软件包", Value: ui.Badge("已清理", true)},
+			ui.CardField{Label: "容器数据", Value: ui.Badge("已清理", true)},
+			ui.CardField{Label: "用户配置", Value: ui.Badge("已清理", true)},
+		)
 	} else {
-		log.Info("Podman 运行时卸载完成；Podman 容器数据和用户配置均已保留")
+		ui.PrintSuccessCard("Podman 运行时卸载完成",
+			ui.CardField{Label: "容器数据", Value: ui.Badge("已保留", true)},
+			ui.CardField{Label: "用户配置", Value: ui.Badge("已保留", true)},
+		)
 	}
 	return true, nil
 }

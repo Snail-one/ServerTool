@@ -28,11 +28,11 @@ func newDockerScriptInstaller(view *ui.UI) *dockerScriptInstaller {
 		output:        system.Output,
 		commandExists: system.CommandExists,
 		confirm: func() (bool, error) {
-			fmt.Println("即将下载并执行 Docker 官方安装脚本：")
-			fmt.Println(dockerInstallScriptURL)
-			fmt.Println()
-			fmt.Println("注意：Docker 官方建议此便捷脚本主要用于测试和开发环境。")
-			fmt.Println("脚本默认安装最新 stable 版本，可能带来未经验证的主版本升级。")
+			ui.PrintWarningCard("Docker 官方脚本安装提示",
+				ui.CardField{Label: "脚本来源", Value: dockerInstallScriptURL},
+				ui.CardField{Label: "适用场景", Value: "Docker 官方建议主要用于测试和开发环境"},
+				ui.CardField{Label: "版本风险", Value: "默认安装最新 stable，可能升级主版本"},
+			)
 			return view.Confirm("确认继续使用官方脚本安装 Docker？(y/N)：")
 		},
 	}
@@ -86,7 +86,11 @@ func (installer *dockerScriptInstaller) install() error {
 	if err := verifyDockerInstallation(installer.output); err != nil {
 		return fmt.Errorf("Docker 脚本安装在本地验证阶段失败: %w", err)
 	}
-	log.Info("Docker 官方脚本安装完成")
+	ui.PrintSuccessCard("Docker 官方脚本安装完成",
+		ui.CardField{Label: "脚本来源", Value: dockerInstallScriptURL},
+		ui.CardField{Label: "本地验证", Value: ui.Badge("已通过", true)},
+		ui.CardField{Label: "服务", Value: ui.Badge("已启动", true)},
+	)
 	return nil
 }
 

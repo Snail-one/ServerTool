@@ -69,15 +69,17 @@ func Run(view *ui.UI) error {
 		}
 		active := activeVersion(currentLink)
 		ui.MenuTitle("开发环境管理", "Go 语言")
+		fields := []ui.CardField{}
 		if active == "" {
-			fmt.Println("当前版本：未配置")
+			fields = append(fields, ui.CardField{Label: "当前版本", Value: ui.ConfiguredBadge(false)})
 		} else {
-			fmt.Println("当前版本：" + active)
+			fields = append(fields, ui.CardField{Label: "当前版本", Value: ui.Badge(active, true)})
 		}
-		fmt.Printf("已安装版本：%d 个\n", len(installed))
+		fields = append(fields, ui.CardField{Label: "已安装版本", Value: fmt.Sprintf("%d 个", len(installed))})
 		if officialMigrationDetected() {
-			fmt.Println("检测到 /usr/local/go 或其 ~/.bashrc 环境变量 [安装或更新时可迁移]")
+			fields = append(fields, ui.CardField{Label: "官方位置 Go", Value: ui.StatusBadge("需确认"), Detail: "/usr/local/go 或 ~/.bashrc 环境变量，可在安装或更新时迁移"})
 		}
+		ui.PrintInfoCard("Go 环境状态", fields...)
 		fmt.Println()
 		ui.MenuOption("1", "安装 Go")
 		ui.MenuOption("2", "更新到最新稳定版")
@@ -138,7 +140,7 @@ func cleanupInstallArtifacts(view *ui.UI) error {
 		log.Info("未发现 Go 安装残留")
 		return nil
 	}
-	fmt.Println("检测到以下 Go 安装残留：")
+	fmt.Println(ui.PrimaryBoldText("检测到以下 Go 安装残留："))
 	containsBackup := false
 	for _, name := range artifacts {
 		fmt.Println("- " + filepath.Join(installRoot, name))
@@ -164,7 +166,10 @@ func cleanupInstallArtifacts(view *ui.UI) error {
 		}
 		log.Info("已清理：", path)
 	}
-	log.Info("Go 安装残留清理完成，共清理 ", len(artifacts), " 项")
+	ui.PrintSuccessCard("Go 安装残留清理完成",
+		ui.CardField{Label: "清理数量", Value: fmt.Sprintf("%d 项", len(artifacts))},
+		ui.CardField{Label: "安装根目录", Value: installRoot},
+	)
 	return nil
 }
 
@@ -278,7 +283,7 @@ func selectRelease(view *ui.UI, releases []release, arch string) (release, error
 			end = len(releases)
 		}
 
-		fmt.Printf("可安装的 Go 稳定版本（linux/%s，第 %d/%d 页，共 %d 个）：\n", arch, page+1, pageCount, len(releases))
+		fmt.Println(ui.PrimaryBoldText(fmt.Sprintf("可安装的 Go 稳定版本（linux/%s，第 %d/%d 页，共 %d 个）：", arch, page+1, pageCount, len(releases))))
 		for i, item := range releases[start:end] {
 			ui.MenuOption(strconv.Itoa(i+1), item.Version)
 		}
@@ -397,7 +402,10 @@ func removeOfficialGoAndEnv() error {
 		}
 		log.Info("已清理 ~/.bashrc 中引用 /usr/local/go 的 PATH 和 GOROOT")
 	}
-	log.Info("已完成官方位置 Go 卸载和环境清理")
+	ui.PrintSuccessCard("官方位置 Go 卸载完成",
+		ui.CardField{Label: "安装位置", Value: officialRoot},
+		ui.CardField{Label: "环境变量", Value: ui.Badge("已清理", true)},
+	)
 	return nil
 }
 
@@ -569,8 +577,9 @@ func uninstallSelected(view *ui.UI) error {
 	if err := os.RemoveAll(filepath.Join(installRoot, selected)); err != nil {
 		return fmt.Errorf("删除 %s 失败: %w", selected, err)
 	}
-	log.Info("已卸载 Go 版本：", selected)
+	fields := []ui.CardField{{Label: "卸载版本", Value: selected}}
 	if !wasActive {
+		ui.PrintSuccessCard("Go 版本卸载完成", fields...)
 		return nil
 	}
 
@@ -583,6 +592,8 @@ func uninstallSelected(view *ui.UI) error {
 			return err
 		}
 		log.Info("已自动切换到：", remaining[0])
+		fields = append(fields, ui.CardField{Label: "当前版本", Value: remaining[0]})
+		ui.PrintSuccessCard("Go 版本卸载完成", fields...)
 		return nil
 	}
 	if err := removeCurrentLink(currentLink); err != nil {
@@ -592,6 +603,8 @@ func uninstallSelected(view *ui.UI) error {
 		return err
 	}
 	log.Info("已清理 Go PATH 配置")
+	fields = append(fields, ui.CardField{Label: "当前版本", Value: ui.ConfiguredBadge(false)})
+	ui.PrintSuccessCard("Go 版本卸载完成", fields...)
 	return nil
 }
 
@@ -671,8 +684,11 @@ func installRelease(item release) error {
 		return err
 	}
 	log.Info("Go PATH 配置完成")
-	log.Info("Go 安装完成，当前版本：", item.Version)
-	fmt.Println("重新登录或执行 source ~/.bashrc 后 PATH 生效")
+	ui.PrintSuccessCard("Go 安装完成",
+		ui.CardField{Label: "当前版本", Value: item.Version},
+		ui.CardField{Label: "安装位置", Value: destination},
+		ui.CardField{Label: "立即生效", Value: "source ~/.bashrc"},
+	)
 	return nil
 }
 
@@ -710,8 +726,11 @@ func reinstallRelease(item release) error {
 	if err := configureTargetUserPath(); err != nil {
 		return err
 	}
-	log.Info("当前 Go 版本和 PATH 修复完成：", item.Version)
-	fmt.Println("重新登录或执行 source ~/.bashrc 后 PATH 生效")
+	ui.PrintSuccessCard("Go 版本和 PATH 修复完成",
+		ui.CardField{Label: "当前版本", Value: item.Version},
+		ui.CardField{Label: "安装位置", Value: destination},
+		ui.CardField{Label: "立即生效", Value: "source ~/.bashrc"},
+	)
 	return nil
 }
 

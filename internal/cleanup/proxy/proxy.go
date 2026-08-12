@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -9,6 +8,7 @@ import (
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
+	"snail_tool/internal/ui"
 )
 
 var proxyBegin, proxyEnd = commonproxy.ProxyMarkers()
@@ -27,7 +27,11 @@ func Run(account *system.Account) error {
 	}
 	if changed {
 		log.Info("已清理代理托管配置：", bashrc)
-		fmt.Println("当前终端已存在的代理环境变量可能需要重新登录或手动 unset 后才会消失。")
+		ui.PrintWarningCard("代理清理提示",
+			ui.CardField{Label: "配置文件", Value: bashrc},
+			ui.CardField{Label: "当前终端", Value: "已有代理变量可能仍然存在"},
+			ui.CardField{Label: "生效方式", Value: "重新登录或手动 unset"},
+		)
 	} else {
 		log.Info("未发现代理托管配置，跳过")
 	}

@@ -135,7 +135,7 @@ func newDockerUninstaller(view *ui.UI, removeData bool) *dockerUninstaller {
 }
 
 func confirmDockerUninstall(view dockerUninstallPrompter, plan dockerUninstallPlan) (bool, error) {
-	fmt.Println("即将卸载 Docker：")
+	fmt.Println(ui.PrimaryBoldText("即将卸载 Docker："))
 	if len(plan.packages) > 0 {
 		fmt.Println("软件包：")
 		for _, name := range plan.packages {
@@ -150,18 +150,20 @@ func confirmDockerUninstall(view dockerUninstallPrompter, plan dockerUninstallPl
 	}
 	fmt.Println()
 	if !plan.removeData {
-		fmt.Println("以下数据和自定义配置将保留：")
-		fmt.Println("- /var/lib/docker（镜像、容器、卷）")
-		fmt.Println("- /var/lib/containerd")
-		fmt.Println("- /etc/docker")
-		fmt.Println("- Docker systemd 自定义配置")
+		ui.PrintInfoCard("Docker 数据将保留",
+			ui.CardField{Label: "容器数据", Value: "/var/lib/docker（镜像、容器、卷）"},
+			ui.CardField{Label: "运行时数据", Value: "/var/lib/containerd"},
+			ui.CardField{Label: "自定义配置", Value: "/etc/docker 与 Docker systemd 配置"},
+		)
 		fmt.Println()
 		return view.Confirm("确认卸载 Docker 运行时并保留数据？请输入 y 确认，默认取消 (y/N)：")
 	}
-	fmt.Println("警告：以下路径将被永久递归删除，镜像、容器和卷无法恢复：")
+	fields := make([]ui.CardField, 0, len(plan.dataPaths)+1)
+	fields = append(fields, ui.CardField{Label: "影响", Value: "镜像、容器和卷无法恢复"})
 	for _, path := range plan.dataPaths {
-		fmt.Println("- " + path)
+		fields = append(fields, ui.CardField{Label: "永久删除", Value: path})
 	}
+	ui.PrintDangerCard("Docker 数据将被永久删除", fields...)
 	fmt.Println()
 	answer, err := view.Ask("请输入 DELETE DOCKER DATA 确认完全卸载：")
 	if err != nil {
@@ -239,9 +241,16 @@ func (uninstaller *dockerUninstaller) uninstall() (bool, error) {
 		log.Info("[Docker 卸载/结果验证] 已不再检测到 docker 命令")
 	}
 	if plan.removeData {
-		log.Info("Docker 完全卸载完成；软件包、仓库、镜像、容器、卷和自定义配置均已清理")
+		ui.PrintSuccessCard("Docker 完全卸载完成",
+			ui.CardField{Label: "软件包与仓库", Value: ui.Badge("已清理", true)},
+			ui.CardField{Label: "镜像、容器和卷", Value: ui.Badge("已清理", true)},
+			ui.CardField{Label: "自定义配置", Value: ui.Badge("已清理", true)},
+		)
 	} else {
-		log.Info("Docker 运行时卸载完成；镜像、容器、卷和自定义配置均已保留")
+		ui.PrintSuccessCard("Docker 运行时卸载完成",
+			ui.CardField{Label: "镜像、容器和卷", Value: ui.Badge("已保留", true)},
+			ui.CardField{Label: "自定义配置", Value: ui.Badge("已保留", true)},
+		)
 	}
 	return true, nil
 }

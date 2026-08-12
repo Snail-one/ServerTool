@@ -89,35 +89,17 @@ func loadSetupSummary() (setupSummary, error) {
 
 func printSetupSummaryCard(summary setupSummary) {
 	fmt.Println()
-	fmt.Println(ui.PrimaryBoldText("╭─ ServerTool"))
-	printSetupCardLine("", ui.SuccessBoldText("一键配置完成"))
-	printSetupCardLine("用户", summary.user)
-	printSetupCardStatusLine("SSH 公钥", summary.sshKeys, summary.sshKeysPath)
-	printSetupCardStatusLine("SSH 安全策略", summary.sshSecurity, "")
-	printSetupCardLine("SSH 配置", summary.sshConfigSource)
-	printSetupCardLine("SSH 端口", summary.sshPort)
-	printSetupCardLine("SSH 登录", summary.sshCommand)
-	printSetupCardStatusLine("Vim 配置", summary.vimConfigured, summary.vimConfigPath)
-	printSetupCardStatusLine("Bash 配置", summary.bashConfigured, summary.bashConfigPath)
-	printSetupCardLine("Bash 生效", summary.bashSourceCommand)
-	fmt.Println(ui.PrimaryText("╰──────────────────────────────────────────────"))
-}
-
-func printSetupCardLine(label, value string) {
-	prefix := ui.PrimaryText("│") + " "
-	if label == "" {
-		fmt.Println(prefix + value)
-		return
-	}
-	fmt.Println(prefix + ui.InfoText(label+"：") + value)
-}
-
-func printSetupCardStatusLine(label string, configured bool, detail string) {
-	value := ui.ConfiguredBadge(configured)
-	if detail != "" {
-		value += " " + detail
-	}
-	printSetupCardLine(label, value)
+	ui.PrintSuccessCard("一键配置完成",
+		ui.CardField{Label: "用户", Value: summary.user},
+		ui.CardField{Label: "SSH 公钥", Value: ui.ConfiguredBadge(summary.sshKeys), Detail: summary.sshKeysPath},
+		ui.CardField{Label: "SSH 安全策略", Value: ui.ConfiguredBadge(summary.sshSecurity)},
+		ui.CardField{Label: "SSH 配置", Value: summary.sshConfigSource},
+		ui.CardField{Label: "SSH 端口", Value: summary.sshPort},
+		ui.CardField{Label: "SSH 登录", Value: summary.sshCommand},
+		ui.CardField{Label: "Vim 配置", Value: ui.ConfiguredBadge(summary.vimConfigured), Detail: summary.vimConfigPath},
+		ui.CardField{Label: "Bash 配置", Value: ui.ConfiguredBadge(summary.bashConfigured), Detail: summary.bashConfigPath},
+		ui.CardField{Label: "Bash 生效", Value: summary.bashSourceCommand},
+	)
 }
 
 func runSetupSteps(steps []setupStep) error {

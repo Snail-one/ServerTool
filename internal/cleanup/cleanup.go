@@ -31,7 +31,7 @@ func Run(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("清理本工具配置")
-		fmt.Printf("当前配置用户：%s\n", account.Name)
+		ui.PrintInfoCard("清理目标", ui.CardField{Label: "当前配置用户", Value: account.Name})
 		fmt.Println()
 		ui.MenuOption("1", "清理 SSH 公钥配置")
 		ui.MenuOption("2", "清理 SSH 安全策略配置")
@@ -63,7 +63,10 @@ func Run(view *ui.UI) error {
 		case "5":
 			return runCleanupStepWithConfirm(view, account, steps[4])
 		case "6":
-			fmt.Println("警告：清理全部配置会移除本工具写入的 SSH 安全策略，可能恢复系统默认 SSH 密码登录。")
+			ui.PrintDangerCard("清理全部配置风险",
+				ui.CardField{Label: "SSH 安全策略", Value: "将移除本工具写入的配置"},
+				ui.CardField{Label: "潜在影响", Value: "可能恢复系统默认 SSH 密码登录"},
+			)
 			confirmed, err := view.Confirm("确认清理全部本工具配置？请输入 y 确认，默认取消 (y/N)：")
 			if err != nil {
 				return err
@@ -119,6 +122,10 @@ func runCleanupSteps(account *system.Account, steps []cleanupStep) error {
 	}
 
 	fmt.Println()
-	log.Info("清理完成")
+	fields := make([]ui.CardField, 0, len(steps))
+	for _, step := range steps {
+		fields = append(fields, ui.CardField{Label: step.name, Value: ui.Badge("已清理", true)})
+	}
+	ui.PrintSuccessCard("配置清理完成", fields...)
 	return nil
 }

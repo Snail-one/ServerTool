@@ -233,7 +233,11 @@ func (installer *dockerInstaller) install() error {
 			log.Info("已跳过 hello-world 联网/容器运行验证")
 		}
 	}
-	log.Info("Docker 安装完成")
+	ui.PrintSuccessCard("Docker 安装完成",
+		ui.CardField{Label: "平台", Value: fmt.Sprintf("%s %s / %s", plan.Distribution.Name, plan.Distribution.Version, plan.Distribution.Architecture)},
+		ui.CardField{Label: "软件包", Value: strings.Join(dockerPackages, "、")},
+		ui.CardField{Label: "服务", Value: ui.Badge("已启动", true)},
+	)
 	return nil
 }
 
@@ -290,7 +294,11 @@ func (installer *dockerInstaller) preflight() (dockerInstallPlan, error) {
 	if err != nil {
 		return dockerInstallPlan{}, fmt.Errorf("Docker 安装在防火墙检查阶段失败: %w", err)
 	}
-	fmt.Printf("识别结果：%s %s（%s，%s）\n", distribution.Name, distribution.Version, distribution.Family, distribution.Architecture)
+	ui.PrintInfoCard("Docker 安装平台识别",
+		ui.CardField{Label: "系统", Value: distribution.Name + " " + distribution.Version},
+		ui.CardField{Label: "包管理器", Value: distribution.Family},
+		ui.CardField{Label: "架构", Value: distribution.Architecture},
+	)
 	return dockerInstallPlan{Distribution: distribution, Manager: manager, Dependencies: dependencies, Conflicts: conflicts, Firewall: firewall}, nil
 }
 

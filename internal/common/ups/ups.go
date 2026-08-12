@@ -152,7 +152,12 @@ func configureUPS(view *ui.UI) error {
 	}
 
 	fmt.Println()
-	fmt.Println("UPS 配置完成")
+	ui.PrintSuccessCard("UPS 配置完成",
+		ui.CardField{Label: "驱动", Value: "usbhid-ups"},
+		ui.CardField{Label: "Vendor ID", Value: device.VendorID},
+		ui.CardField{Label: "Product ID", Value: device.ProductID},
+		ui.CardField{Label: "设备说明", Value: device.Desc},
+	)
 	return nil
 }
 
@@ -281,11 +286,11 @@ func installNUT() error {
 }
 
 func printLSUSBDevices() {
-	fmt.Println("当前 USB 设备列表：")
-	fmt.Println("----------")
+	fmt.Println(ui.PrimaryBoldText("当前 USB 设备列表："))
+	fmt.Println(ui.MutedText("----------------------------------------"))
 	if !system.CommandExists("lsusb") {
 		log.Warn("未找到 lsusb 命令，已跳过 USB 设备列表")
-		fmt.Println("----------")
+		fmt.Println(ui.MutedText("----------------------------------------"))
 		fmt.Println()
 		return
 	}
@@ -293,7 +298,7 @@ func printLSUSBDevices() {
 	if err := system.Run("lsusb"); err != nil {
 		log.Warn("执行 lsusb 失败：", err)
 	}
-	fmt.Println("----------")
+	fmt.Println(ui.MutedText("----------------------------------------"))
 	fmt.Println()
 }
 
@@ -660,7 +665,9 @@ func restoreUPSBackup(view *ui.UI) error {
 	}
 
 	fmt.Println()
-	fmt.Println("UPS 首次配置备份已恢复")
+	ui.PrintSuccessCard("UPS 首次配置备份已恢复",
+		ui.CardField{Label: "恢复文件", Value: fmt.Sprintf("%d 个", len(backups))},
+	)
 	return nil
 }
 
@@ -693,7 +700,9 @@ func deleteUPSBackups(view *ui.UI) error {
 	}
 
 	fmt.Println()
-	fmt.Println("UPS 配置备份已删除")
+	ui.PrintSuccessCard("UPS 配置备份已删除",
+		ui.CardField{Label: "删除文件", Value: fmt.Sprintf("%d 个", len(backups))},
+	)
 	return nil
 }
 

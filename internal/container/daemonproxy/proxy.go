@@ -33,8 +33,10 @@ func ConfigureDockerDaemonProxy(view *ui.UI) error {
 	log.Info("配置 Docker 服务代理")
 	fmt.Println()
 	if currentContent := dockerProxyConfigContent(dockerProxyPath); strings.TrimSpace(currentContent) != "" {
-		fmt.Printf("当前配置文件：%s\n", dockerProxyPath)
-		fmt.Println("当前配置内容：")
+		ui.PrintInfoCard("当前 Docker 服务代理",
+			ui.CardField{Label: "配置文件", Value: dockerProxyPath},
+		)
+		fmt.Println(ui.PrimaryBoldText("当前配置内容："))
 		fmt.Print(currentContent)
 		if !strings.HasSuffix(currentContent, "\n") {
 			fmt.Println()
@@ -70,12 +72,13 @@ func ConfigureDockerDaemonProxy(view *ui.UI) error {
 	}
 
 	fmt.Println()
-	fmt.Println("Docker 服务代理配置完成")
-	fmt.Printf("配置文件：%s\n", dockerProxyPath)
-	fmt.Printf("写入地址：%s\n", dockerProxyDir)
-	fmt.Printf("代理地址：%s\n", commonproxy.MaskProxyURL(proxyURL))
-	fmt.Println("已执行：systemctl daemon-reload")
-	fmt.Println("已执行：systemctl restart docker")
+	ui.PrintSuccessCard("Docker 服务代理配置完成",
+		ui.CardField{Label: "配置文件", Value: dockerProxyPath},
+		ui.CardField{Label: "写入目录", Value: dockerProxyDir},
+		ui.CardField{Label: "代理地址", Value: commonproxy.MaskProxyURL(proxyURL)},
+		ui.CardField{Label: "已执行", Value: "systemctl daemon-reload"},
+		ui.CardField{Label: "已执行", Value: "systemctl restart docker"},
+	)
 	return nil
 }
 

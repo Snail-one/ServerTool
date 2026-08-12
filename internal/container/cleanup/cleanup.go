@@ -47,7 +47,9 @@ func runDockerCleanup(view *ui.UI, rt runtime.Runtime) error {
 		ui.MenuOptionHint("7", "深度系统清理", rt.Name+" system prune -a")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
-		fmt.Println("说明：以上操作均不会删除卷。")
+		ui.PrintInfoCard("清理说明",
+			ui.CardField{Label: "数据卷", Value: ui.Badge("不会删除", true)},
+		)
 		fmt.Println()
 
 		choice, err := view.Ask("请选择：")
@@ -66,7 +68,11 @@ func runDockerCleanup(view *ui.UI, rt runtime.Runtime) error {
 			continue
 		}
 
-		fmt.Println("影响摘要：" + plan.impact)
+		ui.PrintWarningCard("容器清理影响",
+			ui.CardField{Label: "操作", Value: plan.name},
+			ui.CardField{Label: "影响", Value: plan.impact},
+			ui.CardField{Label: "命令", Value: rt.Name + " " + strings.Join(plan.args, " ")},
+		)
 		executed, err := executeDockerCleanupPlan(plan, view.Confirm, system.Run, rt.Name)
 		if err != nil {
 			if executed {
@@ -81,9 +87,12 @@ func runDockerCleanup(view *ui.UI, rt runtime.Runtime) error {
 		}
 		fmt.Println()
 
-		log.Info(plan.name)
+		ui.PrintSuccessCard("容器资源清理完成",
+			ui.CardField{Label: "运行时", Value: rt.Display},
+			ui.CardField{Label: "操作", Value: plan.name},
+		)
 		fmt.Println()
-		log.Info("清理后 ", rt.Display, " 磁盘占用")
+		fmt.Println(ui.PrimaryBoldText("清理后 " + rt.Display + " 磁盘占用："))
 		printContainerDiskUsage(rt)
 		return nil
 	}

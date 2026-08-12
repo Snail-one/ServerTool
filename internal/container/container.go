@@ -35,7 +35,9 @@ func Run(view *ui.UI) error {
 		}
 		ui.ClearScreen()
 		ui.MenuTitle("容器管理")
-		fmt.Println("当前运行时：" + runtime.DisplaySummary(installedRuntimes))
+		ui.PrintInfoCard("容器运行时状态",
+			ui.CardField{Label: "当前运行时", Value: runtime.DisplaySummary(installedRuntimes)},
+		)
 		fmt.Println()
 		ui.MenuOptionHint("1", "管理容器", "查看状态、日志与生命周期操作")
 		ui.MenuOptionHint("2", "管理 Compose 项目", "查看、更新与重建项目")
