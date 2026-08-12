@@ -13,14 +13,24 @@
 
 主菜单使用彩色状态徽标显示工具版本、容器运行时、SSH 配置、系统与用户配置数量和当前 Go 版本。所有二级菜单使用统一的 `ServerTool › 功能 › 子功能` 路径标题、彩色快捷键，并以 `0/q) 返回`（同时兼容 `exit`）退出当前菜单；主菜单使用 `0/q) 退出`。菜单配色在非交互输出、`TERM=dumb` 或设置 `NO_COLOR` 时会自动关闭。直接对应 CLI 的维护操作采用“命令 — 影响说明”格式，空输入或无效输入不会执行容器清理。
 
-一键下载安装
+## 一键安装或更新
+
+脚本会自动识别 Linux amd64/arm64，校验 Release 提供的 SHA-256 后安装到 `/usr/local/sbin/snail`。首次安装和后续更新使用同一条命令：
 
 ```bash
-sudo wget -O /usr/local/sbin/snail https://github.com/Snail-one/ServerTool/releases/latest/download/snailtool_linux_amd64 && sudo chmod +x /usr/local/sbin/snail
+curl -fsSL https://raw.githubusercontent.com/Snail-one/ServerTool/main/install.sh | sudo sh
 ```
 
+系统没有 curl 时：
+
 ```bash
-sudo curl -L -o /usr/local/sbin/snail https://github.com/Snail-one/ServerTool/releases/latest/download/snailtool_linux_amd64 && sudo chmod +x /usr/local/sbin/snail
+wget -qO- https://raw.githubusercontent.com/Snail-one/ServerTool/main/install.sh | sudo sh
+```
+
+也可以下载脚本后安装指定版本：
+
+```bash
+sudo sh install.sh v1.2.0
 ```
 
 ## Go 环境管理
