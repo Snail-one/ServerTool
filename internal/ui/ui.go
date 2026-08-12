@@ -187,6 +187,10 @@ func InfoText(text string) string {
 	return paint(blue, text)
 }
 
+func SuccessBoldText(text string) string {
+	return paint(bold+green, text)
+}
+
 func MutedText(text string) string {
 	return paint(gray, text)
 }

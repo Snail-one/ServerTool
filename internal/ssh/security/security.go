@@ -31,6 +31,11 @@ type sshdPortDirective struct {
 	text string
 }
 
+type EffectiveConfig struct {
+	Source string
+	Port   string
+}
+
 const (
 	managedSSHDConfigBegin  = "# ===== BEGIN SNAIL TOOL SERVERTOOL SSHD CONFIG ====="
 	managedSSHDConfigEnd    = "# ===== END SNAIL TOOL SERVERTOOL SSHD CONFIG ====="
@@ -85,6 +90,18 @@ func ShowStatus() error {
 	fmt.Println()
 	printSSHSecurityRows(settings)
 	return nil
+}
+
+func LoadEffectiveConfig() (EffectiveConfig, error) {
+	settings, source, err := loadSSHDSettings()
+	if err != nil {
+		return EffectiveConfig{}, err
+	}
+	port := firstSSHDSetting(settings, "Port")
+	if port == "" {
+		port = "未检测到"
+	}
+	return EffectiveConfig{Source: source, Port: port}, nil
 }
 
 func IsConfigured() bool {

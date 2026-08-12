@@ -169,6 +169,9 @@ func TestReportPaletteUsesSemanticColors(t *testing.T) {
 	if got := InfoText("字段"); got != blue+"字段"+reset {
 		t.Fatalf("InfoText() = %q", got)
 	}
+	if got := SuccessBoldText("完成"); got != bold+green+"完成"+reset {
+		t.Fatalf("SuccessBoldText() = %q", got)
+	}
 	if got := MutedText("配置项"); got != gray+"配置项"+reset {
 		t.Fatalf("MutedText() = %q", got)
 	}

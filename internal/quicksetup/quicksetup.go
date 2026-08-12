@@ -2,18 +2,35 @@ package quicksetup
 
 import (
 	"fmt"
+	"path/filepath"
 
 	commonbash "snail_tool/internal/common/bash"
 	commonvim "snail_tool/internal/common/vim"
 	"snail_tool/internal/log"
 	"snail_tool/internal/ssh/keys"
 	"snail_tool/internal/ssh/security"
+	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
 )
 
 type setupStep struct {
 	name string
 	run  func() error
+}
+
+type setupSummary struct {
+	user              string
+	sshKeys           bool
+	sshKeysPath       string
+	sshSecurity       bool
+	sshConfigSource   string
+	sshPort           string
+	sshCommand        string
+	vimConfigured     bool
+	vimConfigPath     string
+	bashConfigured    bool
+	bashConfigPath    string
+	bashSourceCommand string
 }
 
 func Run(view *ui.UI) error {
@@ -33,10 +50,74 @@ func Run(view *ui.UI) error {
 		return err
 	}
 
-	fmt.Println()
-	log.Info("一键配置完成")
-	fmt.Println("Bash 配置立即生效请执行：source ~/.bashrc")
+	summary, err := loadSetupSummary()
+	if err != nil {
+		return fmt.Errorf("读取一键配置结果失败: %w", err)
+	}
+	printSetupSummaryCard(summary)
 	return nil
+}
+
+func loadSetupSummary() (setupSummary, error) {
+	account, err := system.CurrentTargetUser()
+	if err != nil {
+		return setupSummary{}, err
+	}
+	effectiveSSH, err := security.LoadEffectiveConfig()
+	if err != nil {
+		return setupSummary{}, err
+	}
+
+	sshKeysPath := filepath.Join(account.Home, ".ssh", "authorized_keys")
+	vimConfigPath := filepath.Join(account.Home, ".vimrc")
+	bashConfigPath := filepath.Join(account.Home, ".bashrc")
+	return setupSummary{
+		user:              account.Name,
+		sshKeys:           keys.IsConfigured(account),
+		sshKeysPath:       sshKeysPath,
+		sshSecurity:       security.IsConfigured(),
+		sshConfigSource:   effectiveSSH.Source,
+		sshPort:           effectiveSSH.Port,
+		sshCommand:        fmt.Sprintf("ssh -p %s %s@服务器IP", effectiveSSH.Port, account.Name),
+		vimConfigured:     commonvim.IsVimConfigured(account),
+		vimConfigPath:     vimConfigPath,
+		bashConfigured:    commonbash.IsBashConfigured(account),
+		bashConfigPath:    bashConfigPath,
+		bashSourceCommand: "source " + bashConfigPath,
+	}, nil
+}
+
+func printSetupSummaryCard(summary setupSummary) {
+	fmt.Println()
+	fmt.Println(ui.PrimaryBoldText("╭─ ServerTool"))
+	printSetupCardLine("", ui.SuccessBoldText("一键配置完成"))
+	printSetupCardLine("用户", summary.user)
+	printSetupCardStatusLine("SSH 公钥", summary.sshKeys, summary.sshKeysPath)
+	printSetupCardStatusLine("SSH 安全策略", summary.sshSecurity, "")
+	printSetupCardLine("SSH 配置", summary.sshConfigSource)
+	printSetupCardLine("SSH 端口", summary.sshPort)
+	printSetupCardLine("SSH 登录", summary.sshCommand)
+	printSetupCardStatusLine("Vim 配置", summary.vimConfigured, summary.vimConfigPath)
+	printSetupCardStatusLine("Bash 配置", summary.bashConfigured, summary.bashConfigPath)
+	printSetupCardLine("Bash 生效", summary.bashSourceCommand)
+	fmt.Println(ui.PrimaryText("╰──────────────────────────────────────────────"))
+}
+
+func printSetupCardLine(label, value string) {
+	prefix := ui.PrimaryText("│") + " "
+	if label == "" {
+		fmt.Println(prefix + value)
+		return
+	}
+	fmt.Println(prefix + ui.InfoText(label+"：") + value)
+}
+
+func printSetupCardStatusLine(label string, configured bool, detail string) {
+	value := ui.ConfiguredBadge(configured)
+	if detail != "" {
+		value += " " + detail
+	}
+	printSetupCardLine(label, value)
 }
 
 func runSetupSteps(steps []setupStep) error {
