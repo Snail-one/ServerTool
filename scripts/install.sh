@@ -9,43 +9,72 @@ RELEASE="${SERVERTOOL_VERSION:-latest}"
 TEMP_DIR=""
 STAGED_FILE=""
 
+RESET=""
+BOLD=""
+DIM=""
+CYAN=""
+BLUE=""
+GREEN=""
+YELLOW=""
+RED=""
+
+init_colors() {
+	# NO_COLOR 始终优先；FORCE_COLOR=1 可为保留 ANSI 的日志采集器强制启用颜色。
+	if [ "${NO_COLOR+set}" = "set" ]; then
+		return
+	fi
+	if [ "${FORCE_COLOR:-0}" != "1" ]; then
+		[ "${TERM:-}" != "dumb" ] || return
+		[ -t 1 ] || return
+	fi
+	ESC="$(printf '\033')"
+	RESET="${ESC}[0m"
+	BOLD="${ESC}[1m"
+	DIM="${ESC}[2m"
+	CYAN="${ESC}[36m"
+	BLUE="${ESC}[34m"
+	GREEN="${ESC}[32m"
+	YELLOW="${ESC}[33m"
+	RED="${ESC}[31m"
+}
+
 print_banner() {
-	printf '%s\n' "╭─ ServerTool"
-	printf '%s\n' "│ 自身安装与更新"
-	printf '%s\n' "╰──────────────────────────────────────────────"
+	printf '%s%s%s\n' "$BOLD$CYAN" "╭─ ServerTool" "$RESET"
+	printf '%s%s%s\n' "$CYAN" "│ 自身安装与更新" "$RESET"
+	printf '%s%s%s\n' "$CYAN" "╰──────────────────────────────────────────────" "$RESET"
 	printf '\n'
 }
 
 step() {
-	printf '%s\n' "[步骤] $*"
+	printf '%s[步骤]%s %s\n' "$CYAN" "$RESET" "$*"
 }
 
 info() {
-	printf '%s\n' "[信息] $*"
+	printf '%s[信息]%s %s\n' "$BLUE" "$RESET" "$*"
 }
 
 result() {
-	printf '%s\n' "[结果] $*"
+	printf '%s[结果]%s %s\n' "$GREEN" "$RESET" "$*"
 }
 
 warn() {
-	printf '%s\n' "[警告] $*"
+	printf '%s[警告]%s %s\n' "$YELLOW" "$RESET" "$*"
 }
 
 fail() {
-	printf '%s\n' "[错误] $*" >&2
+	printf '%s[错误]%s %s\n' "$RED" "$RESET" "$*" >&2
 	exit 1
 }
 
 print_release_info() {
 	printf '\n'
-	printf '%s\n' "发布信息"
-	printf '%s\n' "----------------------------------------"
-	printf '  平台：Linux/%s\n' "$ARCH"
-	printf '  当前版本：%s\n' "$1"
-	printf '  目标版本：%s\n' "$2"
-	printf '  执行操作：%s\n' "$3"
-	printf '%s\n' "----------------------------------------"
+	printf '%s%s%s\n' "$BOLD" "发布信息" "$RESET"
+	printf '%s%s%s\n' "$DIM" "----------------------------------------" "$RESET"
+	printf '  %s平台：%sLinux/%s\n' "$CYAN" "$RESET" "$ARCH"
+	printf '  %s当前版本：%s%s\n' "$CYAN" "$RESET" "$1"
+	printf '  %s目标版本：%s%s%s%s\n' "$CYAN" "$RESET" "$BOLD" "$2" "$RESET"
+	printf '  %s执行操作：%s%s%s%s\n' "$CYAN" "$RESET" "$BOLD" "$3" "$RESET"
+	printf '%s%s%s\n' "$DIM" "----------------------------------------" "$RESET"
 }
 
 usage() {
@@ -82,6 +111,7 @@ case "${1:-}" in
 	*) RELEASE="$1" ;;
 esac
 
+init_colors
 print_banner
 
 case "$RELEASE" in
