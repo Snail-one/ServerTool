@@ -246,6 +246,12 @@ sudo sh scripts/install.sh v1.2.0
 
 指定版本时直接使用对应标签，不查询 latest。
 
+脚本还必须支持卸载参数。卸载只删除脚本管理的程序文件，不回退程序曾经完成的系统或用户配置：
+
+```bash
+sudo sh scripts/install.sh --uninstall
+```
+
 ### 7.3 获取校验值
 
 必须先下载体积较小的校验文件，再决定是否下载二进制：

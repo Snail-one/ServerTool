@@ -6,6 +6,7 @@ REPOSITORY="Snail-one/ServerTool"
 INSTALL_DIR="${SERVERTOOL_INSTALL_DIR:-/usr/local/sbin}"
 BINARY_NAME="${SERVERTOOL_BINARY_NAME:-snail}"
 RELEASE="${SERVERTOOL_VERSION:-latest}"
+MODE="install"
 TEMP_DIR=""
 STAGED_FILE=""
 
@@ -40,7 +41,7 @@ init_colors() {
 
 print_banner() {
 	printf '%s%s%s\n' "$BOLD$ORANGE" "╭─ ServerTool" "$RESET"
-	printf '%s%s%s\n' "$ORANGE" "│ 自身安装与更新" "$RESET"
+	printf '%s│ %s%s\n' "$ORANGE" "$1" "$RESET"
 	printf '%s%s%s\n' "$ORANGE" "╰──────────────────────────────────────────────" "$RESET"
 	printf '\n'
 }
@@ -79,9 +80,12 @@ print_release_info() {
 
 usage() {
 	cat <<'EOF'
-用法：sudo sh scripts/install.sh [版本]
+用法：
+  sudo sh scripts/install.sh [版本]
+  sudo sh scripts/install.sh uninstall
 
 不指定版本时安装或更新到最新版本；也可以指定发布标签，例如 v1.2.0。
+使用 uninstall 或 --uninstall 删除已安装的程序文件，不清理由本工具配置的系统服务和用户配置。
 
 可选环境变量：
   SERVERTOOL_VERSION       要安装的发布标签，默认为 latest
@@ -107,16 +111,20 @@ case "${1:-}" in
 		usage
 		exit 0
 		;;
+	uninstall|--uninstall)
+		MODE="uninstall"
+		;;
 	"") ;;
 	*) RELEASE="$1" ;;
 esac
 
 init_colors
-print_banner
+if [ "$MODE" = "uninstall" ]; then
+	print_banner "自身卸载"
+else
+	print_banner "自身安装与更新"
+fi
 
-case "$RELEASE" in
-	*[!A-Za-z0-9._-]*) fail "版本号包含不支持的字符：$RELEASE" ;;
-esac
 case "$BINARY_NAME" in
 	""|*/*) fail "命令名不能为空或包含路径分隔符" ;;
 esac
@@ -124,8 +132,44 @@ case "$INSTALL_DIR" in
 	/*) ;;
 	*) fail "安装目录必须是绝对路径：$INSTALL_DIR" ;;
 esac
+TARGET="${INSTALL_DIR}/${BINARY_NAME}"
 
-[ "$(id -u)" -eq 0 ] || fail "安装需要 root 权限，请使用 sudo sh scripts/install.sh，或通过 curl ... | sudo sh 运行"
+[ "$(id -u)" -eq 0 ] || fail "该操作需要 root 权限，请使用 sudo sh scripts/install.sh 运行"
+
+if [ "$MODE" = "uninstall" ]; then
+	for REQUIRED_COMMAND in awk rm sed; do
+		command -v "$REQUIRED_COMMAND" >/dev/null 2>&1 || fail "缺少必要命令：$REQUIRED_COMMAND"
+	done
+
+	step "检查安装状态"
+	if [ ! -e "$TARGET" ] && [ ! -L "$TARGET" ]; then
+		info "程序文件不存在：${TARGET}"
+		printf '\n'
+		result "ServerTool 当前未安装，无需卸载。"
+		exit 0
+	fi
+
+	CURRENT_RELEASE=""
+	if [ -x "$TARGET" ]; then
+		CURRENT_VERSION="$("$TARGET" --version 2>/dev/null | sed -n '1p' || true)"
+		CURRENT_RELEASE="$(printf '%s\n' "$CURRENT_VERSION" | awk '$1 == "snailtool" { print $2; exit }')"
+	fi
+	info "当前版本：${CURRENT_RELEASE:-未知}"
+	info "程序路径：${TARGET}"
+
+	printf '\n'
+	step "卸载程序"
+	rm -f "$TARGET"
+	[ ! -e "$TARGET" ] && [ ! -L "$TARGET" ] || fail "无法删除程序文件：${TARGET}"
+	result "ServerTool 卸载完成。"
+	info "本工具配置的系统服务和用户配置均已保留。"
+	exit 0
+fi
+
+case "$RELEASE" in
+	*[!A-Za-z0-9._-]*) fail "版本号包含不支持的字符：$RELEASE" ;;
+esac
+
 [ "$(uname -s)" = "Linux" ] || fail "目前仅支持 Linux"
 
 for REQUIRED_COMMAND in awk chmod install mktemp mv sed uname; do
@@ -197,7 +241,6 @@ CHECKSUM_NAME="checksums_${RELEASE_VERSION}.txt"
 DOWNLOAD_BASE="https://github.com/${REPOSITORY}/releases/download/${RELEASE_VERSION}"
 ASSET_FILE="${TEMP_DIR}/${ASSET}"
 CHECKSUM_FILE="${TEMP_DIR}/${CHECKSUM_NAME}"
-TARGET="${INSTALL_DIR}/${BINARY_NAME}"
 
 # 先取得体积很小的校验文件，用它同时验证现有程序和待下载程序。
 if ! download_optional "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"; then
