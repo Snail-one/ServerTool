@@ -11,6 +11,7 @@ import (
 
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
+	"snail_tool/internal/ssh/keys"
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
 )
@@ -205,7 +206,7 @@ func configureSSHDHardening(view *ui.UI, account *system.Account) error {
 
 func confirmAuthorizedKeysPresent(view *ui.UI, account *system.Account) (bool, error) {
 	authKeys := filepath.Join(account.Home, ".ssh", "authorized_keys")
-	if system.FileNonEmpty(authKeys) {
+	if keys.IsConfigured(account) {
 		return true, nil
 	}
 

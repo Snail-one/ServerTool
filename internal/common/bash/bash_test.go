@@ -94,7 +94,7 @@ func TestRootBashConfigWritesRequestedManagedBlockAndIsIdempotent(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	body, preservedPrompt, preservedColor := rootBashBlockForContent("# existing root setting\n", false)
+	body, preservedPrompt, preservedColor := rootBashBlockForContent("# existing root setting\n")
 	if body != rootBashBlock {
 		t.Fatal("root account did not build the default root Bash configuration")
 	}
@@ -146,7 +146,7 @@ eval "$(dircolors -b ~/.dircolors)"
 alias ls='ls --color=auto'
 `
 
-	body, preservedPrompt, preservedColor := rootBashBlockForContent(existing, false)
+	body, preservedPrompt, preservedColor := rootBashBlockForContent(existing)
 	if !preservedPrompt || !preservedColor {
 		t.Fatalf("existing root settings were not detected: prompt=%v color=%v", preservedPrompt, preservedColor)
 	}
@@ -167,41 +167,12 @@ func TestRootBashConfigTreatsCommentedSettingsAsMissing(t *testing.T) {
 # alias ls='ls --color=auto'
 `
 
-	body, preservedPrompt, preservedColor := rootBashBlockForContent(existing, false)
+	body, preservedPrompt, preservedColor := rootBashBlockForContent(existing)
 	if preservedPrompt || preservedColor {
 		t.Fatalf("commented settings were treated as active: prompt=%v color=%v", preservedPrompt, preservedColor)
 	}
 	if body != rootBashBlock {
 		t.Fatalf("default root configuration was not generated:\n%s", body)
-	}
-}
-
-func TestRootBashConfigAddsInteractiveGuardOnlyWhenRequested(t *testing.T) {
-	body, _, _ := rootBashBlockForContent("", true)
-	if !strings.HasPrefix(body, rootInteractiveGuardBlock) {
-		t.Fatalf("empty root Bash configuration is missing the interactive guard:\n%s", body)
-	}
-
-	body, _, _ = rootBashBlockForContent("export EDITOR=vim\n", false)
-	if strings.Contains(body, rootInteractiveGuardBlock) {
-		t.Fatalf("existing root Bash configuration received an interactive guard:\n%s", body)
-	}
-}
-
-func TestRootInteractiveGuardTreatsCommentOnlyFileAsEmpty(t *testing.T) {
-	commentOnly := `# ~/.bashrc
-
-# PS1='commented prompt'
-# alias ls='ls --color=auto'
-`
-	if !shouldIncludeRootInteractiveGuard(commentOnly, "") {
-		t.Fatal("comment-only root .bashrc did not receive the interactive guard")
-	}
-	if shouldIncludeRootInteractiveGuard("export EDITOR=vim\n", "") {
-		t.Fatal("root .bashrc with active content received the interactive guard")
-	}
-	if !shouldIncludeRootInteractiveGuard("export EDITOR=vim\n", rootInteractiveGuardBlock) {
-		t.Fatal("existing managed interactive guard was not preserved")
 	}
 }
 
@@ -212,7 +183,7 @@ HISTSIZE=20000
 HISTFILESIZE=40000
 `
 
-	body, _, _ := rootBashBlockForContent(existing, false)
+	body, _, _ := rootBashBlockForContent(existing)
 	for _, setting := range []string{"HISTCONTROL=ignoredups", "shopt -s histappend", "HISTSIZE=5000", "HISTFILESIZE=10000", rootShellBehaviorBlock} {
 		if strings.Contains(body, setting) {
 			t.Fatalf("existing root setting was duplicated by %q:\n%s", setting, body)

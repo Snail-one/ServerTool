@@ -8,6 +8,7 @@ import (
 	"snail_tool/internal/common"
 	"snail_tool/internal/container"
 	"snail_tool/internal/environment"
+	"snail_tool/internal/quicksetup"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/ssh"
 	"snail_tool/internal/status"
@@ -46,18 +47,22 @@ func (a *App) Run() error {
 				return container.Run(a.ui)
 			})
 		case "2":
+			shared.RunAction(a.ui, "一键配置失败，已返回菜单", func() error {
+				return quicksetup.Run(a.ui)
+			})
+		case "3":
 			shared.RunAction(a.ui, "SSH 管理失败，已返回菜单", func() error {
 				return ssh.Run(a.ui)
 			})
-		case "3":
+		case "4":
 			shared.RunAction(a.ui, "系统与用户配置失败，已返回菜单", func() error {
 				return common.Run(a.ui)
 			})
-		case "4":
+		case "5":
 			shared.RunAction(a.ui, "开发环境管理失败，已返回菜单", func() error {
 				return environment.Run(a.ui)
 			})
-		case "5":
+		case "6":
 			shared.RunAction(a.ui, "清理本工具配置失败，已返回菜单", func() error {
 				return cleanup.Run(a.ui)
 			})
@@ -79,11 +84,22 @@ func currentStatus() status.Status {
 func showMenu(status status.Status) {
 	ui.MenuTitle()
 	fmt.Println("1) 容器管理 [" + defaultStatus(status.Runtime, "未安装") + "]")
-	fmt.Println("2) SSH 管理" + statusText(status.SSH))
-	fmt.Printf("3) 系统与用户配置 [已配置 %d/%d]\n", status.Configured, status.ConfigTotal)
-	fmt.Println("4) 开发环境管理 [Go " + defaultStatus(status.GoVersion, "未配置") + "]")
-	fmt.Println("5) 清理本工具配置")
+	fmt.Printf("2) 一键配置 [已配置 %d/4]\n", quickSetupConfigured(status))
+	fmt.Println("3) SSH 管理" + statusText(status.SSH))
+	fmt.Printf("4) 系统与用户配置 [已配置 %d/%d]\n", status.Configured, status.ConfigTotal)
+	fmt.Println("5) 开发环境管理 [Go " + defaultStatus(status.GoVersion, "未配置") + "]")
+	fmt.Println("6) 清理本工具配置")
 	fmt.Println("0/q) 退出")
+}
+
+func quickSetupConfigured(status status.Status) int {
+	configured := 0
+	for _, item := range []bool{status.SSHKeys, status.SSHSecurity, status.Vim, status.Bash} {
+		if item {
+			configured++
+		}
+	}
+	return configured
 }
 
 func defaultStatus(value, fallback string) string {

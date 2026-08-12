@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"snail_tool/internal/shared"
+	"snail_tool/internal/system"
 )
 
 func TestAuthorizedKeyEntriesMarksManagedKeys(t *testing.T) {
@@ -25,6 +26,36 @@ func TestAuthorizedKeyEntriesMarksManagedKeys(t *testing.T) {
 	}
 	if entries[1].index != 2 || !entries[1].managed || entries[1].line != "ssh-rsa AAAAmanaged managed@example" {
 		t.Fatalf("unexpected managed entry: %#v", entries[1])
+	}
+}
+
+func TestIsConfiguredRequiresAuthorizedKeyEntry(t *testing.T) {
+	home := t.TempDir()
+	sshDir := filepath.Join(home, ".ssh")
+	if err := os.Mkdir(sshDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(sshDir, "authorized_keys")
+	account := &system.Account{Name: "test", Home: home}
+
+	if err := os.WriteFile(path, []byte("# comments do not provide SSH access\n\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if IsConfigured(account) {
+		t.Fatal("comment-only authorized_keys was treated as configured")
+	}
+	if err := os.WriteFile(path, []byte("this is not an SSH public key\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if IsConfigured(account) {
+		t.Fatal("unrecognized authorized_keys content was treated as configured")
+	}
+
+	if err := os.WriteFile(path, []byte("ssh-ed25519 AAAAtest user@example\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if !IsConfigured(account) {
+		t.Fatal("authorized key entry was not detected")
 	}
 }
 

@@ -24,6 +24,21 @@ const (
 	sshAuthorizedKeysEnd   = "# ===== END SNAIL SSH AUTHORIZED KEYS ====="
 )
 
+var authorizedKeyTypes = map[string]struct{}{
+	"ssh-ed25519":                              {},
+	"ssh-rsa":                                  {},
+	"ecdsa-sha2-nistp256":                      {},
+	"ecdsa-sha2-nistp384":                      {},
+	"ecdsa-sha2-nistp521":                      {},
+	"sk-ssh-ed25519@openssh.com":               {},
+	"sk-ecdsa-sha2-nistp256@openssh.com":       {},
+	"ssh-ed25519-cert-v01@openssh.com":         {},
+	"ssh-rsa-cert-v01@openssh.com":             {},
+	"ecdsa-sha2-nistp256-cert-v01@openssh.com": {},
+	"ecdsa-sha2-nistp384-cert-v01@openssh.com": {},
+	"ecdsa-sha2-nistp521-cert-v01@openssh.com": {},
+}
+
 func Markers() (string, string) {
 	return sshAuthorizedKeysBegin, sshAuthorizedKeysEnd
 }
@@ -43,9 +58,53 @@ func ConfigureSSH(view *ui.UI) error {
 	return configureSSHAuthorizedKeys(view, account)
 }
 
+// EnsureSSHAuthorizedKeys requires at least one authorized key before a setup
+// workflow is allowed to continue to SSH hardening.
+func EnsureSSHAuthorizedKeys(view *ui.UI) error {
+	account, err := system.CurrentTargetUser()
+	if err != nil {
+		return err
+	}
+
+	log.Info("当前配置用户：", account.Name)
+	if err := printAuthorizedKeys(account); err != nil {
+		return err
+	}
+	fmt.Println()
+
+	if IsConfigured(account) {
+		log.Info("已存在 SSH 公钥，可安全进入下一步")
+		return nil
+	}
+
+	log.Warn("一键配置必须先添加至少一把有效 SSH 公钥")
+	for {
+		pubkey, err := view.Ask("请粘贴 SSH 公钥（必填）: ")
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(pubkey) == "" {
+			log.Warn("SSH 公钥不能为空；未添加公钥不会继续配置 SSH 安全策略")
+			continue
+		}
+		if err := system.ValidateSSHPublicKey(pubkey); err != nil {
+			log.Warn(err)
+			continue
+		}
+		if err := installAuthorizedKey(account, pubkey); err != nil {
+			return err
+		}
+		if !IsConfigured(account) {
+			return fmt.Errorf("SSH 公钥写入后校验失败")
+		}
+		return nil
+	}
+}
+
 func IsConfigured(account *system.Account) bool {
 	authKeys := filepath.Join(account.Home, ".ssh", "authorized_keys")
-	return shared.FileContainsNonEmptyContent(authKeys)
+	data, err := os.ReadFile(authKeys)
+	return err == nil && len(authorizedKeyEntries(string(data))) > 0
 }
 
 func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
@@ -352,7 +411,13 @@ func isAuthorizedKeyLine(trimmed string) bool {
 	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 		return false
 	}
-	return true
+	fields := strings.Fields(trimmed)
+	for index, field := range fields {
+		if _, ok := authorizedKeyTypes[field]; ok && index+1 < len(fields) && fields[index+1] != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func summarizeAuthorizedKey(line string) string {

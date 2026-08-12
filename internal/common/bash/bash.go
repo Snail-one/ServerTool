@@ -19,11 +19,6 @@ const (
 alias la='ls -A'
 alias ll='ls -lah'
 alias lspath='echo "$PATH" | tr ":" "\n"'`
-	rootInteractiveGuardBlock = `# Only run for interactive shells
-case $- in
-    *i*) ;;
-      *) return ;;
-esac`
 	rootHistoryBlock = `# -------------------------
 # History
 # -------------------------
@@ -109,14 +104,11 @@ func isRootAccount(account *system.Account) bool {
 	return account != nil && account.Name == "root"
 }
 
-func rootBashBlockForContent(content string, includeInteractiveGuard bool) (string, bool, bool) {
+func rootBashBlockForContent(content string) (string, bool, bool) {
 	preservePrompt := hasActiveAssignment(content, "PS1")
 	colorBlock, preserveColor := rootColorBlockForContent(content)
 
-	parts := make([]string, 0, 7)
-	if includeInteractiveGuard {
-		parts = append(parts, rootInteractiveGuardBlock)
-	}
+	parts := make([]string, 0, 6)
 	if historyBlock := rootHistoryBlockForContent(content); historyBlock != "" {
 		parts = append(parts, historyBlock)
 	}
@@ -142,10 +134,6 @@ func activeShellLines(content string) []string {
 		}
 	}
 	return lines
-}
-
-func shouldIncludeRootInteractiveGuard(unmanaged, managed string) bool {
-	return len(activeShellLines(unmanaged)) == 0 || strings.Contains(managed, rootInteractiveGuardBlock)
 }
 
 func hasActiveAssignment(content, name string) bool {
@@ -272,10 +260,8 @@ func ConfigureBash() error {
 			return err
 		}
 		content := string(data)
-		managed, _ := shared.ManagedBlockContent(content, bashAliasBegin, bashAliasEnd)
 		unmanaged := shared.RemoveManagedBlock(content, bashAliasBegin, bashAliasEnd)
-		includeInteractiveGuard := shouldIncludeRootInteractiveGuard(unmanaged, managed)
-		bashBlock, preservedPrompt, preservedColor = rootBashBlockForContent(unmanaged, includeInteractiveGuard)
+		bashBlock, preservedPrompt, preservedColor = rootBashBlockForContent(unmanaged)
 	}
 	if err := replaceBashConfig(bashrc, bashBlock); err != nil {
 		return err
