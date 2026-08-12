@@ -12,7 +12,7 @@ STAGED_FILE=""
 RESET=""
 BOLD=""
 DIM=""
-CYAN=""
+ORANGE=""
 BLUE=""
 GREEN=""
 YELLOW=""
@@ -31,7 +31,7 @@ init_colors() {
 	RESET="${ESC}[0m"
 	BOLD="${ESC}[1m"
 	DIM="${ESC}[2m"
-	CYAN="${ESC}[36m"
+	ORANGE="${ESC}[38;5;208m"
 	BLUE="${ESC}[34m"
 	GREEN="${ESC}[32m"
 	YELLOW="${ESC}[33m"
@@ -39,14 +39,14 @@ init_colors() {
 }
 
 print_banner() {
-	printf '%s%s%s\n' "$BOLD$CYAN" "╭─ ServerTool" "$RESET"
-	printf '%s%s%s\n' "$CYAN" "│ 自身安装与更新" "$RESET"
-	printf '%s%s%s\n' "$CYAN" "╰──────────────────────────────────────────────" "$RESET"
+	printf '%s%s%s\n' "$BOLD$ORANGE" "╭─ ServerTool" "$RESET"
+	printf '%s%s%s\n' "$ORANGE" "│ 自身安装与更新" "$RESET"
+	printf '%s%s%s\n' "$ORANGE" "╰──────────────────────────────────────────────" "$RESET"
 	printf '\n'
 }
 
 step() {
-	printf '%s[步骤]%s %s\n' "$CYAN" "$RESET" "$*"
+	printf '%s[步骤]%s %s\n' "$ORANGE" "$RESET" "$*"
 }
 
 info() {
@@ -70,10 +70,10 @@ print_release_info() {
 	printf '\n'
 	printf '%s%s%s\n' "$BOLD" "发布信息" "$RESET"
 	printf '%s%s%s\n' "$DIM" "----------------------------------------" "$RESET"
-	printf '  %s平台：%sLinux/%s\n' "$CYAN" "$RESET" "$ARCH"
-	printf '  %s当前版本：%s%s\n' "$CYAN" "$RESET" "$1"
-	printf '  %s目标版本：%s%s%s%s\n' "$CYAN" "$RESET" "$BOLD" "$2" "$RESET"
-	printf '  %s执行操作：%s%s%s%s\n' "$CYAN" "$RESET" "$BOLD" "$3" "$RESET"
+	printf '  %s平台：%sLinux/%s\n' "$ORANGE" "$RESET" "$ARCH"
+	printf '  %s当前版本：%s%s\n' "$ORANGE" "$RESET" "$1"
+	printf '  %s目标版本：%s%s%s%s\n' "$ORANGE" "$RESET" "$BOLD" "$2" "$RESET"
+	printf '  %s执行操作：%s%s%s%s\n' "$ORANGE" "$RESET" "$BOLD" "$3" "$RESET"
 	printf '%s%s%s\n' "$DIM" "----------------------------------------" "$RESET"
 }
 
