@@ -39,7 +39,7 @@ sudo sh scripts/install.sh v1.2.0
 sudo snail update
 ```
 
-更新时会先比较当前版本和最新 Release；版本相同时直接退出，不会重复下载二进制文件。
+更新时会比较当前版本并使用 Release 的 SHA-256 校验本地程序；版本和文件校验均一致时直接退出，文件损坏或内容不一致时会自动重新下载修复。
 
 Release 文件名会在末尾包含版本号，例如：
 

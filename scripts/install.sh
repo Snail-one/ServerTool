@@ -13,6 +13,10 @@ info() {
 	printf '%s\n' "[INFO] $*"
 }
 
+warn() {
+	printf '%s\n' "[WARN] $*"
+}
+
 fail() {
 	printf '%s\n' "[ERROR] $*" >&2
 	exit 1
@@ -133,24 +137,7 @@ ASSET_FILE="${TEMP_DIR}/${ASSET}"
 CHECKSUM_FILE="${TEMP_DIR}/${CHECKSUM_NAME}"
 TARGET="${INSTALL_DIR}/${BINARY_NAME}"
 
-if [ -e "$TARGET" ]; then
-	CURRENT_VERSION=""
-	CURRENT_RELEASE=""
-	if [ -x "$TARGET" ]; then
-		CURRENT_VERSION="$("$TARGET" --version 2>/dev/null | sed -n '1p' || true)"
-		CURRENT_RELEASE="$(printf '%s\n' "$CURRENT_VERSION" | awk '$1 == "snailtool" { print $2; exit }')"
-	fi
-	info "当前版本：${CURRENT_VERSION:-未知}"
-	if [ "$CURRENT_RELEASE" = "$RELEASE_VERSION" ]; then
-		info "当前已是最新版本，无需更新"
-		exit 0
-	fi
-	ACTION="更新"
-else
-	ACTION="安装"
-fi
-
-info "正在下载 ${ASSET}..."
+# 先取得体积很小的校验文件，用它同时验证现有程序和待下载程序。
 if ! download_optional "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"; then
 	# 兼容改用版本化文件名之前发布的版本。
 	ASSET="snailtool_linux_${ARCH}"
@@ -160,10 +147,33 @@ if ! download_optional "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"; the
 	info "该版本使用旧版文件名，正在兼容下载..."
 	download "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"
 fi
-download_asset "${DOWNLOAD_BASE}/${ASSET}" "$ASSET_FILE"
-
 EXPECTED_SHA256="$(awk -v asset="$ASSET" '$2 == asset || $2 == "*" asset { print $1; exit }' "$CHECKSUM_FILE")"
 [ -n "$EXPECTED_SHA256" ] || fail "${CHECKSUM_NAME} 中没有 ${ASSET} 的校验值"
+
+if [ -e "$TARGET" ]; then
+	CURRENT_VERSION=""
+	CURRENT_RELEASE=""
+	if [ -x "$TARGET" ]; then
+		CURRENT_VERSION="$("$TARGET" --version 2>/dev/null | sed -n '1p' || true)"
+		CURRENT_RELEASE="$(printf '%s\n' "$CURRENT_VERSION" | awk '$1 == "snailtool" { print $2; exit }')"
+	fi
+	info "当前版本：${CURRENT_VERSION:-未知}"
+	if [ "$CURRENT_RELEASE" = "$RELEASE_VERSION" ]; then
+		CURRENT_SHA256="$(file_sha256 "$TARGET")"
+		if [ "$CURRENT_SHA256" = "$EXPECTED_SHA256" ]; then
+			info "当前已是最新版本，文件校验通过，无需更新"
+			exit 0
+		fi
+		warn "当前版本号相同，但文件校验失败，将重新下载修复"
+	fi
+	ACTION="更新"
+else
+	ACTION="安装"
+fi
+
+info "正在下载 ${ASSET}..."
+download_asset "${DOWNLOAD_BASE}/${ASSET}" "$ASSET_FILE"
+
 ACTUAL_SHA256="$(file_sha256 "$ASSET_FILE")"
 [ "$ACTUAL_SHA256" = "$EXPECTED_SHA256" ] || fail "安装包 SHA-256 校验失败"
 info "SHA-256 校验通过"
