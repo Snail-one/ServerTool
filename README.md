@@ -29,6 +29,12 @@ curl -fsSL https://raw.githubusercontent.com/Snail-one/ServerTool/main/scripts/i
 wget -qO- https://raw.githubusercontent.com/Snail-one/ServerTool/main/scripts/install.sh | sudo sh
 ```
 
+直接安装指定版本：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Snail-one/ServerTool/main/scripts/install.sh | sudo sh -s -- v1.2.0
+```
+
 也可以下载脚本后安装指定版本：
 
 ```bash
