@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"snail_tool/internal/shared"
+	"snail_tool/internal/system"
 )
 
 func TestReplaceAliasesAddsManagedBlock(t *testing.T) {
@@ -65,6 +66,44 @@ export EDITOR=vim
 	}
 	if !strings.Contains(content, "export EDITOR=vim") {
 		t.Fatalf("unrelated bashrc content was removed:\n%s", content)
+	}
+}
+
+func TestRootBashConfigWritesRequestedManagedBlockAndIsIdempotent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".bashrc")
+	if err := os.WriteFile(path, []byte("# existing root setting\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	account := &system.Account{Name: "root", Home: filepath.Dir(path), UID: 0, GID: 0}
+	body := bashBlockForAccount(account)
+	if body != rootBashBlock {
+		t.Fatal("root account did not select the root Bash configuration")
+	}
+	if err := replaceBashConfig(path, body); err != nil {
+		t.Fatal(err)
+	}
+	if err := replaceBashConfig(path, body); err != nil {
+		t.Fatal(err)
+	}
+
+	content := readTestFile(t, path)
+	want := shared.FormatManagedBlock(bashAliasBegin, rootBashBlock, bashAliasEnd)
+	if !strings.Contains(content, want) {
+		t.Fatalf("root Bash configuration was not written:\n%s", content)
+	}
+	if strings.Count(content, bashAliasBegin) != 1 || strings.Count(content, bashAliasEnd) != 1 {
+		t.Fatalf("root Bash configuration is not idempotent:\n%s", content)
+	}
+	if !strings.Contains(content, "# existing root setting") {
+		t.Fatalf("existing root Bash content was removed:\n%s", content)
+	}
+}
+
+func TestNonRootAccountKeepsStandardAliasBlock(t *testing.T) {
+	account := &system.Account{Name: "alice", UID: 1000, GID: 1000}
+	if got := bashBlockForAccount(account); got != bashAliasBlock {
+		t.Fatalf("non-root account selected unexpected Bash configuration:\n%s", got)
 	}
 }
 
