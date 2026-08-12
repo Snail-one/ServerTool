@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"snail_tool/internal/shared"
@@ -32,9 +33,9 @@ func selectRuntimeToUninstall(view dockerUninstallPrompter, runtimes []Runtime) 
 	for {
 		fmt.Println("检测到多个容器运行时，请选择要卸载的运行时：")
 		for index, current := range runtimes {
-			fmt.Printf("%d) %s\n", index+1, current.Display)
+			ui.MenuOption(strconv.Itoa(index+1), current.Display)
 		}
-		fmt.Println("0/q) 返回")
+		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 		choice, err := view.Ask("输入选项: ")
 		if err != nil {

@@ -13,8 +13,8 @@ func Run(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("开发环境管理")
-		fmt.Println("1) Go 语言")
-		fmt.Println("0/q) 返回")
+		ui.MenuOption("1", "Go 语言")
+		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
 		choice, err := view.Ask("输入选项: ")

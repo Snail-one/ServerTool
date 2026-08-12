@@ -141,11 +141,11 @@ func configureDockerLogRotation(
 func promptLogRotationConfig(view promptReader) (logRotationConfig, bool, error) {
 	for {
 		fmt.Println("请选择 Docker 日志轮转配置：")
-		fmt.Println("1) 推荐：100m x 3")
-		fmt.Println("2) 保守：50m x 5")
-		fmt.Println("3) 节省空间：10m x 3")
-		fmt.Println("4) 自定义 max-size / max-file")
-		fmt.Println("0/q) 返回")
+		ui.MenuOption("1", "推荐：100m x 3")
+		ui.MenuOption("2", "保守：50m x 5")
+		ui.MenuOption("3", "节省空间：10m x 3")
+		ui.MenuOption("4", "自定义 max-size / max-file")
+		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 		fmt.Println("说明：log-driver 固定为 json-file。")
 		fmt.Println()

@@ -87,11 +87,12 @@ func ConfigureUPS(view *ui.UI) error {
 	}
 
 	for {
+		ui.ClearScreen()
 		ui.MenuTitle("系统与用户配置", "UPS（NUT）")
-		fmt.Println("1) 配置或更新 UPS")
-		fmt.Println("2) 恢复首次备份（官方默认配置）")
-		fmt.Println("3) 删除 UPS 配置备份")
-		fmt.Println("0/q) 返回")
+		ui.MenuOption("1", "配置或更新 UPS")
+		ui.MenuOption("2", "恢复首次备份（官方默认配置）")
+		ui.MenuOption("3", "删除 UPS 配置备份")
+		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
 		choice, err := view.Ask("输入选项: ")
@@ -162,9 +163,9 @@ func ensureNUTInstalled(view *ui.UI) (bool, error) {
 
 	log.Warn("未检测到 NUT 服务端组件")
 	fmt.Println("请选择安装方式：")
-	fmt.Println("1) 手动安装并返回")
-	fmt.Println("2) 自动安装 NUT")
-	fmt.Println("0/q) 取消")
+	ui.MenuOption("1", "手动安装并返回")
+	ui.MenuOption("2", "自动安装 NUT")
+	ui.MenuExit("0/q", "取消")
 	fmt.Println()
 
 	for {

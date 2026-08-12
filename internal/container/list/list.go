@@ -380,9 +380,9 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 
 		actions := availableContainerActions(c, canComposeDown)
 		for index, action := range actions {
-			fmt.Printf("%d) %s\n", index+1, action.Label)
+			ui.MenuOption(strconv.Itoa(index+1), action.Label)
 		}
-		fmt.Println("0/q) 返回")
+		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
 		raw, err := view.Ask("输入选项: ")
@@ -1088,11 +1088,11 @@ func manageSingleProject(view *ui.UI, compose update.ComposeCommand, dir string)
 		ui.MenuTitle("容器管理", "Compose 项目", filepath.Base(dir))
 		fmt.Printf("项目目录: %s\n", dir)
 		fmt.Println()
-		fmt.Println("1) up -d — 创建并后台启动")
-		fmt.Println("2) stop — 停止服务容器")
-		fmt.Println("3) restart — 重启服务容器")
-		fmt.Println("4) down — 停止并删除项目容器和默认网络")
-		fmt.Println("0/q) 返回")
+		ui.MenuOption("1", "up -d — 创建并后台启动")
+		ui.MenuOption("2", "stop — 停止服务容器")
+		ui.MenuOption("3", "restart — 重启服务容器")
+		ui.MenuOption("4", "down — 停止并删除项目容器和默认网络")
+		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
 		raw, err := view.Ask("输入选项: ")

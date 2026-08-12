@@ -79,13 +79,13 @@ func Run(view *ui.UI) error {
 			fmt.Println("检测到 /usr/local/go 或其 ~/.bashrc 环境变量 [安装或更新时可迁移]")
 		}
 		fmt.Println()
-		fmt.Println("1) 安装 Go")
-		fmt.Println("2) 更新到最新稳定版")
-		fmt.Println("3) 切换当前版本")
-		fmt.Println("4) 卸载 Go 版本")
-		fmt.Println("5) 修复当前 Go（重新安装并修复 PATH）")
-		fmt.Println("6) 清理 Go 安装残留")
-		fmt.Println("0/q) 返回")
+		ui.MenuOption("1", "安装 Go")
+		ui.MenuOption("2", "更新到最新稳定版")
+		ui.MenuOption("3", "切换当前版本")
+		ui.MenuOption("4", "卸载 Go 版本")
+		ui.MenuOption("5", "修复当前 Go（重新安装并修复 PATH）")
+		ui.MenuOption("6", "清理 Go 安装残留")
+		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
 		choice, err := view.Ask("输入选项: ")
@@ -280,15 +280,15 @@ func selectRelease(view *ui.UI, releases []release, arch string) (release, error
 
 		fmt.Printf("可安装的 Go 稳定版本（linux/%s，第 %d/%d 页，共 %d 个）：\n", arch, page+1, pageCount, len(releases))
 		for i, item := range releases[start:end] {
-			fmt.Printf("%d) %s\n", i+1, item.Version)
+			ui.MenuOption(strconv.Itoa(i+1), item.Version)
 		}
 		if page+1 < pageCount {
-			fmt.Println("n) 下一页")
+			ui.MenuOption("n", "下一页")
 		}
 		if page > 0 {
-			fmt.Println("p) 上一页")
+			ui.MenuOption("p", "上一页")
 		}
-		fmt.Println("0/q) 返回")
+		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
 		raw, err := view.Ask("选择版本: ")
@@ -530,12 +530,12 @@ func uninstallSelected(view *ui.UI) error {
 	for {
 		fmt.Println("请选择要卸载的 Go：")
 		if official {
-			fmt.Println("1) 官方位置 Go（/usr/local/go 及 ~/.bashrc 环境变量）")
+			ui.MenuOption("1", "官方位置 Go（/usr/local/go 及 ~/.bashrc 环境变量）")
 		}
 		for i, version := range versions {
-			fmt.Printf("%d) %s\n", i+1+offset, version)
+			ui.MenuOption(strconv.Itoa(i+1+offset), version)
 		}
-		fmt.Println("0/q) 返回")
+		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 		raw, err := view.Ask("选择卸载项: ")
 		if err != nil {
@@ -613,9 +613,9 @@ func selectInstalled(view *ui.UI, versions []string, prompt string) (string, err
 	}
 	for {
 		for i, version := range versions {
-			fmt.Printf("%d) %s\n", i+1, version)
+			ui.MenuOption(strconv.Itoa(i+1), version)
 		}
-		fmt.Println("0/q) 返回")
+		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 		raw, err := view.Ask(prompt)
 		if err != nil {

@@ -17,10 +17,10 @@ func Run(view *ui.UI) error {
 		ui.ClearScreen()
 		status := currentStatus()
 		ui.MenuTitle("SSH 管理")
-		fmt.Println("1) SSH 公钥" + statusText(status.keys))
-		fmt.Println("2) SSH 安全策略" + statusText(status.security))
-		fmt.Println("3) 查看生效配置")
-		fmt.Println("0/q) 返回")
+		ui.MenuOption("1", "SSH 公钥 "+ui.ConfiguredBadge(status.keys))
+		ui.MenuOption("2", "SSH 安全策略 "+ui.ConfiguredBadge(status.security))
+		ui.MenuOption("3", "查看生效配置")
+		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
 		choice, err := view.Ask("输入选项: ")
@@ -66,11 +66,4 @@ func currentStatus() sshStatus {
 		keys:     keys.IsConfigured(account),
 		security: security.IsConfigured(),
 	}
-}
-
-func statusText(configured bool) string {
-	if configured {
-		return " [已配置]"
-	}
-	return ""
 }

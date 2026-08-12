@@ -37,16 +37,16 @@ func Run(view *ui.UI) error {
 		ui.MenuTitle("容器管理")
 		fmt.Println("当前运行时：" + runtime.DisplaySummary(installedRuntimes))
 		fmt.Println()
-		fmt.Println("1) 容器列表与操作")
-		fmt.Println("2) Compose 项目")
+		ui.MenuOption("1", "容器列表与操作")
+		ui.MenuOption("2", "Compose 项目")
 		if hasDocker {
-			fmt.Println("3) Docker 服务配置")
+			ui.MenuOption("3", "Docker 服务配置")
 		} else {
-			fmt.Println("3) Docker 服务配置 [仅 Docker 可用]")
+			ui.MenuOption("3", "Docker 服务配置 "+ui.Badge("仅 Docker 可用", false))
 		}
-		fmt.Println("4) 清理容器资源")
-		fmt.Printf("5) 卸载 %s（可选保留或彻底删除数据）\n", uninstallName)
-		fmt.Println("0/q) 返回")
+		ui.MenuOption("4", "清理容器资源")
+		ui.MenuOption("5", fmt.Sprintf("卸载 %s（可选保留或彻底删除数据）", uninstallName))
+		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
 		choice, err := view.Ask("输入选项: ")
@@ -101,11 +101,11 @@ func runComposeMenu(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("容器管理", "Compose 项目")
-		fmt.Println("1) 管理运行中的 Compose 项目（docker compose ls）")
-		fmt.Println("2) 管理指定目录中的 Compose 项目（扫描目录）")
-		fmt.Println("3) 更新运行中的 Compose 应用（pull 后 up -d）")
-		fmt.Println("4) 重建运行中的 Compose 项目（down 后 up -d）")
-		fmt.Println("0/q) 返回")
+		ui.MenuOption("1", "管理运行中的 Compose 项目（docker compose ls）")
+		ui.MenuOption("2", "管理指定目录中的 Compose 项目（扫描目录）")
+		ui.MenuOption("3", "更新运行中的 Compose 应用（pull 后 up -d）")
+		ui.MenuOption("4", "重建运行中的 Compose 项目（down 后 up -d）")
+		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
 		choice, err := view.Ask("输入选项: ")
@@ -145,9 +145,9 @@ func runDockerDaemonMenu(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("容器管理", "Docker 服务配置")
-		fmt.Println("1) 配置 Docker 服务代理")
-		fmt.Println("2) 配置 Docker 日志轮转")
-		fmt.Println("0/q) 返回")
+		ui.MenuOption("1", "配置 Docker 服务代理")
+		ui.MenuOption("2", "配置 Docker 日志轮转")
+		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
 		choice, err := view.Ask("输入选项: ")

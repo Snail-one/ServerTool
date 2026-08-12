@@ -116,9 +116,9 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		}
 
 		fmt.Println("请选择公钥操作：")
-		fmt.Println("1) 添加公钥")
-		fmt.Println("2) 删除公钥")
-		fmt.Println("0/q) 返回")
+		ui.MenuOption("1", "添加公钥")
+		ui.MenuOption("2", "删除公钥")
+		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
 		choice, err := view.Ask("输入选项: ")
@@ -345,7 +345,7 @@ func printAuthorizedKeyEntries(entries []authorizedKeyEntry) {
 		if entry.managed {
 			source = "本工具"
 		}
-		fmt.Printf("%d) [%s] %s\n", entry.index, source, summarizeAuthorizedKey(entry.line))
+		ui.MenuOption(strconv.Itoa(entry.index), fmt.Sprintf("[%s] %s", source, summarizeAuthorizedKey(entry.line)))
 	}
 	fmt.Println()
 }

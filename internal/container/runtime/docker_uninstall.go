@@ -89,9 +89,9 @@ func UninstallDocker(view *ui.UI) (bool, error) {
 func selectDockerUninstallMode(view dockerUninstallPrompter) (bool, bool, error) {
 	for {
 		fmt.Println("请选择 Docker 卸载方式：")
-		fmt.Println("1) 卸载运行时（保留数据）")
-		fmt.Println("2) 完全卸载（永久删除数据）")
-		fmt.Println("0/q) 返回")
+		ui.MenuOption("1", "卸载运行时（保留数据）")
+		ui.MenuOption("2", "完全卸载（永久删除数据）")
+		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 		choice, err := view.Ask("输入选项: ")
 		if err != nil {

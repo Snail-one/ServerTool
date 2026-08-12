@@ -14,6 +14,7 @@ import (
 	"snail_tool/internal/status"
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
+	"snail_tool/internal/version"
 )
 
 type App struct {
@@ -82,14 +83,16 @@ func currentStatus() status.Status {
 }
 
 func showMenu(status status.Status) {
-	ui.MenuTitle()
-	fmt.Println("1) 容器管理 [" + defaultStatus(status.Runtime, "未安装") + "]")
-	fmt.Printf("2) 一键配置 [已配置 %d/4]\n", quickSetupConfigured(status))
-	fmt.Println("3) SSH 管理" + statusText(status.SSH))
-	fmt.Printf("4) 系统与用户配置 [已配置 %d/%d]\n", status.Configured, status.ConfigTotal)
-	fmt.Println("5) 开发环境管理 [Go " + defaultStatus(status.GoVersion, "未配置") + "]")
-	fmt.Println("6) 清理本工具配置")
-	fmt.Println("0/q) 退出")
+	quickConfigured := quickSetupConfigured(status)
+	runtimeConfigured := strings.TrimSpace(status.Runtime) != "" && status.Runtime != "未安装"
+	ui.HomeTitle(version.Version)
+	ui.MenuOption("1", "容器管理 "+ui.Badge(defaultStatus(status.Runtime, "未安装"), runtimeConfigured))
+	ui.MenuOption("2", fmt.Sprintf("一键配置 %s", ui.Badge(fmt.Sprintf("已配置 %d/4", quickConfigured), quickConfigured == 4)))
+	ui.MenuOption("3", "SSH 管理 "+ui.ConfiguredBadge(status.SSH))
+	ui.MenuOption("4", fmt.Sprintf("系统与用户配置 %s", ui.Badge(fmt.Sprintf("已配置 %d/%d", status.Configured, status.ConfigTotal), status.ConfigTotal > 0 && status.Configured == status.ConfigTotal)))
+	ui.MenuOption("5", "开发环境管理 "+ui.Badge("Go "+defaultStatus(status.GoVersion, "未配置"), status.GoVersion != ""))
+	ui.MenuOption("6", "清理本工具配置")
+	ui.MenuExit("0/q", "退出")
 }
 
 func quickSetupConfigured(status status.Status) int {
@@ -107,18 +110,4 @@ func defaultStatus(value, fallback string) string {
 		return fallback
 	}
 	return value
-}
-
-func statusText(configured bool) string {
-	if configured {
-		return " [已配置]"
-	}
-	return ""
-}
-
-func proxyStatusText(configured bool) string {
-	if configured {
-		return " [已配置代理]"
-	}
-	return ""
 }

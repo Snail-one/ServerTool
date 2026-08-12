@@ -258,9 +258,9 @@ func confirmUnmanagedProxyOverride(view *ui.UI, bashrc string) (bool, error) {
 		fmt.Printf("- %s=%s\n", assignment.name, maskProxyValue(assignment.value))
 	}
 	fmt.Println()
-	fmt.Println("1) 保留现有代理配置并返回")
-	fmt.Println("2) 删除这些代理行，并写入新的代理配置")
-	fmt.Println("0/q) 取消")
+	ui.MenuOption("1", "保留现有代理配置并返回")
+	ui.MenuOption("2", "删除这些代理行，并写入新的代理配置")
+	ui.MenuExit("0/q", "取消")
 	fmt.Println()
 
 	for {

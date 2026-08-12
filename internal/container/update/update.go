@@ -151,9 +151,9 @@ func UpdateDockerComposeApps(view *ui.UI) error {
 func chooseUpdateMode(view *ui.UI) (int, error) {
 	for {
 		fmt.Println("请选择更新方式：")
-		fmt.Println("1) 运行中的项目更新（默认）")
-		fmt.Println("2) 扫描目录更新")
-		fmt.Println("0/q) 返回")
+		ui.MenuOption("1", "运行中的项目更新（默认）")
+		ui.MenuOption("2", "扫描目录更新")
+		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
 		raw, err := view.Ask("输入选项（直接回车默认 1）: ")

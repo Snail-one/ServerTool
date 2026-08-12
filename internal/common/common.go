@@ -18,11 +18,11 @@ func Run(view *ui.UI) error {
 		ui.ClearScreen()
 		status := currentStatus()
 		ui.MenuTitle("系统与用户配置")
-		fmt.Println("1) Vim 配置（~/.vimrc）" + statusText(status.vim))
-		fmt.Println("2) Bash 配置" + statusText(status.bash))
-		fmt.Println("3) HTTP/HTTPS 代理" + proxyStatusText(status.proxy))
-		fmt.Println("4) UPS（NUT）" + statusText(status.ups))
-		fmt.Println("0/q) 返回")
+		ui.MenuOption("1", "Vim 配置（~/.vimrc） "+ui.ConfiguredBadge(status.vim))
+		ui.MenuOption("2", "Bash 配置 "+ui.ConfiguredBadge(status.bash))
+		ui.MenuOption("3", "HTTP/HTTPS 代理 "+ui.ConfiguredBadge(status.proxy))
+		ui.MenuOption("4", "UPS（NUT） "+ui.ConfiguredBadge(status.ups))
+		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
 		choice, err := view.Ask("输入选项: ")
@@ -76,18 +76,4 @@ func currentStatus() commonStatus {
 		proxy: commonproxy.IsProxyConfigured(account),
 		ups:   commonups.IsUPSConfigured(),
 	}
-}
-
-func statusText(configured bool) string {
-	if configured {
-		return " [已配置]"
-	}
-	return ""
-}
-
-func proxyStatusText(configured bool) string {
-	if configured {
-		return " [已配置代理]"
-	}
-	return ""
 }
