@@ -98,6 +98,16 @@ func TestRootBashConfigWritesRequestedManagedBlockAndIsIdempotent(t *testing.T) 
 	if !strings.Contains(content, "# existing root setting") {
 		t.Fatalf("existing root Bash content was removed:\n%s", content)
 	}
+	for _, alias := range strings.Split(bashAliasBlock, "\n") {
+		if !strings.Contains(rootBashBlock, alias) {
+			t.Fatalf("root Bash configuration is missing standard alias %q", alias)
+		}
+	}
+	for _, oldAlias := range []string{"alias ll='ls $LS_OPTIONS -l'", "alias l='ls $LS_OPTIONS -lA'"} {
+		if strings.Contains(rootBashBlock, oldAlias) {
+			t.Fatalf("root Bash configuration still contains old alias %q", oldAlias)
+		}
+	}
 }
 
 func TestNonRootAccountKeepsStandardAliasBlock(t *testing.T) {
