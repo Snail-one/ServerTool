@@ -80,12 +80,18 @@ if command -v curl >/dev/null 2>&1; then
 	download() {
 		curl --fail --location --silent --show-error --retry 3 --connect-timeout 15 --output "$2" "$1"
 	}
+	download_asset() {
+		curl --fail --location --show-error --retry 3 --connect-timeout 15 --progress-bar --output "$2" "$1"
+	}
 	download_optional() {
 		curl --fail --location --silent --retry 1 --connect-timeout 15 --output "$2" "$1"
 	}
 elif command -v wget >/dev/null 2>&1; then
 	download() {
 		wget --quiet --tries=3 --timeout=15 --output-document="$2" "$1"
+	}
+	download_asset() {
+		wget --tries=3 --timeout=15 --output-document="$2" "$1"
 	}
 	download_optional() {
 		wget --quiet --tries=1 --timeout=15 --output-document="$2" "$1"
@@ -148,7 +154,7 @@ if ! download_optional "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"; the
 	info "该版本使用旧版文件名，正在兼容下载..."
 	download "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"
 fi
-download "${DOWNLOAD_BASE}/${ASSET}" "$ASSET_FILE"
+download_asset "${DOWNLOAD_BASE}/${ASSET}" "$ASSET_FILE"
 
 EXPECTED_SHA256="$(awk -v asset="$ASSET" '$2 == asset || $2 == "*" asset { print $1; exit }' "$CHECKSUM_FILE")"
 [ -n "$EXPECTED_SHA256" ] || fail "${CHECKSUM_NAME} 中没有 ${ASSET} 的校验值"
