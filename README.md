@@ -39,6 +39,14 @@ sudo sh scripts/install.sh v1.2.0
 sudo snail update
 ```
 
+Release 文件名会在末尾包含版本号，例如：
+
+```text
+snailtool_linux_amd64_v1.2.0
+snailtool_linux_arm64_v1.2.0
+checksums_v1.2.0.txt
+```
+
 ## Go 环境管理
 
 从主菜单进入“开发环境管理 → Go 语言”后，可以安装任意官方稳定版本、更新到最新稳定版、切换当前版本、卸载指定版本、重新下载安装当前版本并修复 PATH，或清理异常中断遗留的下载、解压、修复和备份文件。安装版本列表每页显示 10 个，可翻页选择；当前支持 Linux amd64 和 arm64。

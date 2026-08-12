@@ -40,6 +40,8 @@ jobs:
     name: build (${{ matrix.goos }}/${{ matrix.goarch }})
     needs: test
     runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ inputs.tag_name || github.ref_name }}
     strategy:
       fail-fast: false
       matrix:
@@ -69,16 +71,19 @@ jobs:
         run: |
           mkdir -p dist
           VERSION="${{ inputs.tag_name || github.ref_name }}"
+          case "${VERSION}" in
+            *[!A-Za-z0-9._-]*) echo "Unsupported version for artifact filename: ${VERSION}" >&2; exit 1 ;;
+          esac
           COMMIT="${GITHUB_SHA}"
           BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           LDFLAGS="-s -w -X snail_tool/internal/version.Version=${VERSION} -X snail_tool/internal/version.Commit=${COMMIT} -X snail_tool/internal/version.BuildDate=${BUILD_DATE}"
-          go build -trimpath -ldflags="${LDFLAGS}" -o dist/${{ matrix.artifact }} ./cmd/snail_tool
+          go build -trimpath -ldflags="${LDFLAGS}" -o "dist/${{ matrix.artifact }}_${VERSION}" ./cmd/snail_tool
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.artifact }}
+          name: ${{ matrix.artifact }}_${{ env.RELEASE_VERSION }}
+          path: dist/${{ matrix.artifact }}_${{ env.RELEASE_VERSION }}
           if-no-files-found: error
 
   release:
@@ -99,7 +104,7 @@ jobs:
 
       - name: Generate checksums
         working-directory: release-assets
-        run: sha256sum * > checksums.txt
+        run: sha256sum snailtool_* > "checksums_${RELEASE_TAG}.txt"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3

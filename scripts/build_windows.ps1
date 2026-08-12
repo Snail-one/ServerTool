@@ -14,7 +14,6 @@ $env:CGO_ENABLED = '0'
 $env:GOOS = 'linux'
 $env:GOARCH = $GoArch
 
-$output = Join-Path $outDir "snail_tool_linux_$GoArch"
 $version = $env:VERSION
 if ([string]::IsNullOrWhiteSpace($version)) {
 	$version = git describe --tags --always --dirty 2>$null
@@ -22,6 +21,10 @@ if ([string]::IsNullOrWhiteSpace($version)) {
 		$version = 'dev'
 	}
 }
+if ($version -notmatch '^[A-Za-z0-9._-]+$') {
+	throw "Unsupported version for artifact filename: $version"
+}
+$output = Join-Path $outDir "snailtool_linux_${GoArch}_${version}"
 
 $commit = $env:COMMIT
 if ([string]::IsNullOrWhiteSpace($commit)) {

@@ -80,9 +80,15 @@ if command -v curl >/dev/null 2>&1; then
 	download() {
 		curl --fail --location --silent --show-error --retry 3 --connect-timeout 15 --output "$2" "$1"
 	}
+	download_optional() {
+		curl --fail --location --silent --retry 1 --connect-timeout 15 --output "$2" "$1"
+	}
 elif command -v wget >/dev/null 2>&1; then
 	download() {
 		wget --quiet --tries=3 --timeout=15 --output-document="$2" "$1"
+	}
+	download_optional() {
+		wget --quiet --tries=1 --timeout=15 --output-document="$2" "$1"
 	}
 else
 	fail "需要 curl 或 wget 才能下载安装包"
@@ -100,16 +106,25 @@ else
 	fail "需要 sha256sum 或 shasum 才能校验安装包"
 fi
 
-ASSET="snailtool_linux_${ARCH}"
-if [ "$RELEASE" = "latest" ]; then
-	DOWNLOAD_BASE="https://github.com/${REPOSITORY}/releases/latest/download"
-else
-	DOWNLOAD_BASE="https://github.com/${REPOSITORY}/releases/download/${RELEASE}"
-fi
-
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/servertool-install.XXXXXX")"
+if [ "$RELEASE" = "latest" ]; then
+	RELEASE_METADATA="${TEMP_DIR}/release.json"
+	info "正在查询最新版本..."
+	download "https://api.github.com/repos/${REPOSITORY}/releases/latest" "$RELEASE_METADATA"
+	RELEASE_VERSION="$(sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' "$RELEASE_METADATA" | sed -n '1p')"
+	[ -n "$RELEASE_VERSION" ] || fail "无法从 GitHub Release 信息中解析最新版本"
+else
+	RELEASE_VERSION="$RELEASE"
+fi
+case "$RELEASE_VERSION" in
+	*[!A-Za-z0-9._-]*) fail "发布版本包含不支持的字符：$RELEASE_VERSION" ;;
+esac
+
+ASSET="snailtool_linux_${ARCH}_${RELEASE_VERSION}"
+CHECKSUM_NAME="checksums_${RELEASE_VERSION}.txt"
+DOWNLOAD_BASE="https://github.com/${REPOSITORY}/releases/download/${RELEASE_VERSION}"
 ASSET_FILE="${TEMP_DIR}/${ASSET}"
-CHECKSUM_FILE="${TEMP_DIR}/checksums.txt"
+CHECKSUM_FILE="${TEMP_DIR}/${CHECKSUM_NAME}"
 TARGET="${INSTALL_DIR}/${BINARY_NAME}"
 
 if [ -e "$TARGET" ]; then
@@ -123,12 +138,20 @@ else
 	ACTION="安装"
 fi
 
-info "正在下载 ${ASSET}（${RELEASE}）..."
+info "正在下载 ${ASSET}..."
+if ! download_optional "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"; then
+	# 兼容改用版本化文件名之前发布的版本。
+	ASSET="snailtool_linux_${ARCH}"
+	CHECKSUM_NAME="checksums.txt"
+	ASSET_FILE="${TEMP_DIR}/${ASSET}"
+	CHECKSUM_FILE="${TEMP_DIR}/${CHECKSUM_NAME}"
+	info "该版本使用旧版文件名，正在兼容下载..."
+	download "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"
+fi
 download "${DOWNLOAD_BASE}/${ASSET}" "$ASSET_FILE"
-download "${DOWNLOAD_BASE}/checksums.txt" "$CHECKSUM_FILE"
 
 EXPECTED_SHA256="$(awk -v asset="$ASSET" '$2 == asset || $2 == "*" asset { print $1; exit }' "$CHECKSUM_FILE")"
-[ -n "$EXPECTED_SHA256" ] || fail "checksums.txt 中没有 ${ASSET} 的校验值"
+[ -n "$EXPECTED_SHA256" ] || fail "${CHECKSUM_NAME} 中没有 ${ASSET} 的校验值"
 ACTUAL_SHA256="$(file_sha256 "$ASSET_FILE")"
 [ "$ACTUAL_SHA256" = "$EXPECTED_SHA256" ] || fail "安装包 SHA-256 校验失败"
 info "SHA-256 校验通过"
