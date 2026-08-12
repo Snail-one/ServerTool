@@ -94,7 +94,7 @@ func TestRootBashConfigWritesRequestedManagedBlockAndIsIdempotent(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	body, preservedPrompt, preservedColor := rootBashBlockForContent("# existing root setting\n")
+	body, preservedPrompt, preservedColor := rootBashBlockForContent("# existing root setting\n", false)
 	if body != rootBashBlock {
 		t.Fatal("root account did not build the default root Bash configuration")
 	}
@@ -146,12 +146,12 @@ eval "$(dircolors -b ~/.dircolors)"
 alias ls='ls --color=auto'
 `
 
-	body, preservedPrompt, preservedColor := rootBashBlockForContent(existing)
+	body, preservedPrompt, preservedColor := rootBashBlockForContent(existing, false)
 	if !preservedPrompt || !preservedColor {
 		t.Fatalf("existing root settings were not detected: prompt=%v color=%v", preservedPrompt, preservedColor)
 	}
-	if strings.Contains(body, rootPromptBlock) || strings.Contains(body, rootColorBlock) {
-		t.Fatalf("managed block duplicated existing prompt or color configuration:\n%s", body)
+	if strings.Contains(body, rootPromptBlock) || strings.Contains(body, rootDircolorsBlock) || strings.Contains(body, "alias ls='ls --color=auto'") {
+		t.Fatalf("managed block duplicated existing prompt or ls color configuration:\n%s", body)
 	}
 	for _, required := range []string{bashAliasBlock, rootSafetyAliasBlock} {
 		if !strings.Contains(body, required) {
@@ -167,12 +167,61 @@ func TestRootBashConfigTreatsCommentedSettingsAsMissing(t *testing.T) {
 # alias ls='ls --color=auto'
 `
 
-	body, preservedPrompt, preservedColor := rootBashBlockForContent(existing)
+	body, preservedPrompt, preservedColor := rootBashBlockForContent(existing, false)
 	if preservedPrompt || preservedColor {
 		t.Fatalf("commented settings were treated as active: prompt=%v color=%v", preservedPrompt, preservedColor)
 	}
 	if body != rootBashBlock {
 		t.Fatalf("default root configuration was not generated:\n%s", body)
+	}
+}
+
+func TestRootBashConfigAddsInteractiveGuardOnlyWhenRequested(t *testing.T) {
+	body, _, _ := rootBashBlockForContent("", true)
+	if !strings.HasPrefix(body, rootInteractiveGuardBlock) {
+		t.Fatalf("empty root Bash configuration is missing the interactive guard:\n%s", body)
+	}
+
+	body, _, _ = rootBashBlockForContent("export EDITOR=vim\n", false)
+	if strings.Contains(body, rootInteractiveGuardBlock) {
+		t.Fatalf("existing root Bash configuration received an interactive guard:\n%s", body)
+	}
+}
+
+func TestRootBashConfigPreservesHistoryAndShellBehavior(t *testing.T) {
+	existing := `HISTCONTROL=erasedups
+shopt -s histappend checkwinsize
+HISTSIZE=20000
+HISTFILESIZE=40000
+`
+
+	body, _, _ := rootBashBlockForContent(existing, false)
+	for _, setting := range []string{"HISTCONTROL=ignoreboth", "shopt -s histappend", "HISTSIZE=5000", "HISTFILESIZE=10000", rootShellBehaviorBlock} {
+		if strings.Contains(body, setting) {
+			t.Fatalf("existing root setting was duplicated by %q:\n%s", setting, body)
+		}
+	}
+}
+
+func TestRootColorConfigOnlyAddsMissingParts(t *testing.T) {
+	existing := `eval "$(dircolors -b)"
+alias ls='ls --color=always'
+alias grep='grep --color=always'
+`
+
+	colorBlock, preserved := rootColorBlockForContent(existing)
+	if !preserved {
+		t.Fatal("existing color configuration was not detected")
+	}
+	for _, duplicate := range []string{rootDircolorsBlock, "alias ls='ls --color=auto'", "alias grep='grep --color=auto'"} {
+		if strings.Contains(colorBlock, duplicate) {
+			t.Fatalf("existing color configuration was duplicated by %q:\n%s", duplicate, colorBlock)
+		}
+	}
+	for _, missing := range []string{"alias fgrep='fgrep --color=auto'", "alias egrep='egrep --color=auto'"} {
+		if !strings.Contains(colorBlock, missing) {
+			t.Fatalf("missing color alias %q was not added:\n%s", missing, colorBlock)
+		}
 	}
 }
 

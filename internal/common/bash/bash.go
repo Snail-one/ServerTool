@@ -19,31 +19,72 @@ const (
 alias la='ls -A'
 alias ll='ls -lah'
 alias lspath='echo "$PATH" | tr ":" "\n"'`
-	rootPromptBlock = `# ~/.bashrc: executed by bash(1) for non-login shells.
+	rootInteractiveGuardBlock = `# Only run for interactive shells
+case $- in
+    *i*) ;;
+      *) return ;;
+esac`
+	rootHistoryBlock = `# -------------------------
+# History
+# -------------------------
 
-# Note: PS1 is set in /etc/profile, and the default umask is defined
-# in /etc/login.defs. You should not need this unless you want different
-# defaults for root.
+# Ignore duplicate commands and commands beginning with a space
+HISTCONTROL=ignoreboth
 
+# Append history instead of overwriting it
+shopt -s histappend
+
+# History size
+HISTSIZE=5000
+HISTFILESIZE=10000`
+	rootShellBehaviorBlock = `# -------------------------
+# Shell behavior
+# -------------------------
+
+# Update LINES and COLUMNS after terminal resize
+shopt -s checkwinsize
+
+# Uncomment if you want ** to recursively match directories
+# shopt -s globstar`
+	rootPromptBlock = `# -------------------------
+# Debian chroot support
+# -------------------------
+
+if [ -z "${debian_chroot:-}" ] && [ -r /etc/debian_chroot ]; then
+    debian_chroot=$(cat /etc/debian_chroot)
+fi
+
+# -------------------------
+# Prompt
+# -------------------------
+
+# root@hostname = red
+# current directory = blue
 PS1='${debian_chroot:+($debian_chroot)}\[\033[38;5;196m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
 
 # PS1='\[\033[01;35m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '`
-	rootColorBlock = `# umask 022
-# You may uncomment the following lines if you want ` + "`" + `ls' to be colorized:
-export LS_OPTIONS='--color=auto'
-eval "$(dircolors)"
-alias ls='ls $LS_OPTIONS'`
+	rootDircolorsBlock = `if command -v dircolors >/dev/null 2>&1; then
+    eval "$(dircolors -b)"
+fi`
+	rootColorAliasBlock = `alias ls='ls --color=auto'
+alias grep='grep --color=auto'
+alias fgrep='fgrep --color=auto'
+alias egrep='egrep --color=auto'`
+	rootColorBlock = `# -------------------------
+# Colors
+# -------------------------
+
+` + rootDircolorsBlock + "\n" + rootColorAliasBlock
 	rootSafetyAliasBlock = `# Some more alias to avoid making mistakes:
 alias rm='rm -i'
 alias cp='cp -i'
 alias mv='mv -i'`
-	rootBashBlock = rootPromptBlock + "\n\n" + rootColorBlock + "\n\n" + bashAliasBlock + "\n\n" + rootSafetyAliasBlock
+	rootBashBlock = rootHistoryBlock + "\n\n" + rootShellBehaviorBlock + "\n\n" + rootPromptBlock + "\n\n" + rootColorBlock + "\n\n" + bashAliasBlock + "\n\n" + rootSafetyAliasBlock
 )
 
 var (
-	activePS1Assignment = regexp.MustCompile(`^(?:export[ \t]+)?PS1[ \t]*=`)
-	activeColorVariable = regexp.MustCompile(`^(?:export[ \t]+)?(?:LS_OPTIONS|LS_COLORS)[ \t]*=`)
-	activeLSAlias       = regexp.MustCompile(`^alias[ \t]+ls[ \t]*=`)
+	activeAssignment = regexp.MustCompile(`^(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*=`)
+	activeAlias      = regexp.MustCompile(`^alias[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*=`)
 )
 
 func BashAliasMarkers() (string, string) {
@@ -68,42 +109,134 @@ func isRootAccount(account *system.Account) bool {
 	return account != nil && account.Name == "root"
 }
 
-func rootBashBlockForContent(content string) (string, bool, bool) {
-	preservePrompt := hasActivePS1(content)
-	preserveColor := hasActiveColorConfig(content)
+func rootBashBlockForContent(content string, includeInteractiveGuard bool) (string, bool, bool) {
+	preservePrompt := hasActiveAssignment(content, "PS1")
+	colorBlock, preserveColor := rootColorBlockForContent(content)
 
-	parts := make([]string, 0, 4)
+	parts := make([]string, 0, 7)
+	if includeInteractiveGuard {
+		parts = append(parts, rootInteractiveGuardBlock)
+	}
+	if historyBlock := rootHistoryBlockForContent(content); historyBlock != "" {
+		parts = append(parts, historyBlock)
+	}
+	if !hasActiveShopt(content, "checkwinsize") {
+		parts = append(parts, rootShellBehaviorBlock)
+	}
 	if !preservePrompt {
 		parts = append(parts, rootPromptBlock)
 	}
-	if !preserveColor {
-		parts = append(parts, rootColorBlock)
+	if colorBlock != "" {
+		parts = append(parts, colorBlock)
 	}
 	parts = append(parts, bashAliasBlock, rootSafetyAliasBlock)
 	return strings.Join(parts, "\n\n"), preservePrompt, preserveColor
 }
 
-func hasActivePS1(content string) bool {
+func activeShellLines(content string) []string {
+	lines := make([]string, 0)
 	for _, rawLine := range strings.Split(content, "\n") {
 		line := strings.TrimSpace(rawLine)
-		if line != "" && !strings.HasPrefix(line, "#") && activePS1Assignment.MatchString(line) {
+		if line != "" && !strings.HasPrefix(line, "#") {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+func hasActiveAssignment(content, name string) bool {
+	for _, line := range activeShellLines(content) {
+		match := activeAssignment.FindStringSubmatch(line)
+		if match != nil && match[1] == name {
 			return true
 		}
 	}
 	return false
 }
 
-func hasActiveColorConfig(content string) bool {
-	for _, rawLine := range strings.Split(content, "\n") {
-		line := strings.TrimSpace(rawLine)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		if activeColorVariable.MatchString(line) || activeLSAlias.MatchString(line) || strings.Contains(line, "dircolors") {
+func hasActiveAlias(content, name string) bool {
+	for _, line := range activeShellLines(content) {
+		match := activeAlias.FindStringSubmatch(line)
+		if match != nil && match[1] == name {
 			return true
 		}
 	}
 	return false
+}
+
+func hasActiveShopt(content, option string) bool {
+	for _, line := range activeShellLines(content) {
+		fields := strings.Fields(line)
+		if len(fields) < 3 || fields[0] != "shopt" || fields[1] != "-s" {
+			continue
+		}
+		for _, field := range fields[2:] {
+			if field == option {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func rootHistoryBlockForContent(content string) string {
+	lines := make([]string, 0, 4)
+	if !hasActiveAssignment(content, "HISTCONTROL") {
+		lines = append(lines, "HISTCONTROL=ignoreboth")
+	}
+	if !hasActiveShopt(content, "histappend") {
+		lines = append(lines, "shopt -s histappend")
+	}
+	if !hasActiveAssignment(content, "HISTSIZE") {
+		lines = append(lines, "HISTSIZE=5000")
+	}
+	if !hasActiveAssignment(content, "HISTFILESIZE") {
+		lines = append(lines, "HISTFILESIZE=10000")
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	if len(lines) == 4 {
+		return rootHistoryBlock
+	}
+	return "# -------------------------\n# History\n# -------------------------\n\n" + strings.Join(lines, "\n")
+}
+
+func rootColorBlockForContent(content string) (string, bool) {
+	hasDircolors := hasActiveAssignment(content, "LS_OPTIONS") || hasActiveAssignment(content, "LS_COLORS")
+	if !hasDircolors {
+		for _, line := range activeShellLines(content) {
+			if strings.Contains(line, "eval") && strings.Contains(line, "dircolors") {
+				hasDircolors = true
+				break
+			}
+		}
+	}
+
+	parts := make([]string, 0, 5)
+	if !hasDircolors {
+		parts = append(parts, rootDircolorsBlock)
+	}
+	preserved := hasDircolors
+	for _, item := range []struct {
+		name string
+		line string
+	}{
+		{name: "ls", line: "alias ls='ls --color=auto'"},
+		{name: "grep", line: "alias grep='grep --color=auto'"},
+		{name: "fgrep", line: "alias fgrep='fgrep --color=auto'"},
+		{name: "egrep", line: "alias egrep='egrep --color=auto'"},
+	} {
+		if hasActiveAlias(content, item.name) {
+			preserved = true
+			continue
+		}
+		parts = append(parts, item.line)
+	}
+	if len(parts) == 0 {
+		return "", preserved
+	}
+	return "# -------------------------\n# Colors\n# -------------------------\n\n" + strings.Join(parts, "\n"), preserved
 }
 
 func Run() error {
@@ -134,8 +267,11 @@ func ConfigureBash() error {
 		if err != nil {
 			return err
 		}
-		unmanaged := shared.RemoveManagedBlock(string(data), bashAliasBegin, bashAliasEnd)
-		bashBlock, preservedPrompt, preservedColor = rootBashBlockForContent(unmanaged)
+		content := string(data)
+		managed, _ := shared.ManagedBlockContent(content, bashAliasBegin, bashAliasEnd)
+		unmanaged := shared.RemoveManagedBlock(content, bashAliasBegin, bashAliasEnd)
+		includeInteractiveGuard := strings.TrimSpace(unmanaged) == "" || strings.Contains(managed, rootInteractiveGuardBlock)
+		bashBlock, preservedPrompt, preservedColor = rootBashBlockForContent(unmanaged, includeInteractiveGuard)
 	}
 	if err := replaceBashConfig(bashrc, bashBlock); err != nil {
 		return err
@@ -152,7 +288,7 @@ func ConfigureBash() error {
 		fmt.Println("保留了已有的 PS1 配置")
 	}
 	if preservedColor {
-		fmt.Println("保留了已有的 ls 颜色配置")
+		fmt.Println("保留了已有的颜色配置")
 	}
 	fmt.Println()
 	fmt.Println("重新登录或执行 source ~/.bashrc 后生效")
