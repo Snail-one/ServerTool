@@ -263,7 +263,7 @@ func confirmDisableSSHDConfigPorts(view *ui.UI, port int) (bool, error) {
 		fmt.Printf("- %s 第 %d 行：%s\n", directive.path, directive.line, strings.TrimSpace(directive.text))
 	}
 	fmt.Printf("新端口将写入 %s：Port %d\n", customSSHDConfigPath, port)
-	return confirmDefaultYes(view, "是否注释这些 Port 配置，关闭旧端口？(Y/n): ")
+	return confirmDefaultYes(view, "是否注释这些 Port 配置，关闭旧端口？(Y/n)：")
 }
 
 func confirmDefaultYes(view *ui.UI, prompt string) (bool, error) {

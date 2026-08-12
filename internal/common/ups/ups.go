@@ -112,7 +112,7 @@ func ConfigureUPS(view *ui.UI) error {
 		case "3":
 			return deleteUPSBackups(view)
 		default:
-			fmt.Println("无效选项，请重新输入")
+			ui.InvalidChoice()
 			fmt.Println()
 		}
 	}
@@ -163,8 +163,8 @@ func ensureNUTInstalled(view *ui.UI) (bool, error) {
 
 	log.Warn("未检测到 NUT 服务端组件")
 	ui.MenuSection("请选择安装方式")
-	ui.MenuOption("1", "手动安装并返回")
-	ui.MenuOption("2", "自动安装 NUT")
+	ui.MenuOptionHint("1", "手动安装", "显示安装命令并返回")
+	ui.MenuOptionHint("2", "自动安装 NUT", "使用系统包管理器")
 	ui.MenuExit("0/q", "取消")
 	fmt.Println()
 
@@ -191,7 +191,7 @@ func ensureNUTInstalled(view *ui.UI) (bool, error) {
 			}
 			return true, nil
 		default:
-			fmt.Println("无效选项，请重新输入")
+			ui.InvalidChoice()
 		}
 	}
 }
@@ -298,12 +298,12 @@ func printLSUSBDevices() {
 }
 
 func askUPSDeviceConfig(view *ui.UI) (upsDeviceConfig, error) {
-	vendorID, err := askUSBID(view, "请输入 vendorid（例如 0463）: ")
+	vendorID, err := askUSBID(view, "请输入 vendorid（例如 0463）：")
 	if err != nil {
 		return upsDeviceConfig{}, err
 	}
 
-	productID, err := askUSBID(view, "请输入 productid（例如 ffff）: ")
+	productID, err := askUSBID(view, "请输入 productid（例如 ffff）：")
 	if err != nil {
 		return upsDeviceConfig{}, err
 	}

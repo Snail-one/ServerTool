@@ -37,14 +37,14 @@ func Run(view *ui.UI) error {
 		ui.MenuTitle("容器管理")
 		fmt.Println("当前运行时：" + runtime.DisplaySummary(installedRuntimes))
 		fmt.Println()
-		ui.MenuOption("1", "容器列表与操作")
-		ui.MenuOption("2", "Compose 项目")
+		ui.MenuOptionHint("1", "管理容器", "查看状态、日志与生命周期操作")
+		ui.MenuOptionHint("2", "管理 Compose 项目", "查看、更新与重建项目")
 		if hasDocker {
-			ui.MenuOption("3", "Docker 服务配置")
+			ui.MenuOptionHint("3", "配置 Docker 服务", "服务代理与日志轮转")
 		} else {
-			ui.MenuOptionStatus("3", "Docker 服务配置", ui.Badge("仅 Docker 可用", false))
+			ui.MenuOptionHint("3", "配置 Docker 服务", "仅 Docker 可用；服务代理与日志轮转")
 		}
-		ui.MenuOption("4", "清理容器资源")
+		ui.MenuOptionHint("4", "清理容器资源", "容器、网络、镜像与构建缓存")
 		ui.MenuOptionHint("5", fmt.Sprintf("卸载 %s", uninstallName), "可选择保留或永久删除数据")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
@@ -91,7 +91,7 @@ func Run(view *ui.UI) error {
 			}
 			view.Pause()
 		default:
-			fmt.Println("无效选项，请重新输入")
+			ui.InvalidChoice()
 			view.Pause()
 		}
 	}
@@ -101,10 +101,10 @@ func runComposeMenu(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("容器管理", "Compose 项目")
-		ui.MenuOptionHint("1", "管理运行中的 Compose 项目", "docker compose ls")
-		ui.MenuOptionHint("2", "管理指定目录中的 Compose 项目", "扫描 Compose 配置目录")
-		ui.MenuOptionHint("3", "更新运行中的 Compose 应用", "docker compose pull && docker compose up -d")
-		ui.MenuOptionHint("4", "重建运行中的 Compose 项目", "docker compose down && docker compose up -d")
+		ui.MenuOptionHint("1", "管理运行中项目", "docker compose ls")
+		ui.MenuOptionHint("2", "扫描 Compose 项目", "扫描 Compose 配置目录")
+		ui.MenuOptionHint("3", "更新运行中应用", "docker compose pull && docker compose up -d")
+		ui.MenuOptionHint("4", "重建运行中项目", "docker compose down && docker compose up -d")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -135,7 +135,7 @@ func runComposeMenu(view *ui.UI) error {
 				return update.RebuildRunningComposeProjects(view)
 			})
 		default:
-			fmt.Println("无效选项，请重新输入")
+			ui.InvalidChoice()
 			view.Pause()
 		}
 	}
@@ -145,8 +145,8 @@ func runDockerDaemonMenu(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("容器管理", "Docker 服务配置")
-		ui.MenuOption("1", "配置 Docker 服务代理")
-		ui.MenuOption("2", "配置 Docker 日志轮转")
+		ui.MenuOptionHint("1", "配置服务代理", "systemd 服务代理")
+		ui.MenuOptionHint("2", "配置日志轮转", "/etc/docker/daemon.json")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -169,7 +169,7 @@ func runDockerDaemonMenu(view *ui.UI) error {
 				return daemonlog.Run(view)
 			})
 		default:
-			fmt.Println("无效选项，请重新输入")
+			ui.InvalidChoice()
 			view.Pause()
 		}
 	}

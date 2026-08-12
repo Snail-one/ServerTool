@@ -123,7 +123,7 @@ func Run(view *ui.UI) error {
 				return cleanupInstallArtifacts(view)
 			})
 		default:
-			fmt.Println("无效选项，请重新输入")
+			ui.InvalidChoice()
 			view.Pause()
 		}
 	}
@@ -317,7 +317,7 @@ func selectRelease(view *ui.UI, releases []release, arch string) (release, error
 				return releases[start+index-1], nil
 			}
 		}
-		fmt.Println("无效选项，请重新输入")
+		ui.InvalidChoice()
 		fmt.Println()
 	}
 }
@@ -546,7 +546,7 @@ func uninstallSelected(view *ui.UI) error {
 		}
 		index, err := strconv.Atoi(raw)
 		if err != nil || index < 1 || index > len(versions)+offset {
-			fmt.Println("无效选项，请重新输入")
+			ui.InvalidChoice()
 			fmt.Println()
 			continue
 		}
@@ -626,7 +626,7 @@ func selectInstalled(view *ui.UI, versions []string, prompt string) (string, err
 		}
 		index, err := strconv.Atoi(raw)
 		if err != nil || index < 1 || index > len(versions) {
-			fmt.Println("无效选项，请重新输入")
+			ui.InvalidChoice()
 			fmt.Println()
 			continue
 		}

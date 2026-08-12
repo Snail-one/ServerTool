@@ -61,7 +61,7 @@ func Ensure(view *ui.UI) error {
 				return err
 			}
 		default:
-			fmt.Println("无效选项，请重新输入")
+			ui.InvalidChoice()
 			continue
 		}
 	}

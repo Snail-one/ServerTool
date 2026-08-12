@@ -38,13 +38,13 @@ func runDockerCleanup(view *ui.UI, rt runtime.Runtime) error {
 		log.Info("当前 ", rt.Display, " 磁盘占用")
 		printContainerDiskUsage(rt)
 		fmt.Println()
-		ui.MenuOptionHint("1", "删除所有已停止容器", rt.Name+" container prune")
-		ui.MenuOptionHint("2", "删除所有未使用网络", rt.Name+" network prune")
-		ui.MenuOptionHint("3", "删除悬空镜像", rt.Name+" image prune")
-		ui.MenuOptionHint("4", "删除构建缓存", rt.Name+" builder prune")
-		ui.MenuOptionHint("5", "清理停止容器、无用网络、悬空镜像和构建缓存", rt.Name+" system prune")
-		ui.MenuOptionHint("6", "删除所有未被容器使用的镜像", rt.Name+" image prune -a")
-		ui.MenuOptionHint("7", "清理停止容器、无用网络、未使用镜像和构建缓存", rt.Name+" system prune -a")
+		ui.MenuOptionHint("1", "清理停止容器", rt.Name+" container prune")
+		ui.MenuOptionHint("2", "清理未使用网络", rt.Name+" network prune")
+		ui.MenuOptionHint("3", "清理悬空镜像", rt.Name+" image prune")
+		ui.MenuOptionHint("4", "清理构建缓存", rt.Name+" builder prune")
+		ui.MenuOptionHint("5", "清理未使用镜像", rt.Name+" image prune -a")
+		ui.MenuOptionHint("6", "常规系统清理", rt.Name+" system prune")
+		ui.MenuOptionHint("7", "深度系统清理", rt.Name+" system prune -a")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 		fmt.Println("说明：以上操作均不会删除卷。")
@@ -61,7 +61,7 @@ func runDockerCleanup(view *ui.UI, rt runtime.Runtime) error {
 
 		plan, err := dockerCleanupPlanForChoice(choice)
 		if err != nil {
-			fmt.Println(err)
+			log.Warn(err)
 			view.Pause()
 			continue
 		}
@@ -132,16 +132,16 @@ func dockerCleanupPlanForChoice(choice string) (dockerCleanupPlan, error) {
 		}, nil
 	case "5":
 		return dockerCleanupPlan{
-			name:         "清理容器无用资源",
-			impact:       "永久删除已停止容器、未使用网络、悬空镜像和构建缓存；卷不受影响。",
-			args:         []string{"system", "prune", "-f"},
+			name:         "清理所有未使用镜像",
+			impact:       "永久删除所有未被容器使用的镜像，后续可能需要重新拉取；卷不受影响。",
+			args:         []string{"image", "prune", "-a", "-f"},
 			needsConfirm: true,
 		}, nil
 	case "6":
 		return dockerCleanupPlan{
-			name:         "清理所有未使用镜像",
-			impact:       "永久删除所有未被容器使用的镜像，后续可能需要重新拉取；卷不受影响。",
-			args:         []string{"image", "prune", "-a", "-f"},
+			name:         "清理容器无用资源",
+			impact:       "永久删除已停止容器、未使用网络、悬空镜像和构建缓存；卷不受影响。",
+			args:         []string{"system", "prune", "-f"},
 			needsConfirm: true,
 		}, nil
 	case "7":

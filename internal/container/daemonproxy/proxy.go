@@ -30,7 +30,7 @@ func ConfigureDockerDaemonProxy(view *ui.UI) error {
 		return fmt.Errorf("未检测到 docker.service，无法配置 Docker 服务代理")
 	}
 
-	fmt.Println("\033[32m[INFO]\033[0m 配置 Docker 服务代理")
+	log.Info("配置 Docker 服务代理")
 	fmt.Println()
 	if currentContent := dockerProxyConfigContent(dockerProxyPath); strings.TrimSpace(currentContent) != "" {
 		fmt.Printf("当前配置文件：%s\n", dockerProxyPath)

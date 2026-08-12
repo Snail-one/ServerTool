@@ -18,8 +18,8 @@ func TestDockerCleanupPlanForChoice(t *testing.T) {
 		{choice: "2", wantArgs: []string{"network", "prune", "-f"}, wantConfirm: true},
 		{choice: "3", wantArgs: []string{"image", "prune", "-f"}, wantConfirm: true},
 		{choice: "4", wantArgs: []string{"builder", "prune", "-f"}, wantConfirm: true},
-		{choice: "5", wantArgs: []string{"system", "prune", "-f"}, wantConfirm: true},
-		{choice: "6", wantArgs: []string{"image", "prune", "-a", "-f"}, wantConfirm: true},
+		{choice: "5", wantArgs: []string{"image", "prune", "-a", "-f"}, wantConfirm: true},
+		{choice: "6", wantArgs: []string{"system", "prune", "-f"}, wantConfirm: true},
 		{choice: "7", wantArgs: []string{"system", "prune", "-a", "-f"}, wantConfirm: true},
 		{choice: "bad", wantErrPart: "无效容器清理选项"},
 	}

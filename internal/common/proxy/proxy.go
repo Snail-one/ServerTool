@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
@@ -58,7 +59,7 @@ func ConfigureProxy(view *ui.UI) error {
 		return err
 	}
 
-	fmt.Println("\033[32m[INFO]\033[0m 配置代理环境变量")
+	log.Info("配置代理环境变量")
 	fmt.Println()
 	if currentProxy, ok := CurrentProxyURL(account); ok {
 		fmt.Printf("当前代理服务器：%s\n", maskProxyURL(currentProxy))
@@ -74,7 +75,7 @@ func ConfigureProxy(view *ui.UI) error {
 		return nil
 	}
 
-	fmt.Println("\033[32m[INFO]\033[0m ip:port 格式，或 username:password@ip:port 格式")
+	log.Info("支持 ip:port 或 username:password@ip:port 格式")
 	fmt.Println()
 
 	raw, err := view.Ask("请输入代理地址：")
@@ -258,8 +259,8 @@ func confirmUnmanagedProxyOverride(view *ui.UI, bashrc string) (bool, error) {
 		fmt.Printf("- %s=%s\n", assignment.name, maskProxyValue(assignment.value))
 	}
 	fmt.Println()
-	ui.MenuOption("1", "保留现有代理配置并返回")
-	ui.MenuOption("2", "删除这些代理行，并写入新的代理配置")
+	ui.MenuOptionHint("1", "保留现有配置", "不修改并返回")
+	ui.MenuOptionHint("2", "替换现有配置", "删除已有代理行并写入新配置")
 	ui.MenuExit("0/q", "取消")
 	fmt.Println()
 
@@ -280,7 +281,7 @@ func confirmUnmanagedProxyOverride(view *ui.UI, bashrc string) (bool, error) {
 			fmt.Println("已保留现有代理配置")
 			return false, nil
 		default:
-			fmt.Println("无效选项，请重新输入")
+			ui.InvalidChoice()
 		}
 	}
 }

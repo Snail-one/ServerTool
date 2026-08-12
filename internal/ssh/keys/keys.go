@@ -147,7 +147,7 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 				return err
 			}
 		default:
-			fmt.Println("无效选项，请重新输入")
+			ui.InvalidChoice()
 		}
 		fmt.Println()
 	}

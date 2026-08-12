@@ -176,7 +176,7 @@ func chooseUpdateMode(view *ui.UI) (int, error) {
 		case "2":
 			return 2, nil
 		default:
-			fmt.Println("无效选项，请重新输入")
+			ui.InvalidChoice()
 			view.Pause()
 		}
 	}

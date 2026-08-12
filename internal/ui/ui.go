@@ -11,7 +11,7 @@ const (
 	reset  = "\033[0m"
 	bold   = "\033[1m"
 	dim    = "\033[2m"
-	cyan   = "\033[36m"
+	orange = "\033[38;5;208m"
 	blue   = "\033[34m"
 	green  = "\033[32m"
 	yellow = "\033[33m"
@@ -27,7 +27,8 @@ func New() *UI {
 }
 
 func (u *UI) Ask(prompt string) (string, error) {
-	fmt.Print(paint(bold+cyan, "❯ ") + paint(bold, prompt))
+	prompt = normalizePrompt(prompt)
+	fmt.Print(paint(bold+orange, "❯ ") + paint(bold, prompt) + " ")
 	value, err := u.reader.ReadString('\n')
 	if err != nil {
 		return "", err
@@ -40,16 +41,21 @@ func (u *UI) Confirm(prompt string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return strings.EqualFold(value, "y"), nil
+	value = strings.TrimSpace(value)
+	return strings.EqualFold(value, "y") || strings.EqualFold(value, "yes"), nil
 }
 
 func (u *UI) Pause() {
-	u.PauseWithPrompt("按回车返回菜单...")
+	u.PauseWithPrompt("按回车返回菜单…")
 }
 
 func (u *UI) PauseWithPrompt(prompt string) {
+	prompt = strings.TrimSpace(prompt)
+	if strings.HasSuffix(prompt, "...") {
+		prompt = strings.TrimSuffix(prompt, "...") + "…"
+	}
 	fmt.Println()
-	fmt.Print(paint(dim, prompt))
+	fmt.Print(paint(dim, prompt) + " ")
 	_, _ = u.reader.ReadString('\n')
 	fmt.Println()
 }
@@ -72,8 +78,8 @@ func MenuTitle(parts ...string) {
 		}
 	}
 	title := strings.Join(clean, "  ›  ")
-	fmt.Println(paint(cyan, "╭─") + " " + paint(bold+cyan, title))
-	fmt.Println(paint(cyan, "╰"+strings.Repeat("─", 46)))
+	fmt.Println(paint(orange, "╭─") + " " + paint(bold+orange, title))
+	fmt.Println(paint(orange, "╰"+strings.Repeat("─", 46)))
 	fmt.Println()
 }
 
@@ -83,9 +89,9 @@ func HomeTitle(buildVersion string) {
 	if buildVersion == "" {
 		buildVersion = "dev"
 	}
-	fmt.Println(paint(cyan, "╭─") + " " + paint(bold+cyan, "ServerTool"))
-	fmt.Println(paint(cyan, "│") + " " + paint(dim, "服务器管理工具") + "  " + Badge("版本 "+buildVersion, true))
-	fmt.Println(paint(cyan, "╰"+strings.Repeat("─", 46)))
+	fmt.Println(paint(orange, "╭─") + " " + paint(bold+orange, "ServerTool"))
+	fmt.Println(paint(orange, "│") + " " + paint(orange, "服务器管理工具") + "  " + Badge("版本 "+buildVersion, true))
+	fmt.Println(paint(orange, "╰"+strings.Repeat("─", 46)))
 	fmt.Println()
 }
 
@@ -102,7 +108,7 @@ func MenuOptionHint(key, label, hint string) {
 		MenuOption(key, label)
 		return
 	}
-	fmt.Printf("  %s %s%s\n", menuKey(key, bold+blue), padDisplay(label, 30), paint(gray, "-- "+hint))
+	fmt.Printf("  %s %s%s\n", menuKey(key, bold+blue), padDisplay(label, 22), paint(gray, "-- "+hint))
 }
 
 // MenuOptionStatus keeps status badges in a fixed column across menu rows.
@@ -141,6 +147,11 @@ func MenuExit(key, label string) {
 // MenuSection renders a consistent heading for choices nested inside a screen.
 func MenuSection(label string) {
 	fmt.Println(paint(bold, strings.TrimSpace(label)))
+}
+
+// InvalidChoice keeps recoverable input errors consistent across menus.
+func InvalidChoice() {
+	fmt.Println(paint(yellow, "无效选项，请重新输入"))
 }
 
 // Badge returns a compact status label. Positive states use green; states that
@@ -194,6 +205,14 @@ func displayWidth(text string) int {
 		}
 	}
 	return width
+}
+
+func normalizePrompt(prompt string) string {
+	prompt = strings.TrimSpace(prompt)
+	if strings.HasSuffix(prompt, ":") {
+		prompt = strings.TrimSuffix(prompt, ":") + "："
+	}
+	return prompt
 }
 
 func paint(style, text string) string {

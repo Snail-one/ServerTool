@@ -124,7 +124,7 @@ func manageContainers(view *ui.UI, rt runtime.Runtime) error {
 
 		idx, err := strconv.Atoi(strings.TrimSpace(raw))
 		if err != nil || idx < 1 || idx > len(conts) {
-			fmt.Println("无效编号，请重试")
+			ui.InvalidChoice()
 			view.Pause()
 			continue
 		}
@@ -401,7 +401,7 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 		}
 		index, err := strconv.Atoi(strings.TrimSpace(raw))
 		if err != nil || index < 1 || index > len(actions) {
-			fmt.Println("无效选项，请重新输入")
+			ui.InvalidChoice()
 			view.PauseWithPrompt("按回车返回容器操作...")
 			continue
 		}
@@ -499,7 +499,7 @@ func availableContainerActions(c containerInfo, canComposeDown bool) []container
 		actions = append(actions, containerAction{Key: "exec", Label: "进入容器 Shell", Command: "exec"})
 	}
 	if canComposeDown {
-		actions = append(actions, containerAction{Key: "down", Label: "停止并删除所属 Compose 项目", Command: "down"})
+		actions = append(actions, containerAction{Key: "down", Label: "删除所属 Compose 项目", Command: "down"})
 	}
 	if canRemoveContainer(c) {
 		actions = append(actions, containerAction{Key: "rm", Label: "删除已停止容器", Command: "rm"})
@@ -1073,7 +1073,7 @@ func manageComposeProjects(view *ui.UI, rt runtime.Runtime, useLS bool) error {
 
 		idx, err := strconv.Atoi(strings.TrimSpace(raw))
 		if err != nil || idx < 1 || idx > len(projects) {
-			fmt.Println("无效编号")
+			ui.InvalidChoice()
 			view.Pause()
 			continue
 		}
@@ -1096,7 +1096,7 @@ func manageSingleProject(view *ui.UI, compose update.ComposeCommand, dir string)
 		ui.MenuOptionHint("1", "创建并后台启动", compose.Display+" up -d")
 		ui.MenuOptionHint("2", "停止服务容器", compose.Display+" stop")
 		ui.MenuOptionHint("3", "重启服务容器", compose.Display+" restart")
-		ui.MenuOptionHint("4", "停止并删除项目容器和默认网络", compose.Display+" down")
+		ui.MenuOptionHint("4", "删除 Compose 项目资源", compose.Display+" down")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -1112,7 +1112,7 @@ func manageSingleProject(view *ui.UI, compose update.ComposeCommand, dir string)
 
 		action, ok := composeProjectActionForChoice(strings.ToLower(strings.TrimSpace(raw)))
 		if !ok {
-			fmt.Println("无效选项，请重新输入")
+			ui.InvalidChoice()
 			view.Pause()
 			continue
 		}

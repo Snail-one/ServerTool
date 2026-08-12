@@ -46,7 +46,7 @@ func Run(view *ui.UI) error {
 				return sshstatus.Show()
 			})
 		default:
-			fmt.Println("无效选项，请重新输入")
+			ui.InvalidChoice()
 			view.Pause()
 		}
 	}

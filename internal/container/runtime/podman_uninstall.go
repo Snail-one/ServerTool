@@ -78,7 +78,7 @@ func selectPodmanUninstallMode(view dockerUninstallPrompter) (bool, bool, error)
 		case "2":
 			return true, true, nil
 		default:
-			fmt.Println("无效选项，请重新输入")
+			ui.InvalidChoice()
 			fmt.Println()
 		}
 	}

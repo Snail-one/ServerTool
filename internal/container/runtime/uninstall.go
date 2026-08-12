@@ -52,7 +52,7 @@ func selectRuntimeToUninstall(view dockerUninstallPrompter, runtimes []Runtime) 
 				return runtimes[1], true, nil
 			}
 		}
-		fmt.Println("无效选项，请重新输入")
+		ui.InvalidChoice()
 		fmt.Println()
 	}
 }

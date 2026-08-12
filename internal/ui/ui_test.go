@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bufio"
 	"io"
 	"os"
 	"strings"
@@ -108,8 +109,62 @@ func captureStdout(t *testing.T, run func()) string {
 }
 
 func stripANSI(input string) string {
-	for _, code := range []string{reset, bold, dim, cyan, blue, green, yellow, gray} {
+	for _, code := range []string{reset, bold, dim, orange, blue, green, yellow, gray} {
 		input = strings.ReplaceAll(input, code, "")
 	}
 	return input
+}
+
+func TestNormalizePromptAndConfirmYes(t *testing.T) {
+	if got := normalizePrompt("请选择: "); got != "请选择：" {
+		t.Fatalf("normalizePrompt() = %q", got)
+	}
+	view := &UI{reader: bufio.NewReader(strings.NewReader("yes\n"))}
+	var confirmed bool
+	var err error
+	captureStdout(t, func() {
+		confirmed, err = view.Confirm("是否继续？(y/N): ")
+	})
+	if err != nil || !confirmed {
+		t.Fatalf("Confirm(yes) = %v, %v", confirmed, err)
+	}
+}
+
+func TestPrimaryColorAndRecoverableInputStyle(t *testing.T) {
+	t.Setenv("CLICOLOR_FORCE", "1")
+	t.Setenv("NO_COLOR", "")
+	os.Unsetenv("NO_COLOR")
+	output := captureStdout(t, func() {
+		MenuTitle("容器管理")
+		InvalidChoice()
+	})
+	if !strings.Contains(output, orange+"╭─") {
+		t.Fatalf("菜单标题未使用橙色主视觉：%q", output)
+	}
+	if !strings.Contains(output, yellow+"无效选项，请重新输入"+reset) {
+		t.Fatalf("无效输入未使用统一黄色提示：%q", output)
+	}
+}
+
+func TestHomeSubtitleUsesPrimaryColor(t *testing.T) {
+	t.Setenv("CLICOLOR_FORCE", "1")
+	t.Setenv("NO_COLOR", "")
+	os.Unsetenv("NO_COLOR")
+	output := captureStdout(t, func() {
+		HomeTitle("v1.2.3")
+	})
+	if !strings.Contains(output, orange+"服务器管理工具"+reset) {
+		t.Fatalf("首页副标题未使用橙色主视觉：%q", output)
+	}
+}
+
+func TestPauseNormalizesEllipsis(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	view := &UI{reader: bufio.NewReader(strings.NewReader("\n"))}
+	output := captureStdout(t, func() {
+		view.PauseWithPrompt("按回车继续...")
+	})
+	if !strings.Contains(output, "按回车继续… ") || strings.Contains(output, "...") {
+		t.Fatalf("暂停提示未统一中文省略号：%q", output)
+	}
 }

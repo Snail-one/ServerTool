@@ -68,7 +68,7 @@ func (a *App) Run() error {
 				return cleanup.Run(a.ui)
 			})
 		default:
-			fmt.Println("无效选项，请重新输入")
+			ui.InvalidChoice()
 			a.ui.Pause()
 		}
 	}

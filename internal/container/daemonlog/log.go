@@ -85,7 +85,7 @@ func configureDockerLogRotation(
 		return fmt.Errorf("未检测到 docker.service，无法配置 Docker 日志轮转")
 	}
 
-	fmt.Println("\033[32m[INFO]\033[0m 配置 Docker 日志轮转")
+	log.Info("配置 Docker 日志轮转")
 	fmt.Println()
 	printDockerDaemonJSON(daemonPath)
 	fmt.Println()
@@ -164,7 +164,7 @@ func promptLogRotationConfig(view promptReader) (logRotationConfig, bool, error)
 		if strings.TrimSpace(choice) == "4" {
 			break
 		}
-		fmt.Println("无效选项，请重新输入")
+		ui.InvalidChoice()
 		fmt.Println()
 	}
 
