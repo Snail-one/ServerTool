@@ -90,12 +90,12 @@ func HomeTitle(buildVersion string) {
 
 // MenuOption renders a selectable menu row with a visually distinct shortcut.
 func MenuOption(key, label string) {
-	fmt.Printf("  %s %s %s\n", paint(bold+blue, fmt.Sprintf("%-3s", key)), paint(dim, "│"), label)
+	fmt.Printf("  %s %s\n", paint(bold+blue, key), label)
 }
 
 // MenuExit renders the return/exit row separately from regular actions.
 func MenuExit(key, label string) {
-	fmt.Printf("  %s %s %s\n", paint(bold+yellow, fmt.Sprintf("%-3s", key)), paint(dim, "└"), paint(dim, label))
+	fmt.Printf("  %s %s\n", paint(bold+yellow, key), paint(dim, label))
 }
 
 // Badge returns a compact status label. Positive states use green; states that

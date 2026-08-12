@@ -30,7 +30,7 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 		"[版本 v9.8.7]",
 		"容器管理 [未安装]",
 		"开发环境管理 [Go go1.25.1]",
-		"0/q └ 退出",
+		"0/q 退出",
 	} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("菜单输出缺少 %q：\n%s", expected, output)
