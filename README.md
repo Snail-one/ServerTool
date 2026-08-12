@@ -87,7 +87,7 @@ bash ./scripts/build_linux.sh
 
 ## 自动发布
 
-在 GitHub 上推送 `v*` 标签后，Actions 会自动交叉编译 Linux 版本并发布到仓库 Release。
+在 GitHub 上推送 `v*` 标签后，Actions 会自动交叉编译 Linux 版本并发布到仓库 Release。发布说明使用 GitHub 原生 Automatically generated release notes，根据相邻版本之间合并的 PR 和提交生成变更列表、贡献者及完整变更链接。
 
 示例：
 
