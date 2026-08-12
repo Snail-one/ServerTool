@@ -103,6 +103,12 @@ cleanup() {
 	fi
 }
 
+proxy_configured() {
+	[ -n "${HTTPS_PROXY:-}" ] || [ -n "${https_proxy:-}" ] ||
+		[ -n "${HTTP_PROXY:-}" ] || [ -n "${http_proxy:-}" ] ||
+		[ -n "${ALL_PROXY:-}" ] || [ -n "${all_proxy:-}" ]
+}
+
 trap cleanup 0
 trap 'exit 1' HUP INT TERM
 
@@ -192,6 +198,9 @@ if command -v curl >/dev/null 2>&1; then
 	download_optional() {
 		curl --fail --location --silent --retry 1 --connect-timeout 15 --output "$2" "$1"
 	}
+	download_api_direct() {
+		curl --fail --location --silent --show-error --retry 3 --connect-timeout 15 --noproxy '*' --output "$2" "$1"
+	}
 elif command -v wget >/dev/null 2>&1; then
 	download() {
 		wget --quiet --tries=3 --timeout=15 --output-document="$2" "$1"
@@ -202,9 +211,21 @@ elif command -v wget >/dev/null 2>&1; then
 	download_optional() {
 		wget --quiet --tries=1 --timeout=15 --output-document="$2" "$1"
 	}
+	download_api_direct() {
+		wget --no-proxy --quiet --tries=3 --timeout=15 --output-document="$2" "$1"
+	}
 else
 	fail "需要 curl 或 wget 才能下载安装包"
 fi
+
+download_api() {
+	if download "$1" "$2"; then
+		return 0
+	fi
+	proxy_configured || return 1
+	warn "通过代理获取 GitHub Releases API 失败，正在尝试直连"
+	download_api_direct "$1" "$2"
+}
 
 if command -v sha256sum >/dev/null 2>&1; then
 	file_sha256() {
@@ -222,7 +243,7 @@ TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/servertool-install.XXXXXX")"
 step "检查发布版本"
 if [ "$RELEASE" = "latest" ]; then
 	RELEASE_METADATA="${TEMP_DIR}/release.json"
-	download "https://api.github.com/repos/${REPOSITORY}/releases/latest" "$RELEASE_METADATA"
+	download_api "https://api.github.com/repos/${REPOSITORY}/releases/latest" "$RELEASE_METADATA"
 	RELEASE_VERSION="$(sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' "$RELEASE_METADATA" | sed -n '1p')"
 	[ -n "$RELEASE_VERSION" ] || fail "无法从 GitHub Release 信息中解析最新版本"
 	info "最新正式版本：${RELEASE_VERSION}（GitHub Releases API）"

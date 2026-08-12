@@ -238,6 +238,8 @@ GET https://api.github.com/repos/<OWNER>/<REPOSITORY>/releases/latest
 
 从响应的 `tag_name` 获取版本。
 
+API 请求默认遵循系统的代理环境变量。如果代理请求失败且检测到 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY`（含对应小写变量），脚本必须绕过代理直连 API 重试一次，以兼容代理限速或临时不可用的情况。没有配置代理时不得进行无意义的重复请求。
+
 脚本还必须支持指定版本：
 
 ```bash
