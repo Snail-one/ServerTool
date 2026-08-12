@@ -188,6 +188,23 @@ func TestRootBashConfigAddsInteractiveGuardOnlyWhenRequested(t *testing.T) {
 	}
 }
 
+func TestRootInteractiveGuardTreatsCommentOnlyFileAsEmpty(t *testing.T) {
+	commentOnly := `# ~/.bashrc
+
+# PS1='commented prompt'
+# alias ls='ls --color=auto'
+`
+	if !shouldIncludeRootInteractiveGuard(commentOnly, "") {
+		t.Fatal("comment-only root .bashrc did not receive the interactive guard")
+	}
+	if shouldIncludeRootInteractiveGuard("export EDITOR=vim\n", "") {
+		t.Fatal("root .bashrc with active content received the interactive guard")
+	}
+	if !shouldIncludeRootInteractiveGuard("export EDITOR=vim\n", rootInteractiveGuardBlock) {
+		t.Fatal("existing managed interactive guard was not preserved")
+	}
+}
+
 func TestRootBashConfigPreservesHistoryAndShellBehavior(t *testing.T) {
 	existing := `HISTCONTROL=erasedups
 shopt -s histappend checkwinsize

@@ -144,6 +144,10 @@ func activeShellLines(content string) []string {
 	return lines
 }
 
+func shouldIncludeRootInteractiveGuard(unmanaged, managed string) bool {
+	return len(activeShellLines(unmanaged)) == 0 || strings.Contains(managed, rootInteractiveGuardBlock)
+}
+
 func hasActiveAssignment(content, name string) bool {
 	for _, line := range activeShellLines(content) {
 		match := activeAssignment.FindStringSubmatch(line)
@@ -270,7 +274,7 @@ func ConfigureBash() error {
 		content := string(data)
 		managed, _ := shared.ManagedBlockContent(content, bashAliasBegin, bashAliasEnd)
 		unmanaged := shared.RemoveManagedBlock(content, bashAliasBegin, bashAliasEnd)
-		includeInteractiveGuard := strings.TrimSpace(unmanaged) == "" || strings.Contains(managed, rootInteractiveGuardBlock)
+		includeInteractiveGuard := shouldIncludeRootInteractiveGuard(unmanaged, managed)
 		bashBlock, preservedPrompt, preservedColor = rootBashBlockForContent(unmanaged, includeInteractiveGuard)
 	}
 	if err := replaceBashConfig(bashrc, bashBlock); err != nil {
