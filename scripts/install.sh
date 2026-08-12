@@ -46,6 +46,15 @@ print_banner() {
 	printf '\n'
 }
 
+print_completion_card() {
+	printf '\n'
+	printf '%s%s%s\n' "$BOLD$ORANGE" "╭─ ServerTool" "$RESET"
+	printf '%s│ %s%s%s\n' "$ORANGE" "$BOLD$GREEN" "$1完成" "$RESET"
+	printf '%s│ %s版本：%s%s%s%s\n' "$ORANGE" "$BLUE" "$RESET" "$BOLD" "$2" "$RESET"
+	printf '%s│ %s位置：%s%s\n' "$ORANGE" "$BLUE" "$RESET" "$3"
+	printf '%s%s%s\n' "$ORANGE" "╰──────────────────────────────────────────────" "$RESET"
+}
+
 step() {
 	printf '%s[步骤]%s %s\n' "$ORANGE" "$RESET" "$*"
 }
@@ -69,13 +78,13 @@ fail() {
 
 print_release_info() {
 	printf '\n'
-	printf '%s%s%s\n' "$BOLD" "发布信息" "$RESET"
-	printf '%s%s%s\n' "$DIM" "----------------------------------------" "$RESET"
-	printf '  %s平台：%sLinux/%s\n' "$ORANGE" "$RESET" "$ARCH"
-	printf '  %s当前版本：%s%s\n' "$ORANGE" "$RESET" "$1"
-	printf '  %s目标版本：%s%s%s%s\n' "$ORANGE" "$RESET" "$BOLD" "$2" "$RESET"
-	printf '  %s执行操作：%s%s%s%s\n' "$ORANGE" "$RESET" "$BOLD" "$3" "$RESET"
-	printf '%s%s%s\n' "$DIM" "----------------------------------------" "$RESET"
+	printf '%s%s%s\n' "$BOLD$ORANGE" "╭─ ServerTool" "$RESET"
+	printf '%s│ %s%s%s\n' "$ORANGE" "$BOLD$ORANGE" "发布信息" "$RESET"
+	printf '%s│ %s平台：%sLinux/%s\n' "$ORANGE" "$BLUE" "$RESET" "$ARCH"
+	printf '%s│ %s当前版本：%s%s\n' "$ORANGE" "$BLUE" "$RESET" "$1"
+	printf '%s│ %s目标版本：%s%s%s%s\n' "$ORANGE" "$BLUE" "$RESET" "$BOLD" "$2" "$RESET"
+	printf '%s│ %s执行操作：%s%s%s%s\n' "$ORANGE" "$BLUE" "$RESET" "$BOLD" "$3" "$RESET"
+	printf '%s%s%s\n' "$ORANGE" "╰──────────────────────────────────────────────" "$RESET"
 }
 
 usage() {
@@ -335,6 +344,4 @@ install -m 0755 "$ASSET_FILE" "$STAGED_FILE"
 mv -f "$STAGED_FILE" "$TARGET"
 STAGED_FILE=""
 
-result "${ACTION}完成：${TARGET}"
-info "当前版本：${RELEASE_VERSION}"
-info "运行命令：sudo ${BINARY_NAME}"
+print_completion_card "$ACTION" "$RELEASE_VERSION" "$TARGET"
