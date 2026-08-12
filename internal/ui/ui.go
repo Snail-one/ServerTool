@@ -105,6 +105,34 @@ func MenuOptionHint(key, label, hint string) {
 	fmt.Printf("  %s %s%s\n", menuKey(key, bold+blue), padDisplay(label, 30), paint(gray, "-- "+hint))
 }
 
+// MenuOptionStatus keeps status badges in a fixed column across menu rows.
+func MenuOptionStatus(key, label, status string) {
+	status = strings.TrimSpace(status)
+	if status == "" {
+		MenuOption(key, label)
+		return
+	}
+	fmt.Printf("  %s %s%s\n", menuKey(key, bold+blue), padDisplay(label, 18), status)
+}
+
+// MenuOptionStatusHint combines the global status column with a gray detail
+// column. It is useful when an item has both state and a managed path.
+func MenuOptionStatusHint(key, label, status, hint string) {
+	status = strings.TrimSpace(status)
+	hint = strings.TrimSpace(hint)
+	if hint == "" {
+		MenuOptionStatus(key, label, status)
+		return
+	}
+	fmt.Printf(
+		"  %s %s%s%s\n",
+		menuKey(key, bold+blue),
+		padDisplay(label, 18),
+		padDisplay(status, 16),
+		paint(gray, "-- "+hint),
+	)
+}
+
 // MenuExit renders the return/exit row separately from regular actions.
 func MenuExit(key, label string) {
 	fmt.Printf("  %s %s\n", menuKey(key, bold+yellow), paint(dim, label))

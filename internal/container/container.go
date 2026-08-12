@@ -42,7 +42,7 @@ func Run(view *ui.UI) error {
 		if hasDocker {
 			ui.MenuOption("3", "Docker 服务配置")
 		} else {
-			ui.MenuOption("3", "Docker 服务配置 "+ui.Badge("仅 Docker 可用", false))
+			ui.MenuOptionStatus("3", "Docker 服务配置", ui.Badge("仅 Docker 可用", false))
 		}
 		ui.MenuOption("4", "清理容器资源")
 		ui.MenuOptionHint("5", fmt.Sprintf("卸载 %s", uninstallName), "可选择保留或永久删除数据")

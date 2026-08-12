@@ -33,6 +33,57 @@ func TestMenuRowsAlignAndHintUsesGray(t *testing.T) {
 	}
 }
 
+func TestMenuOptionStatusAlignsBadges(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	output := captureStdout(t, func() {
+		MenuOptionStatus("1", "容器管理", "[Podman]")
+		MenuOptionStatus("4", "系统与用户配置", "[已配置 3/4]")
+		MenuOptionStatus("5", "开发环境管理", "[Go go1.26.5]")
+	})
+
+	lines := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
+	wantColumn := -1
+	for _, line := range lines {
+		badge := strings.Index(line, "[")
+		if badge < 0 {
+			t.Fatalf("菜单缺少状态徽标：%q", line)
+		}
+		column := displayWidth(line[:badge])
+		if wantColumn < 0 {
+			wantColumn = column
+		} else if column != wantColumn {
+			t.Fatalf("状态徽标未对齐：%q", output)
+		}
+	}
+}
+
+func TestMenuOptionStatusHintKeepsGlobalStatusColumn(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	output := captureStdout(t, func() {
+		MenuOptionStatus("1", "SSH 公钥", "[已配置]")
+		MenuOptionStatusHint("2", "Vim 配置", "[未配置]", "~/.vimrc")
+		MenuOptionStatus("3", "HTTP/HTTPS 代理", "[已配置]")
+	})
+
+	lines := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
+	wantColumn := -1
+	for _, line := range lines {
+		badge := strings.Index(line, "[")
+		if badge < 0 {
+			t.Fatalf("菜单缺少状态徽标：%q", line)
+		}
+		column := displayWidth(line[:badge])
+		if wantColumn < 0 {
+			wantColumn = column
+		} else if column != wantColumn {
+			t.Fatalf("全局状态列未对齐：%q", output)
+		}
+	}
+	if !strings.Contains(output, "-- ~/.vimrc") {
+		t.Fatalf("状态菜单缺少灰色说明文本：%q", output)
+	}
+}
+
 func captureStdout(t *testing.T, run func()) string {
 	t.Helper()
 	reader, writer, err := os.Pipe()

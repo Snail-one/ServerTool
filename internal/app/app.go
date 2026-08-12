@@ -86,11 +86,11 @@ func showMenu(status status.Status) {
 	quickConfigured := quickSetupConfigured(status)
 	runtimeConfigured := strings.TrimSpace(status.Runtime) != "" && status.Runtime != "未安装"
 	ui.HomeTitle(version.Version)
-	ui.MenuOption("1", "容器管理 "+ui.Badge(defaultStatus(status.Runtime, "未安装"), runtimeConfigured))
-	ui.MenuOption("2", fmt.Sprintf("一键配置 %s", ui.Badge(fmt.Sprintf("已配置 %d/4", quickConfigured), quickConfigured == 4)))
-	ui.MenuOption("3", "SSH 管理 "+ui.ConfiguredBadge(status.SSH))
-	ui.MenuOption("4", fmt.Sprintf("系统与用户配置 %s", ui.Badge(fmt.Sprintf("已配置 %d/%d", status.Configured, status.ConfigTotal), status.ConfigTotal > 0 && status.Configured == status.ConfigTotal)))
-	ui.MenuOption("5", "开发环境管理 "+ui.Badge("Go "+defaultStatus(status.GoVersion, "未配置"), status.GoVersion != ""))
+	ui.MenuOptionStatus("1", "容器管理", ui.Badge(defaultStatus(status.Runtime, "未安装"), runtimeConfigured))
+	ui.MenuOptionStatus("2", "一键配置", ui.Badge(fmt.Sprintf("已配置 %d/4", quickConfigured), quickConfigured == 4))
+	ui.MenuOptionStatus("3", "SSH 管理", ui.ConfiguredBadge(status.SSH))
+	ui.MenuOptionStatus("4", "系统与用户配置", ui.Badge(fmt.Sprintf("已配置 %d/%d", status.Configured, status.ConfigTotal), status.ConfigTotal > 0 && status.Configured == status.ConfigTotal))
+	ui.MenuOptionStatus("5", "开发环境管理", ui.Badge("Go "+defaultStatus(status.GoVersion, "未配置"), status.GoVersion != ""))
 	ui.MenuOption("6", "清理本工具配置")
 	ui.MenuExit("0/q", "退出")
 }

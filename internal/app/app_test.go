@@ -28,8 +28,10 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 	for _, expected := range []string{
 		"ServerTool",
 		"[版本 v9.8.7]",
-		"容器管理 [未安装]",
-		"开发环境管理 [Go go1.25.1]",
+		"容器管理",
+		"[未安装]",
+		"开发环境管理",
+		"[Go go1.25.1]",
 		"0/q 退出",
 	} {
 		if !strings.Contains(output, expected) {
@@ -39,6 +41,36 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 	if strings.Contains(output, "\033[") {
 		t.Fatalf("NO_COLOR 模式不应包含 ANSI 转义序列：%q", output)
 	}
+	badgeColumn := -1
+	for _, line := range strings.Split(output, "\n") {
+		if !strings.Contains(line, "容器管理") && !strings.Contains(line, "一键配置") &&
+			!strings.Contains(line, "SSH 管理") && !strings.Contains(line, "系统与用户配置") &&
+			!strings.Contains(line, "开发环境管理") {
+			continue
+		}
+		badge := strings.Index(line, "[")
+		if badge < 0 {
+			t.Fatalf("主菜单状态徽标缺失：%q", line)
+		}
+		column := testDisplayWidth(line[:badge])
+		if badgeColumn < 0 {
+			badgeColumn = column
+		} else if column != badgeColumn {
+			t.Fatalf("主菜单状态徽标未对齐：\n%s", output)
+		}
+	}
+}
+
+func testDisplayWidth(text string) int {
+	width := 0
+	for _, current := range text {
+		if current >= 0x2e80 {
+			width += 2
+		} else {
+			width++
+		}
+	}
+	return width
 }
 
 func captureStdout(t *testing.T, run func()) string {
