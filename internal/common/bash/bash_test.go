@@ -75,10 +75,12 @@ func TestRootBashConfigWritesRequestedManagedBlockAndIsIdempotent(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	account := &system.Account{Name: "root", Home: filepath.Dir(path), UID: 0, GID: 0}
-	body := bashBlockForAccount(account)
+	body, preservedPrompt, preservedColor := rootBashBlockForContent("# existing root setting\n")
 	if body != rootBashBlock {
-		t.Fatal("root account did not select the root Bash configuration")
+		t.Fatal("root account did not build the default root Bash configuration")
+	}
+	if preservedPrompt || preservedColor {
+		t.Fatal("comment-only root configuration was treated as active")
 	}
 	if err := replaceBashConfig(path, body); err != nil {
 		t.Fatal(err)
@@ -112,8 +114,46 @@ func TestRootBashConfigWritesRequestedManagedBlockAndIsIdempotent(t *testing.T) 
 
 func TestNonRootAccountKeepsStandardAliasBlock(t *testing.T) {
 	account := &system.Account{Name: "alice", UID: 1000, GID: 1000}
-	if got := bashBlockForAccount(account); got != bashAliasBlock {
-		t.Fatalf("non-root account selected unexpected Bash configuration:\n%s", got)
+	if isRootAccount(account) {
+		t.Fatal("non-root account was treated as root")
+	}
+}
+
+func TestRootBashConfigPreservesExistingPromptAndColorConfig(t *testing.T) {
+	existing := `# PS1='commented prompt'
+PS1='custom prompt '
+export LS_COLORS='custom colors'
+eval "$(dircolors -b ~/.dircolors)"
+alias ls='ls --color=auto'
+`
+
+	body, preservedPrompt, preservedColor := rootBashBlockForContent(existing)
+	if !preservedPrompt || !preservedColor {
+		t.Fatalf("existing root settings were not detected: prompt=%v color=%v", preservedPrompt, preservedColor)
+	}
+	if strings.Contains(body, rootPromptBlock) || strings.Contains(body, rootColorBlock) {
+		t.Fatalf("managed block duplicated existing prompt or color configuration:\n%s", body)
+	}
+	for _, required := range []string{bashAliasBlock, rootSafetyAliasBlock} {
+		if !strings.Contains(body, required) {
+			t.Fatalf("managed root configuration is missing required content %q:\n%s", required, body)
+		}
+	}
+}
+
+func TestRootBashConfigTreatsCommentedSettingsAsMissing(t *testing.T) {
+	existing := `# PS1='commented prompt'
+# export LS_OPTIONS='--color=auto'
+# eval "$(dircolors)"
+# alias ls='ls --color=auto'
+`
+
+	body, preservedPrompt, preservedColor := rootBashBlockForContent(existing)
+	if preservedPrompt || preservedColor {
+		t.Fatalf("commented settings were treated as active: prompt=%v color=%v", preservedPrompt, preservedColor)
+	}
+	if body != rootBashBlock {
+		t.Fatalf("default root configuration was not generated:\n%s", body)
 	}
 }
 
