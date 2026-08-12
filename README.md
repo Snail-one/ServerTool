@@ -18,19 +18,25 @@
 脚本会自动识别 Linux amd64/arm64，校验 Release 提供的 SHA-256 后安装到 `/usr/local/sbin/snail`。首次安装和后续更新使用同一条命令：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Snail-one/ServerTool/main/install.sh | sudo sh
+curl -fsSL https://raw.githubusercontent.com/Snail-one/ServerTool/main/scripts/install.sh | sudo sh
 ```
 
 系统没有 curl 时：
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/Snail-one/ServerTool/main/install.sh | sudo sh
+wget -qO- https://raw.githubusercontent.com/Snail-one/ServerTool/main/scripts/install.sh | sudo sh
 ```
 
 也可以下载脚本后安装指定版本：
 
 ```bash
-sudo sh install.sh v1.2.0
+sudo sh scripts/install.sh v1.2.0
+```
+
+已安装后，可直接通过程序调用仓库中的安装脚本更新到最新版本：
+
+```bash
+sudo snail update
 ```
 
 ## Go 环境管理
@@ -58,7 +64,7 @@ go build -o snail_tool ./cmd/snail_tool
 Windows：
 
 ```powershell
-.\build_windows.ps1
+.\scripts\build_windows.ps1
 ```
 
 默认会交叉编译出 Linux 二进制，输出为 `dist/snail_tool_linux_amd64`。
@@ -66,7 +72,7 @@ Windows：
 Linux：
 
 ```bash
-bash ./build_linux.sh
+bash ./scripts/build_linux.sh
 ```
 
 默认输出到 `dist/` 目录。
@@ -111,4 +117,5 @@ internal/shared     跨菜单复用的小型辅助能力
 internal/system     系统命令、用户、端口、文件辅助能力
 internal/ui         输入、确认、暂停等交互封装
 internal/log        彩色日志输出
+scripts             安装、更新及跨平台构建脚本
 ```

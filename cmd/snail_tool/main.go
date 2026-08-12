@@ -7,6 +7,7 @@ import (
 
 	"snail_tool/internal/app"
 	"snail_tool/internal/log"
+	"snail_tool/internal/selfupdate"
 	"snail_tool/internal/system"
 	"snail_tool/internal/version"
 )
@@ -39,6 +40,17 @@ func handleArgs(args []string) bool {
 	case "--help", "-h", "help":
 		printUsage()
 		return true
+	case "update":
+		if !system.IsRoot() {
+			log.Error("更新需要 root 权限，请使用 sudo snail update")
+			os.Exit(1)
+		}
+		log.Info("正在从仓库获取安装更新脚本...")
+		if err := selfupdate.Run(); err != nil {
+			log.Error(err)
+			os.Exit(1)
+		}
+		return true
 	default:
 		log.Error("未知参数：", args[0])
 		printUsage()
@@ -48,5 +60,5 @@ func handleArgs(args []string) bool {
 }
 
 func printUsage() {
-	fmt.Println("用法：snailtool [--version|-v|version]")
+	fmt.Println("用法：snail [update|--version|-v|version]")
 }

@@ -20,7 +20,7 @@ fail() {
 
 usage() {
 	cat <<'EOF'
-用法：sudo sh install.sh [版本]
+用法：sudo sh scripts/install.sh [版本]
 
 不指定版本时安装或更新到最新版本；也可以指定发布标签，例如 v1.2.0。
 
@@ -63,7 +63,7 @@ case "$INSTALL_DIR" in
 	*) fail "安装目录必须是绝对路径：$INSTALL_DIR" ;;
 esac
 
-[ "$(id -u)" -eq 0 ] || fail "安装需要 root 权限，请使用 sudo sh install.sh，或通过 curl ... | sudo sh 运行"
+[ "$(id -u)" -eq 0 ] || fail "安装需要 root 权限，请使用 sudo sh scripts/install.sh，或通过 curl ... | sudo sh 运行"
 [ "$(uname -s)" = "Linux" ] || fail "目前仅支持 Linux"
 
 for REQUIRED_COMMAND in awk chmod install mktemp mv sed uname; do
