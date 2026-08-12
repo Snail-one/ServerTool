@@ -79,7 +79,7 @@ Windows：
 .\scripts\build_windows.ps1
 ```
 
-默认会交叉编译出 Linux 二进制，输出为 `dist/snail_tool_linux_amd64`。
+默认会交叉编译出 Linux 二进制，输出为 `dist/snailtool_linux_amd64_<版本>`。
 
 Linux：
 
@@ -90,6 +90,8 @@ bash ./scripts/build_linux.sh
 默认输出到 `dist/` 目录。
 
 ## 自动发布
+
+完整的 CI/CD Job 依赖、版本注入、构建矩阵、发布权限、失败恢复和验收规范见 [`docs/CICD_STANDARD.md`](docs/CICD_STANDARD.md)。
 
 在 GitHub 上推送 `v*` 标签后，Actions 会自动交叉编译 Linux 版本并发布到仓库 Release。发布流程先通过 `git log` 将相邻版本间直接推送的提交整理成 Markdown 列表，再由 GitHub 原生 Automatically generated release notes 补充合并的 PR、贡献者及完整变更链接，适用于个人直接维护和 PR 两种工作方式。
 
