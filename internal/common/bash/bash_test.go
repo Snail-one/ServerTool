@@ -69,6 +69,25 @@ export EDITOR=vim
 	}
 }
 
+func TestReplaceBashConfigPreservesExistingPermissions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".bashrc")
+	if err := os.WriteFile(path, []byte("export SECRET=value\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := replaceBashConfig(path, bashAliasBlock); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := info.Mode().Perm(), os.FileMode(0600); got != want {
+		t.Fatalf(".bashrc permissions changed: got %04o, want %04o", got, want)
+	}
+}
+
 func TestRootBashConfigWritesRequestedManagedBlockAndIsIdempotent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".bashrc")
 	if err := os.WriteFile(path, []byte("# existing root setting\n"), 0644); err != nil {

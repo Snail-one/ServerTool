@@ -144,9 +144,6 @@ func ConfigureBash() error {
 	if err := system.ChownPath(bashrc, account, false); err != nil {
 		return err
 	}
-	if err := os.Chmod(bashrc, 0644); err != nil {
-		return err
-	}
 
 	fmt.Println()
 	fmt.Println("已经修改 ~/.bashrc，新的 Bash 配置如下：")
