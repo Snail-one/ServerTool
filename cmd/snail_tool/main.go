@@ -52,6 +52,18 @@ func handleArgs(args []string) bool {
 			os.Exit(1)
 		}
 		return true
+	case "uninstall", "--uninstall":
+		if !system.IsRoot() {
+			log.Error("卸载需要 root 权限，请使用 sudo snail uninstall")
+			os.Exit(1)
+		}
+		log.Info("正在从仓库获取程序管理脚本...")
+		log.Info("管理脚本地址：", selfupdate.InstallScriptURL)
+		if err := selfupdate.Run("--uninstall"); err != nil {
+			log.Error(err)
+			os.Exit(1)
+		}
+		return true
 	default:
 		log.Error("未知参数：", args[0])
 		printUsage()
@@ -61,5 +73,5 @@ func handleArgs(args []string) bool {
 }
 
 func printUsage() {
-	fmt.Println("用法：snail [update|--version|-v|version]")
+	fmt.Println("用法：snail [update|uninstall|--version|-v|version]")
 }

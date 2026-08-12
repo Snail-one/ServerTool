@@ -15,57 +15,57 @@ const (
 	maxScriptSize    = 1024 * 1024
 )
 
-// Run downloads the repository installer and delegates the update to it.
-func Run() error {
+// Run downloads the repository installer and delegates the requested action to it.
+func Run(arguments ...string) error {
 	client := &http.Client{Timeout: 30 * time.Second}
-	return run(client, InstallScriptURL, os.Stdin, os.Stdout, os.Stderr)
+	return run(client, InstallScriptURL, os.Stdin, os.Stdout, os.Stderr, arguments...)
 }
 
-func run(client *http.Client, scriptURL string, stdin io.Reader, stdout, stderr io.Writer) error {
+func run(client *http.Client, scriptURL string, stdin io.Reader, stdout, stderr io.Writer, arguments ...string) error {
 	response, err := client.Get(scriptURL)
 	if err != nil {
-		return fmt.Errorf("下载安装更新脚本失败: %w", err)
+		return fmt.Errorf("下载程序管理脚本失败: %w", err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("下载安装更新脚本失败: HTTP %d %s", response.StatusCode, http.StatusText(response.StatusCode))
+		return fmt.Errorf("下载程序管理脚本失败: HTTP %d %s", response.StatusCode, http.StatusText(response.StatusCode))
 	}
 
 	data, err := io.ReadAll(io.LimitReader(response.Body, maxScriptSize+1))
 	if err != nil {
-		return fmt.Errorf("读取安装更新脚本失败: %w", err)
+		return fmt.Errorf("读取程序管理脚本失败: %w", err)
 	}
 	if len(data) > maxScriptSize {
-		return fmt.Errorf("安装更新脚本超过 %d 字节限制", maxScriptSize)
+		return fmt.Errorf("程序管理脚本超过 %d 字节限制", maxScriptSize)
 	}
 	if !bytes.HasPrefix(data, []byte("#!/bin/sh")) {
 		return fmt.Errorf("下载内容不是有效的 ServerTool 安装脚本")
 	}
 
-	temporary, err := os.CreateTemp("", "servertool-update-*.sh")
+	temporary, err := os.CreateTemp("", "servertool-action-*.sh")
 	if err != nil {
-		return fmt.Errorf("创建更新脚本临时文件失败: %w", err)
+		return fmt.Errorf("创建程序管理脚本临时文件失败: %w", err)
 	}
 	path := temporary.Name()
 	defer os.Remove(path)
 	if err := temporary.Chmod(0600); err != nil {
 		temporary.Close()
-		return fmt.Errorf("设置更新脚本权限失败: %w", err)
+		return fmt.Errorf("设置程序管理脚本权限失败: %w", err)
 	}
 	if _, err := temporary.Write(data); err != nil {
 		temporary.Close()
-		return fmt.Errorf("保存更新脚本失败: %w", err)
+		return fmt.Errorf("保存程序管理脚本失败: %w", err)
 	}
 	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("保存更新脚本失败: %w", err)
+		return fmt.Errorf("保存程序管理脚本失败: %w", err)
 	}
 
-	command := exec.Command("sh", path)
+	command := exec.Command("sh", append([]string{path}, arguments...)...)
 	command.Stdin = stdin
 	command.Stdout = stdout
 	command.Stderr = stderr
 	if err := command.Run(); err != nil {
-		return fmt.Errorf("安装更新脚本执行失败: %w", err)
+		return fmt.Errorf("程序管理脚本执行失败: %w", err)
 	}
 	return nil
 }

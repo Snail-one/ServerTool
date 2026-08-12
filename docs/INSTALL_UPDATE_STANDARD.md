@@ -317,9 +317,10 @@ mv -f "$STAGED_FILE" "$TARGET"
 
 ```bash
 sudo <COMMAND_NAME> update
+sudo <COMMAND_NAME> uninstall
 ```
 
-CLI 本身不重复实现 Release 解析和安装逻辑，只负责安全地获取仓库中的标准安装脚本，然后调用它。
+CLI 本身不重复实现 Release 解析、安装和卸载逻辑，只负责安全地获取仓库中的标准安装脚本，然后调用它。执行 `uninstall` 时向脚本传入 `--uninstall`。
 
 推荐流程：
 

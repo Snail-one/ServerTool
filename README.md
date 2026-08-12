@@ -41,15 +41,16 @@ sudo sh scripts/install.sh v1.2.0
 sudo snail update
 ```
 
-卸载只删除 `/usr/local/sbin/snail` 程序文件，不会回退通过本工具完成的 SSH、容器服务或用户环境配置：
+主程序也可以调用仓库中的安装脚本完成卸载。卸载只删除 `/usr/local/sbin/snail` 程序文件，不会回退通过本工具完成的 SSH、容器服务或用户环境配置：
+
+```bash
+sudo snail uninstall
+```
+
+也可以直接调用本地或远程安装脚本：
 
 ```bash
 sudo sh scripts/install.sh --uninstall
-```
-
-直接使用远程脚本卸载：
-
-```bash
 curl -fsSL https://raw.githubusercontent.com/Snail-one/ServerTool/main/scripts/install.sh | sudo sh -s -- --uninstall
 ```
 

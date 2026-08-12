@@ -20,6 +20,18 @@ func TestRunDownloadsAndExecutesScript(t *testing.T) {
 	}
 }
 
+func TestRunPassesArgumentsToScript(t *testing.T) {
+	client := testClient(http.StatusOK, "#!/bin/sh\nprintf '%s\\n' \"$1\"\n")
+
+	var output bytes.Buffer
+	if err := run(client, "https://example.invalid/install.sh", strings.NewReader(""), &output, &output, "--uninstall"); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "--uninstall\n" {
+		t.Fatalf("脚本未收到卸载参数：%q", output.String())
+	}
+}
+
 func TestRunRejectsUnexpectedContent(t *testing.T) {
 	client := testClient(http.StatusOK, "not a shell script")
 
