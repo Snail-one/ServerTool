@@ -90,12 +90,12 @@ func ConfigureUPS(view *ui.UI) error {
 		ui.ClearScreen()
 		ui.MenuTitle("系统与用户配置", "UPS（NUT）")
 		ui.MenuOption("1", "配置或更新 UPS")
-		ui.MenuOption("2", "恢复首次备份（官方默认配置）")
+		ui.MenuOptionHint("2", "恢复首次备份", "官方默认配置")
 		ui.MenuOption("3", "删除 UPS 配置备份")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
-		choice, err := view.Ask("输入选项: ")
+		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return err
 		}
@@ -162,14 +162,14 @@ func ensureNUTInstalled(view *ui.UI) (bool, error) {
 	}
 
 	log.Warn("未检测到 NUT 服务端组件")
-	fmt.Println("请选择安装方式：")
+	ui.MenuSection("请选择安装方式")
 	ui.MenuOption("1", "手动安装并返回")
 	ui.MenuOption("2", "自动安装 NUT")
 	ui.MenuExit("0/q", "取消")
 	fmt.Println()
 
 	for {
-		choice, err := view.Ask("输入选项: ")
+		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return false, err
 		}
@@ -308,7 +308,7 @@ func askUPSDeviceConfig(view *ui.UI) (upsDeviceConfig, error) {
 		return upsDeviceConfig{}, err
 	}
 
-	desc, err := view.Ask("请输入 desc（例如 SANTAK TG-BOX 850 USB UPS）: ")
+	desc, err := view.Ask("请输入 desc（例如 SANTAK TG-BOX 850 USB UPS）：")
 	if err != nil {
 		return upsDeviceConfig{}, err
 	}
@@ -639,7 +639,7 @@ func restoreUPSBackup(view *ui.UI) error {
 	}
 	fmt.Println()
 
-	confirmed, err := view.Confirm("确认恢复首次 UPS 配置备份？(y/N): ")
+	confirmed, err := view.Confirm("确认恢复首次 UPS 配置备份？(y/N)：")
 	if err != nil {
 		return err
 	}
@@ -677,7 +677,7 @@ func deleteUPSBackups(view *ui.UI) error {
 	}
 	fmt.Println()
 
-	confirmed, err := view.Confirm("确认删除 UPS 配置备份？(y/N): ")
+	confirmed, err := view.Confirm("确认删除 UPS 配置备份？(y/N)：")
 	if err != nil {
 		return err
 	}

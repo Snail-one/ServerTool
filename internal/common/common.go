@@ -18,14 +18,14 @@ func Run(view *ui.UI) error {
 		ui.ClearScreen()
 		status := currentStatus()
 		ui.MenuTitle("系统与用户配置")
-		ui.MenuOption("1", "Vim 配置（~/.vimrc） "+ui.ConfiguredBadge(status.vim))
+		ui.MenuOptionHint("1", "Vim 配置 "+ui.ConfiguredBadge(status.vim), "~/.vimrc")
 		ui.MenuOption("2", "Bash 配置 "+ui.ConfiguredBadge(status.bash))
 		ui.MenuOption("3", "HTTP/HTTPS 代理 "+ui.ConfiguredBadge(status.proxy))
 		ui.MenuOption("4", "UPS（NUT） "+ui.ConfiguredBadge(status.ups))
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
-		choice, err := view.Ask("输入选项: ")
+		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return err
 		}

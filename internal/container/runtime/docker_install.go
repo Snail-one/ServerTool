@@ -120,12 +120,12 @@ func newDockerInstaller(view *ui.UI) *dockerInstaller {
 			fmt.Println("- " + line)
 		}
 		fmt.Println("取消将保持仓库、软件包和服务不变。")
-		return view.Confirm("确认执行上述安装计划？(y/N): ")
+		return view.Confirm("确认执行上述安装计划？(y/N)：")
 	}
 	installer.confirmOnline = func() (bool, error) {
 		fmt.Println("本地 Docker Engine 与插件验证已通过。")
 		fmt.Println("联网验证会从 Docker Hub 拉取并运行 hello-world 镜像。")
-		return view.Confirm("是否执行联网/容器运行验证？(y/N): ")
+		return view.Confirm("是否执行联网/容器运行验证？(y/N)：")
 	}
 	installer.platformCheck = installer.validatePlatform
 	installer.dependencyCheck = installer.missingDependencies

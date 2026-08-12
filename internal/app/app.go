@@ -31,7 +31,7 @@ func (a *App) Run() error {
 		showMenu(currentStatus())
 		fmt.Println()
 
-		choice, err := a.ui.Ask("输入选项: ")
+		choice, err := a.ui.Ask("请选择：")
 		if err != nil {
 			return err
 		}

@@ -82,7 +82,7 @@ func ensureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 
 	log.Warn("一键配置必须先添加至少一把有效 SSH 公钥")
 	for {
-		pubkey, err := view.Ask("请粘贴 SSH 公钥（必填，输入 q 返回）: ")
+		pubkey, err := view.Ask("请粘贴 SSH 公钥（必填，输入 q 返回）：")
 		if err != nil {
 			return err
 		}
@@ -122,13 +122,13 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 			return err
 		}
 
-		fmt.Println("请选择公钥操作：")
+		ui.MenuSection("请选择公钥操作")
 		ui.MenuOption("1", "添加公钥")
 		ui.MenuOption("2", "删除公钥")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
-		choice, err := view.Ask("输入选项: ")
+		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return err
 		}
@@ -155,7 +155,7 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 
 func addSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 	for {
-		pubkey, err := view.Ask("请粘贴 SSH 公钥（直接回车结束）: ")
+		pubkey, err := view.Ask("请粘贴 SSH 公钥（直接回车结束）：")
 		if err != nil {
 			return err
 		}
@@ -193,7 +193,7 @@ func deleteSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 	}
 
 	printAuthorizedKeyEntries(entries)
-	rawSelection, err := view.Ask("请输入要删除的编号（多个用逗号或空格分隔，直接回车返回）: ")
+	rawSelection, err := view.Ask("请输入要删除的编号（多个用逗号或空格分隔，直接回车返回）：")
 	if err != nil {
 		return err
 	}
@@ -214,7 +214,7 @@ func deleteSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 	}
 	fmt.Println()
 
-	confirmed, err := view.Confirm("确认删除选中的 SSH 公钥？(y/N): ")
+	confirmed, err := view.Confirm("确认删除选中的 SSH 公钥？(y/N)：")
 	if err != nil {
 		return err
 	}

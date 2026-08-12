@@ -44,7 +44,7 @@ func ConfigureDockerDaemonProxy(view *ui.UI) error {
 	fmt.Println("支持 ip:port 格式，或 username:password@ip:port 格式")
 	fmt.Println()
 
-	raw, err := view.Ask("请输入 Docker 代理地址: ")
+	raw, err := view.Ask("请输入 Docker 代理地址：")
 	if err != nil {
 		return err
 	}

@@ -115,7 +115,7 @@ func printSSHSecurityRows(settings sshdSettings) {
 func configureSSHDHardening(view *ui.UI, account *system.Account) error {
 	if account.Name != "root" && !system.UserInAdminGroup(account.Name) {
 		log.Warn("用户 ", account.Name, " 不在 sudo/wheel 用户组中")
-		confirmed, err := view.Confirm("继续配置可能导致无法提权，是否强行继续？(y/N): ")
+		confirmed, err := view.Confirm("继续配置可能导致无法提权，是否强行继续？(y/N)：")
 		if err != nil {
 			return err
 		}
@@ -143,7 +143,7 @@ func configureSSHDHardening(view *ui.UI, account *system.Account) error {
 	}
 
 	fmt.Println()
-	rawPort, err := view.Ask("请输入 SSH 端口（直接回车随机生成）: ")
+	rawPort, err := view.Ask("请输入 SSH 端口（直接回车随机生成）：")
 	if err != nil {
 		return err
 	}
@@ -211,7 +211,7 @@ func confirmAuthorizedKeysPresent(view *ui.UI, account *system.Account) (bool, e
 	}
 
 	log.Warn("未检测到当前用户 SSH 公钥：", authKeys)
-	confirmed, err := view.Confirm("继续禁用密码登录可能导致无法 SSH 登录，是否强行继续？(y/N): ")
+	confirmed, err := view.Confirm("继续禁用密码登录可能导致无法 SSH 登录，是否强行继续？(y/N)：")
 	if err != nil {
 		return false, err
 	}
@@ -236,11 +236,11 @@ func confirmSSHDConfigOverwrite(view *ui.UI) (bool, error) {
 	}
 	if !isManagedSSHDConfig(existingContent) {
 		printSSHDConfig(customSSHDConfigPath, existingContent)
-		return view.Confirm("检测到该 SSH 配置文件不是本工具生成，继续会备份并覆盖，是否继续？(y/N): ")
+		return view.Confirm("检测到该 SSH 配置文件不是本工具生成，继续会备份并覆盖，是否继续？(y/N)：")
 	}
 
 	printSSHDConfig(customSSHDConfigPath, existingContent)
-	return view.Confirm("检测到该 SSH 配置文件由脚本创建，是否覆盖并重新生成？(y/N): ")
+	return view.Confirm("检测到该 SSH 配置文件由脚本创建，是否覆盖并重新生成？(y/N)：")
 }
 
 func confirmDisableSSHDConfigPorts(view *ui.UI, port int) (bool, error) {

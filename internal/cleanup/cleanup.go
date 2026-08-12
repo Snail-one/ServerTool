@@ -42,7 +42,7 @@ func Run(view *ui.UI) error {
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
-		choice, err := view.Ask("输入选项: ")
+		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return err
 		}
@@ -64,7 +64,7 @@ func Run(view *ui.UI) error {
 			return runCleanupStepWithConfirm(view, account, steps[4])
 		case "6":
 			fmt.Println("警告：清理全部配置会移除本工具写入的 SSH 安全策略，可能恢复系统默认 SSH 密码登录。")
-			confirmed, err := view.Confirm("确认清理全部本工具配置？请输入 y 确认，默认取消 (y/N): ")
+			confirmed, err := view.Confirm("确认清理全部本工具配置？请输入 y 确认，默认取消 (y/N)：")
 			if err != nil {
 				return err
 			}
@@ -92,7 +92,7 @@ func allCleanupSteps() []cleanupStep {
 }
 
 func runCleanupStepWithConfirm(view *ui.UI, account *system.Account, step cleanupStep) error {
-	confirmed, err := view.Confirm(fmt.Sprintf("确认清理 %s 配置？(y/N): ", step.name))
+	confirmed, err := view.Confirm(fmt.Sprintf("确认清理 %s 配置？(y/N)：", step.name))
 	if err != nil {
 		return err
 	}

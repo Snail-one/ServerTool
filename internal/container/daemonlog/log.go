@@ -104,7 +104,7 @@ func configureDockerLogRotation(
 		fmt.Println("检测到当前 daemon.json 已包含 Docker 日志配置：")
 		printDockerLogStatus(status)
 		fmt.Println()
-		return view.Confirm("是否覆盖当前 Docker 日志配置？(y/N): ")
+		return view.Confirm("是否覆盖当前 Docker 日志配置？(y/N)：")
 	})
 	if err != nil {
 		return err
@@ -131,7 +131,7 @@ func configureDockerLogRotation(
 	fmt.Println("已执行：systemctl restart docker")
 	fmt.Println("说明：该配置只影响后续新建容器；已有容器通常需要重建后才会应用。")
 	if rebuildRunningCompose != nil {
-		if err := rebuildRunningCompose(view, "是否立即重建运行中的 Compose 项目使配置生效？(y/N): "); err != nil {
+		if err := rebuildRunningCompose(view, "是否立即重建运行中的 Compose 项目使配置生效？(y/N)："); err != nil {
 			return err
 		}
 	}
@@ -140,17 +140,17 @@ func configureDockerLogRotation(
 
 func promptLogRotationConfig(view promptReader) (logRotationConfig, bool, error) {
 	for {
-		fmt.Println("请选择 Docker 日志轮转配置：")
-		ui.MenuOption("1", "推荐：100m x 3")
-		ui.MenuOption("2", "保守：50m x 5")
-		ui.MenuOption("3", "节省空间：10m x 3")
-		ui.MenuOption("4", "自定义 max-size / max-file")
+		ui.MenuSection("请选择 Docker 日志轮转配置")
+		ui.MenuOptionHint("1", "推荐配置", "100m × 3")
+		ui.MenuOptionHint("2", "保守配置", "50m × 5")
+		ui.MenuOptionHint("3", "节省空间", "10m × 3")
+		ui.MenuOptionHint("4", "自定义配置", "max-size / max-file")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 		fmt.Println("说明：log-driver 固定为 json-file。")
 		fmt.Println()
 
-		choice, err := view.Ask("输入选项: ")
+		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return logRotationConfig{}, false, err
 		}
@@ -168,7 +168,7 @@ func promptLogRotationConfig(view promptReader) (logRotationConfig, bool, error)
 		fmt.Println()
 	}
 
-	maxSize, err := view.Ask("请输入 max-size（正整数 + k/m/g，例如 100m）: ")
+	maxSize, err := view.Ask("请输入 max-size（正整数 + k/m/g，例如 100m）：")
 	if err != nil {
 		return logRotationConfig{}, false, err
 	}
@@ -177,7 +177,7 @@ func promptLogRotationConfig(view promptReader) (logRotationConfig, bool, error)
 		return logRotationConfig{}, false, err
 	}
 
-	maxFile, err := view.Ask("请输入 max-file（正整数，建议 1-99）: ")
+	maxFile, err := view.Ask("请输入 max-file（正整数，建议 1-99）：")
 	if err != nil {
 		return logRotationConfig{}, false, err
 	}

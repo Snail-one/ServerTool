@@ -60,12 +60,12 @@ func UninstallPodman(view *ui.UI) (bool, error) {
 
 func selectPodmanUninstallMode(view dockerUninstallPrompter) (bool, bool, error) {
 	for {
-		fmt.Println("请选择 Podman 卸载方式：")
-		ui.MenuOption("1", "卸载运行时（保留数据）")
-		ui.MenuOption("2", "完全卸载（永久删除数据）")
+		ui.MenuSection("请选择 Podman 卸载方式")
+		ui.MenuOptionHint("1", "卸载运行时", "保留容器、镜像和卷数据")
+		ui.MenuOptionHint("2", "完全卸载", "永久删除容器、镜像和卷数据")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
-		choice, err := view.Ask("输入选项: ")
+		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return false, false, err
 		}
@@ -124,7 +124,7 @@ func confirmPodmanUninstall(view dockerUninstallPrompter, plan podmanUninstallPl
 	if !plan.removeData {
 		fmt.Println("Podman 的 rootful/rootless 容器数据和用户配置将保留。")
 		fmt.Println()
-		return view.Confirm("确认卸载 Podman 运行时并保留数据？请输入 y 确认，默认取消 (y/N): ")
+		return view.Confirm("确认卸载 Podman 运行时并保留数据？请输入 y 确认，默认取消 (y/N)：")
 	}
 
 	fmt.Println("警告：Podman system reset 将永久删除 rootful 和当前用户的：")
@@ -138,7 +138,7 @@ func confirmPodmanUninstall(view dockerUninstallPrompter, plan podmanUninstallPl
 	}
 	fmt.Println("注意：Podman 与 Buildah 等工具可能共享容器存储。")
 	fmt.Println()
-	answer, err := view.Ask("请输入 DELETE PODMAN DATA 确认完全卸载: ")
+	answer, err := view.Ask("请输入 DELETE PODMAN DATA 确认完全卸载：")
 	if err != nil {
 		return false, err
 	}

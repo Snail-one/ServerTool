@@ -64,7 +64,7 @@ func ConfigureVim(view *ui.UI) error {
 		if err := printExistingVimConfig(vimrc); err != nil {
 			return err
 		}
-		confirmed, err := view.Confirm("是否覆盖现有配置？(y/N): ")
+		confirmed, err := view.Confirm("是否覆盖现有配置？(y/N)：")
 		if err != nil {
 			return err
 		}

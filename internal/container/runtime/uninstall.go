@@ -31,13 +31,13 @@ func Uninstall(view *ui.UI) (bool, error) {
 
 func selectRuntimeToUninstall(view dockerUninstallPrompter, runtimes []Runtime) (Runtime, bool, error) {
 	for {
-		fmt.Println("检测到多个容器运行时，请选择要卸载的运行时：")
+		ui.MenuSection("检测到多个容器运行时，请选择要卸载的运行时")
 		for index, current := range runtimes {
 			ui.MenuOption(strconv.Itoa(index+1), current.Display)
 		}
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
-		choice, err := view.Ask("输入选项: ")
+		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return Runtime{}, false, err
 		}

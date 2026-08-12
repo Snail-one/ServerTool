@@ -53,8 +53,9 @@ type composeProjectAction struct {
 }
 
 type containerAction struct {
-	Key   string
-	Label string
+	Key     string
+	Label   string
+	Command string
 }
 
 const (
@@ -111,7 +112,7 @@ func manageContainers(view *ui.UI, rt runtime.Runtime) error {
 		printContainers(conts)
 		fmt.Println()
 
-		raw, err := view.Ask("选择容器编号（0 返回）：")
+		raw, err := view.Ask("请选择容器编号（0/q 返回）：")
 		if err != nil {
 			return err
 		}
@@ -374,18 +375,22 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("容器管理", "容器列表与操作", defaultText(c.Name))
-		fmt.Printf("容器: %s (%s)\n", c.Name, c.ID)
-		fmt.Printf("状态: %s | 端口: %s\n", containerDetailStatus(c), defaultText(c.Ports))
+		fmt.Printf("容器：%s（%s）\n", c.Name, c.ID)
+		fmt.Printf("状态：%s  |  端口：%s\n", containerDetailStatus(c), defaultText(c.Ports))
 		fmt.Println()
 
 		actions := availableContainerActions(c, canComposeDown)
 		for index, action := range actions {
-			ui.MenuOption(strconv.Itoa(index+1), action.Label)
+			command := rt.Name + " " + action.Command
+			if action.Key == "down" {
+				command = compose.Display + " " + action.Command
+			}
+			ui.MenuOptionHint(strconv.Itoa(index+1), action.Label, command)
 		}
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
-		raw, err := view.Ask("输入选项: ")
+		raw, err := view.Ask("请选择：")
 		if err != nil {
 			return err
 		}
@@ -437,7 +442,7 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 				view.PauseWithPrompt("按回车返回容器操作...")
 				continue
 			}
-			confirmed, err := view.Confirm(fmt.Sprintf("项目目录：%s\n确认对项目 %s 执行 down（不会删除卷）？(y/N): ", dir, project))
+			confirmed, err := view.Confirm(fmt.Sprintf("项目目录：%s\n确认对项目 %s 执行 down（不会删除卷）？(y/N)：", dir, project))
 			if err != nil {
 				return err
 			}
@@ -474,30 +479,30 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 func availableContainerActions(c containerInfo, canComposeDown bool) []containerAction {
 	actions := make([]containerAction, 0, 11)
 	if canStartContainer(c) {
-		actions = append(actions, containerAction{Key: "start", Label: "start — 启动容器"})
+		actions = append(actions, containerAction{Key: "start", Label: "启动容器", Command: "start"})
 	}
 	if canStopContainer(c) {
-		actions = append(actions, containerAction{Key: "stop", Label: "stop — 停止容器"})
+		actions = append(actions, containerAction{Key: "stop", Label: "停止容器", Command: "stop"})
 	}
-	actions = append(actions, containerAction{Key: "restart", Label: "restart — 重启容器"})
+	actions = append(actions, containerAction{Key: "restart", Label: "重启容器", Command: "restart"})
 	if c.State == containerStateRunning {
-		actions = append(actions, containerAction{Key: "pause", Label: "pause — 暂停容器"})
+		actions = append(actions, containerAction{Key: "pause", Label: "暂停容器", Command: "pause"})
 	} else if c.State == containerStatePaused {
-		actions = append(actions, containerAction{Key: "unpause", Label: "unpause — 恢复容器"})
+		actions = append(actions, containerAction{Key: "unpause", Label: "恢复容器", Command: "unpause"})
 	}
 	actions = append(actions,
-		containerAction{Key: "inspect", Label: "inspect — 查看容器信息"},
-		containerAction{Key: "logs", Label: "logs — 查看最近 200 行"},
-		containerAction{Key: "logs-follow", Label: "logs -f — 实时跟随日志"},
+		containerAction{Key: "inspect", Label: "查看容器信息", Command: "inspect"},
+		containerAction{Key: "logs", Label: "查看最近 200 行日志", Command: "logs --tail 200"},
+		containerAction{Key: "logs-follow", Label: "实时跟随日志", Command: "logs -f"},
 	)
 	if canEnterContainer(c) {
-		actions = append(actions, containerAction{Key: "exec", Label: "exec — 进入容器 Shell"})
+		actions = append(actions, containerAction{Key: "exec", Label: "进入容器 Shell", Command: "exec"})
 	}
 	if canComposeDown {
-		actions = append(actions, containerAction{Key: "down", Label: "down — 停止并删除所属 Compose 项目容器和默认网络"})
+		actions = append(actions, containerAction{Key: "down", Label: "停止并删除所属 Compose 项目", Command: "down"})
 	}
 	if canRemoveContainer(c) {
-		actions = append(actions, containerAction{Key: "rm", Label: "rm — 删除已停止容器"})
+		actions = append(actions, containerAction{Key: "rm", Label: "删除已停止容器", Command: "rm"})
 	}
 	return actions
 }
@@ -537,7 +542,7 @@ func removeContainer(confirm func(string) (bool, error), run func(string, ...str
 	if !canRemoveContainer(c) {
 		return false, fmt.Errorf("当前状态不允许删除容器")
 	}
-	prompt := fmt.Sprintf("容器：%s\nID：%s\n确认执行 rm（不会强制删除）？(y/N): ", defaultText(c.Name), defaultText(c.ID))
+	prompt := fmt.Sprintf("容器：%s\nID：%s\n确认执行 rm（不会强制删除）？(y/N)：", defaultText(c.Name), defaultText(c.ID))
 	confirmed, err := confirm(prompt)
 	if err != nil || !confirmed {
 		return false, err
@@ -1056,7 +1061,7 @@ func manageComposeProjects(view *ui.UI, rt runtime.Runtime, useLS bool) error {
 		printComposeProjects(projects)
 		fmt.Println()
 
-		raw, err := view.Ask("选择项目编号（0 返回）：")
+		raw, err := view.Ask("请选择项目编号（0/q 返回）：")
 		if err != nil {
 			return err
 		}
@@ -1086,16 +1091,16 @@ func manageSingleProject(view *ui.UI, compose update.ComposeCommand, dir string)
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("容器管理", "Compose 项目", filepath.Base(dir))
-		fmt.Printf("项目目录: %s\n", dir)
+		fmt.Printf("项目目录：%s\n", dir)
 		fmt.Println()
-		ui.MenuOption("1", "up -d — 创建并后台启动")
-		ui.MenuOption("2", "stop — 停止服务容器")
-		ui.MenuOption("3", "restart — 重启服务容器")
-		ui.MenuOption("4", "down — 停止并删除项目容器和默认网络")
+		ui.MenuOptionHint("1", "创建并后台启动", compose.Display+" up -d")
+		ui.MenuOptionHint("2", "停止服务容器", compose.Display+" stop")
+		ui.MenuOptionHint("3", "重启服务容器", compose.Display+" restart")
+		ui.MenuOptionHint("4", "停止并删除项目容器和默认网络", compose.Display+" down")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
-		raw, err := view.Ask("输入选项: ")
+		raw, err := view.Ask("请选择：")
 		if err != nil {
 			return err
 		}
@@ -1112,9 +1117,9 @@ func manageSingleProject(view *ui.UI, compose update.ComposeCommand, dir string)
 			continue
 		}
 
-		prompt := fmt.Sprintf("项目目录：%s\n确认执行 compose %s？(y/N): ", dir, action.Name)
+		prompt := fmt.Sprintf("项目目录：%s\n确认执行 %s %s？(y/N)：", dir, compose.Display, action.Name)
 		if action.Name == "down" {
-			prompt = fmt.Sprintf("项目目录：%s\n确认执行 compose down（不会删除卷）？(y/N): ", dir)
+			prompt = fmt.Sprintf("项目目录：%s\n确认执行 %s down（不会删除卷）？(y/N)：", dir, compose.Display)
 		}
 		confirmed, err := view.Confirm(prompt)
 		if err != nil {

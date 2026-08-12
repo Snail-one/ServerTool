@@ -33,7 +33,7 @@ func newDockerScriptInstaller(view *ui.UI) *dockerScriptInstaller {
 			fmt.Println()
 			fmt.Println("注意：Docker 官方建议此便捷脚本主要用于测试和开发环境。")
 			fmt.Println("脚本默认安装最新 stable 版本，可能带来未经验证的主版本升级。")
-			return view.Confirm("确认继续使用官方脚本安装 Docker？(y/N): ")
+			return view.Confirm("确认继续使用官方脚本安装 Docker？(y/N)：")
 		},
 	}
 }

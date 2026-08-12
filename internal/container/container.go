@@ -45,11 +45,11 @@ func Run(view *ui.UI) error {
 			ui.MenuOption("3", "Docker 服务配置 "+ui.Badge("仅 Docker 可用", false))
 		}
 		ui.MenuOption("4", "清理容器资源")
-		ui.MenuOption("5", fmt.Sprintf("卸载 %s（可选保留或彻底删除数据）", uninstallName))
+		ui.MenuOptionHint("5", fmt.Sprintf("卸载 %s", uninstallName), "可选择保留或永久删除数据")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
-		choice, err := view.Ask("输入选项: ")
+		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return err
 		}
@@ -101,14 +101,14 @@ func runComposeMenu(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("容器管理", "Compose 项目")
-		ui.MenuOption("1", "管理运行中的 Compose 项目（docker compose ls）")
-		ui.MenuOption("2", "管理指定目录中的 Compose 项目（扫描目录）")
-		ui.MenuOption("3", "更新运行中的 Compose 应用（pull 后 up -d）")
-		ui.MenuOption("4", "重建运行中的 Compose 项目（down 后 up -d）")
+		ui.MenuOptionHint("1", "管理运行中的 Compose 项目", "docker compose ls")
+		ui.MenuOptionHint("2", "管理指定目录中的 Compose 项目", "扫描 Compose 配置目录")
+		ui.MenuOptionHint("3", "更新运行中的 Compose 应用", "docker compose pull && docker compose up -d")
+		ui.MenuOptionHint("4", "重建运行中的 Compose 项目", "docker compose down && docker compose up -d")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
-		choice, err := view.Ask("输入选项: ")
+		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return err
 		}
@@ -150,7 +150,7 @@ func runDockerDaemonMenu(view *ui.UI) error {
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
-		choice, err := view.Ask("输入选项: ")
+		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return err
 		}

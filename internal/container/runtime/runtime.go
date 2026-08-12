@@ -31,14 +31,14 @@ func Ensure(view *ui.UI) error {
 		ui.MenuTitle("容器管理", "安装容器运行时")
 		fmt.Println("未检测到 Docker 或 Podman。")
 		fmt.Println()
-		fmt.Println("请选择安装方式：")
-		ui.MenuOption("1", "安装 Docker（使用 Docker 官方签名 stable 仓库）")
-		ui.MenuOption("2", "安装 Docker（使用 Docker 官方安装脚本 get.docker.com）")
-		ui.MenuOption("3", "安装 Podman（使用 apt 安装）")
+		ui.MenuSection("请选择安装方式")
+		ui.MenuOptionHint("1", "安装 Docker", "Docker 官方签名 stable 仓库")
+		ui.MenuOptionHint("2", "安装 Docker", "Docker 官方脚本 get.docker.com")
+		ui.MenuOptionHint("3", "安装 Podman", "apt 软件包")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
-		choice, err := view.Ask("输入选项: ")
+		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return err
 		}

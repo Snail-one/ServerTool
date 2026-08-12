@@ -77,7 +77,7 @@ func ConfigureProxy(view *ui.UI) error {
 	fmt.Println("\033[32m[INFO]\033[0m ip:port 格式，或 username:password@ip:port 格式")
 	fmt.Println()
 
-	raw, err := view.Ask("请输入代理地址: ")
+	raw, err := view.Ask("请输入代理地址：")
 	if err != nil {
 		return err
 	}
@@ -264,7 +264,7 @@ func confirmUnmanagedProxyOverride(view *ui.UI, bashrc string) (bool, error) {
 	fmt.Println()
 
 	for {
-		choice, err := view.Ask("输入选项: ")
+		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return false, err
 		}

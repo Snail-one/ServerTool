@@ -15,6 +15,7 @@ const (
 	blue   = "\033[34m"
 	green  = "\033[32m"
 	yellow = "\033[33m"
+	gray   = "\033[90m"
 )
 
 type UI struct {
@@ -90,12 +91,28 @@ func HomeTitle(buildVersion string) {
 
 // MenuOption renders a selectable menu row with a visually distinct shortcut.
 func MenuOption(key, label string) {
-	fmt.Printf("  %s %s\n", paint(bold+blue, key), label)
+	fmt.Printf("  %s %s\n", menuKey(key, bold+blue), label)
+}
+
+// MenuOptionHint renders secondary command or impact text in gray so action
+// names remain easy to scan. The separator is part of the secondary text.
+func MenuOptionHint(key, label, hint string) {
+	hint = strings.TrimSpace(hint)
+	if hint == "" {
+		MenuOption(key, label)
+		return
+	}
+	fmt.Printf("  %s %s%s\n", menuKey(key, bold+blue), padDisplay(label, 30), paint(gray, "-- "+hint))
 }
 
 // MenuExit renders the return/exit row separately from regular actions.
 func MenuExit(key, label string) {
-	fmt.Printf("  %s %s\n", paint(bold+yellow, key), paint(dim, label))
+	fmt.Printf("  %s %s\n", menuKey(key, bold+yellow), paint(dim, label))
+}
+
+// MenuSection renders a consistent heading for choices nested inside a screen.
+func MenuSection(label string) {
+	fmt.Println(paint(bold, strings.TrimSpace(label)))
 }
 
 // Badge returns a compact status label. Positive states use green; states that
@@ -114,6 +131,41 @@ func ConfiguredBadge(configured bool) string {
 		return Badge("已配置", true)
 	}
 	return Badge("未配置", false)
+}
+
+func menuKey(key, style string) string {
+	return paint(style, fmt.Sprintf("%-3s", strings.TrimSpace(key)))
+}
+
+func padDisplay(text string, width int) string {
+	padding := width - displayWidth(text)
+	if padding < 1 {
+		padding = 1
+	}
+	return text + strings.Repeat(" ", padding)
+}
+
+func displayWidth(text string) int {
+	width := 0
+	inEscape := false
+	for _, current := range text {
+		if inEscape {
+			if current == 'm' {
+				inEscape = false
+			}
+			continue
+		}
+		if current == '\x1b' {
+			inEscape = true
+			continue
+		}
+		if current >= 0x2e80 {
+			width += 2
+		} else {
+			width++
+		}
+	}
+	return width
 }
 
 func paint(style, text string) string {

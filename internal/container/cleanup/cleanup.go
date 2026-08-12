@@ -38,19 +38,19 @@ func runDockerCleanup(view *ui.UI, rt runtime.Runtime) error {
 		log.Info("当前 ", rt.Display, " 磁盘占用")
 		printContainerDiskUsage(rt)
 		fmt.Println()
-		ui.MenuOption("1", "container prune — 删除所有已停止容器")
-		ui.MenuOption("2", "network prune — 删除所有未使用网络")
-		ui.MenuOption("3", "image prune — 删除悬空镜像")
-		ui.MenuOption("4", "builder prune — 删除构建缓存")
-		ui.MenuOption("5", "system prune — 删除已停止容器、未使用网络、悬空镜像和构建缓存")
-		ui.MenuOption("6", "image prune -a — 删除所有未被容器使用的镜像")
-		ui.MenuOption("7", "system prune -a — 删除已停止容器、未使用网络、所有未使用镜像和构建缓存")
+		ui.MenuOptionHint("1", "删除所有已停止容器", rt.Name+" container prune")
+		ui.MenuOptionHint("2", "删除所有未使用网络", rt.Name+" network prune")
+		ui.MenuOptionHint("3", "删除悬空镜像", rt.Name+" image prune")
+		ui.MenuOptionHint("4", "删除构建缓存", rt.Name+" builder prune")
+		ui.MenuOptionHint("5", "清理停止容器、无用网络、悬空镜像和构建缓存", rt.Name+" system prune")
+		ui.MenuOptionHint("6", "删除所有未被容器使用的镜像", rt.Name+" image prune -a")
+		ui.MenuOptionHint("7", "清理停止容器、无用网络、未使用镜像和构建缓存", rt.Name+" system prune -a")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
-		fmt.Printf("实际命令由 %s 执行；所有选项都不会删除卷。\n", rt.Name)
+		fmt.Println("说明：以上操作均不会删除卷。")
 		fmt.Println()
 
-		choice, err := view.Ask("输入选项: ")
+		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return err
 		}
@@ -90,7 +90,7 @@ func runDockerCleanup(view *ui.UI, rt runtime.Runtime) error {
 }
 
 func executeDockerCleanupPlan(plan dockerCleanupPlan, confirm func(string) (bool, error), run func(string, ...string) error, runtimeName string) (bool, error) {
-	confirmed, err := confirm("确认继续？(y/N): ")
+	confirmed, err := confirm("确认继续？(y/N)：")
 	if err != nil || !confirmed {
 		return false, err
 	}

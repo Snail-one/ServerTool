@@ -83,12 +83,12 @@ func Run(view *ui.UI) error {
 		ui.MenuOption("2", "更新到最新稳定版")
 		ui.MenuOption("3", "切换当前版本")
 		ui.MenuOption("4", "卸载 Go 版本")
-		ui.MenuOption("5", "修复当前 Go（重新安装并修复 PATH）")
+		ui.MenuOptionHint("5", "修复当前 Go", "重新安装并修复 PATH")
 		ui.MenuOption("6", "清理 Go 安装残留")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
-		choice, err := view.Ask("输入选项: ")
+		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return err
 		}
@@ -149,7 +149,7 @@ func cleanupInstallArtifacts(view *ui.UI) error {
 	if containsBackup {
 		log.Warn("备份目录可能包含异常中断前的旧版本，删除后无法通过该备份恢复")
 	}
-	confirmed, err := view.Confirm("确认删除以上安装残留？(y/N): ")
+	confirmed, err := view.Confirm("确认删除以上安装残留？(y/N)：")
 	if err != nil {
 		return err
 	}
@@ -196,7 +196,7 @@ func repairCurrent(view *ui.UI) error {
 	if current == "" {
 		return errors.New("当前没有可修复的工具管理 Go 版本，请先安装 Go")
 	}
-	confirmed, err := view.Confirm(fmt.Sprintf("将重新下载并替换当前版本 %s，同时修复 PATH，是否继续？(y/N): ", current))
+	confirmed, err := view.Confirm(fmt.Sprintf("将重新下载并替换当前版本 %s，同时修复 PATH，是否继续？(y/N)：", current))
 	if err != nil {
 		return err
 	}
@@ -291,7 +291,7 @@ func selectRelease(view *ui.UI, releases []release, arch string) (release, error
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
-		raw, err := view.Ask("选择版本: ")
+		raw, err := view.Ask("请选择版本：")
 		if err != nil {
 			return release{}, err
 		}
@@ -361,7 +361,7 @@ func confirmOfficialInstallRemoval(view *ui.UI) (bool, error) {
 	if !detected {
 		return false, nil
 	}
-	confirmed, err := view.Confirm("检测到 /usr/local/go 或 ~/.bashrc 中的官方 Go 环境变量，是否清理并改用本工具安装？(y/N): ")
+	confirmed, err := view.Confirm("检测到 /usr/local/go 或 ~/.bashrc 中的官方 Go 环境变量，是否清理并改用本工具安装？(y/N)：")
 	if err != nil {
 		return false, err
 	}
@@ -495,7 +495,7 @@ func switchSelected(view *ui.UI) error {
 	if err != nil {
 		return err
 	}
-	selected, err := selectInstalled(view, versions, "选择要切换的版本: ")
+	selected, err := selectInstalled(view, versions, "请选择要切换的版本：")
 	if err != nil {
 		return err
 	}
@@ -528,16 +528,16 @@ func uninstallSelected(view *ui.UI) error {
 	}
 	selected := ""
 	for {
-		fmt.Println("请选择要卸载的 Go：")
+		ui.MenuSection("请选择要卸载的 Go")
 		if official {
-			ui.MenuOption("1", "官方位置 Go（/usr/local/go 及 ~/.bashrc 环境变量）")
+			ui.MenuOptionHint("1", "官方位置 Go", "/usr/local/go 及 ~/.bashrc 环境变量")
 		}
 		for i, version := range versions {
 			ui.MenuOption(strconv.Itoa(i+1+offset), version)
 		}
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
-		raw, err := view.Ask("选择卸载项: ")
+		raw, err := view.Ask("请选择卸载项：")
 		if err != nil {
 			return err
 		}
@@ -556,7 +556,7 @@ func uninstallSelected(view *ui.UI) error {
 		selected = versions[index-1-offset]
 		break
 	}
-	confirmed, err := view.Confirm(fmt.Sprintf("确认卸载 %s？(y/N): ", selected))
+	confirmed, err := view.Confirm(fmt.Sprintf("确认卸载 %s？(y/N)：", selected))
 	if err != nil {
 		return err
 	}
@@ -596,7 +596,7 @@ func uninstallSelected(view *ui.UI) error {
 }
 
 func uninstallOfficialGo(view *ui.UI) error {
-	confirmed, err := view.Confirm("确认卸载 /usr/local/go 并清理 ~/.bashrc 中的官方 Go 环境变量？(y/N): ")
+	confirmed, err := view.Confirm("确认卸载 /usr/local/go 并清理 ~/.bashrc 中的官方 Go 环境变量？(y/N)：")
 	if err != nil {
 		return err
 	}

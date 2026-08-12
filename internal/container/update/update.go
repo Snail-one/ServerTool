@@ -61,19 +61,22 @@ type composeRebuildResult struct {
 type composeRunner func(ComposeCommand, string, ...string) error
 
 func Run(view *ui.UI) error {
-	return UpdateDockerComposeApps(view)
+	return updateDockerComposeApps(view, 1)
 }
 
 func UpdateDockerComposeApps(view *ui.UI) error {
+	mode, err := chooseUpdateMode(view)
+	if err != nil {
+		return err
+	}
+	return updateDockerComposeApps(view, mode)
+}
+
+func updateDockerComposeApps(view *ui.UI, mode int) error {
 	log.Info("批量更新运行中的 Docker Compose 应用")
 	fmt.Println()
 
 	compose, err := DetectComposeCommand()
-	if err != nil {
-		return err
-	}
-
-	mode, err := chooseUpdateMode(view)
 	if err != nil {
 		return err
 	}
@@ -120,7 +123,7 @@ func UpdateDockerComposeApps(view *ui.UI) error {
 	}
 	fmt.Println()
 
-	confirmed, err := view.Confirm("将只更新运行中的项目，是否继续？(y/N): ")
+	confirmed, err := view.Confirm(fmt.Sprintf("将依次执行 %s pull 和 %s up -d，只更新运行中的项目。是否继续？(y/N)：", compose.Display, compose.Display))
 	if err != nil {
 		return err
 	}
@@ -150,13 +153,13 @@ func UpdateDockerComposeApps(view *ui.UI) error {
 
 func chooseUpdateMode(view *ui.UI) (int, error) {
 	for {
-		fmt.Println("请选择更新方式：")
-		ui.MenuOption("1", "运行中的项目更新（默认）")
-		ui.MenuOption("2", "扫描目录更新")
+		ui.MenuSection("请选择更新方式")
+		ui.MenuOptionHint("1", "更新运行中的项目", "docker compose ls（默认）")
+		ui.MenuOptionHint("2", "扫描目录后更新", "扫描 Compose 配置目录")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
-		raw, err := view.Ask("输入选项（直接回车默认 1）: ")
+		raw, err := view.Ask("请选择（直接回车默认 1）：")
 		if err != nil {
 			return 0, err
 		}
@@ -273,7 +276,7 @@ func GetAllComposeProjectDirsFromLS(compose ComposeCommand) ([]string, error) {
 }
 
 func RebuildRunningComposeProjects(view *ui.UI) error {
-	return RebuildRunningComposeProjectsWithPrompt(view, "确认按目录执行 compose down 后 compose up -d？(y/N): ")
+	return RebuildRunningComposeProjectsWithPrompt(view, "")
 }
 
 func RebuildRunningComposeProjectsWithPrompt(confirmer ComposeRebuildConfirmer, confirmPrompt string) error {
@@ -298,7 +301,7 @@ func RebuildRunningComposeProjectsWithPrompt(confirmer ComposeRebuildConfirmer, 
 func rebuildRunningComposeProjects(confirmer ComposeRebuildConfirmer, compose ComposeCommand, dirs []string, runner composeRunner, confirmPrompt string) (composeRebuildResult, error) {
 	result := composeRebuildResult{Dirs: append([]string{}, dirs...)}
 	if confirmPrompt == "" {
-		confirmPrompt = "确认按目录执行 compose down 后 compose up -d？(y/N): "
+		confirmPrompt = fmt.Sprintf("将依次执行 %s down 和 %s up -d（不会删除卷），是否继续？(y/N)：", compose.Display, compose.Display)
 	}
 
 	fmt.Printf("Compose 命令：%s\n", compose.Display)
@@ -364,7 +367,7 @@ func AskComposeScanDirs(view *ui.UI, defaultRoots []string) ([]string, []string,
 		}
 		fmt.Println()
 
-		rawRoots, err := view.Ask("请输入扫描目录（直接回车使用默认目录，多个用空格或逗号分隔，0/q 返回）: ")
+		rawRoots, err := view.Ask("请输入扫描目录（直接回车使用默认目录，多个用空格或逗号分隔，0/q 返回）：")
 		if err != nil {
 			return nil, nil, err
 		}

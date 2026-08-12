@@ -88,12 +88,12 @@ func UninstallDocker(view *ui.UI) (bool, error) {
 
 func selectDockerUninstallMode(view dockerUninstallPrompter) (bool, bool, error) {
 	for {
-		fmt.Println("请选择 Docker 卸载方式：")
-		ui.MenuOption("1", "卸载运行时（保留数据）")
-		ui.MenuOption("2", "完全卸载（永久删除数据）")
+		ui.MenuSection("请选择 Docker 卸载方式")
+		ui.MenuOptionHint("1", "卸载运行时", "保留容器、镜像和卷数据")
+		ui.MenuOptionHint("2", "完全卸载", "永久删除容器、镜像和卷数据")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
-		choice, err := view.Ask("输入选项: ")
+		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return false, false, err
 		}
@@ -156,14 +156,14 @@ func confirmDockerUninstall(view dockerUninstallPrompter, plan dockerUninstallPl
 		fmt.Println("- /etc/docker")
 		fmt.Println("- Docker systemd 自定义配置")
 		fmt.Println()
-		return view.Confirm("确认卸载 Docker 运行时并保留数据？请输入 y 确认，默认取消 (y/N): ")
+		return view.Confirm("确认卸载 Docker 运行时并保留数据？请输入 y 确认，默认取消 (y/N)：")
 	}
 	fmt.Println("警告：以下路径将被永久递归删除，镜像、容器和卷无法恢复：")
 	for _, path := range plan.dataPaths {
 		fmt.Println("- " + path)
 	}
 	fmt.Println()
-	answer, err := view.Ask("请输入 DELETE DOCKER DATA 确认完全卸载: ")
+	answer, err := view.Ask("请输入 DELETE DOCKER DATA 确认完全卸载：")
 	if err != nil {
 		return false, err
 	}
