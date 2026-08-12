@@ -15,6 +15,7 @@ const (
 	blue   = "\033[34m"
 	green  = "\033[32m"
 	yellow = "\033[33m"
+	red    = "\033[31m"
 	gray   = "\033[90m"
 )
 
@@ -170,6 +171,38 @@ func ConfiguredBadge(configured bool) string {
 		return Badge("已配置", true)
 	}
 	return Badge("未配置", false)
+}
+
+// PrimaryText, InfoText and MutedText expose the shared terminal palette for
+// non-menu reports.
+func PrimaryText(text string) string {
+	return paint(orange, text)
+}
+
+func PrimaryBoldText(text string) string {
+	return paint(bold+orange, text)
+}
+
+func InfoText(text string) string {
+	return paint(blue, text)
+}
+
+func MutedText(text string) string {
+	return paint(gray, text)
+}
+
+// StatusBadge colors report states consistently by their meaning.
+func StatusBadge(text string) string {
+	color := yellow
+	switch strings.TrimSpace(text) {
+	case "安全":
+		color = green
+	case "风险":
+		color = red
+	case "信息":
+		color = blue
+	}
+	return paint(color, "["+text+"]")
 }
 
 func menuKey(key, style string) string {

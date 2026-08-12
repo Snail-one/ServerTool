@@ -158,6 +158,34 @@ func TestHomeSubtitleUsesPrimaryColor(t *testing.T) {
 	}
 }
 
+func TestReportPaletteUsesSemanticColors(t *testing.T) {
+	t.Setenv("CLICOLOR_FORCE", "1")
+	t.Setenv("NO_COLOR", "")
+	os.Unsetenv("NO_COLOR")
+
+	if got := PrimaryBoldText("标题"); got != bold+orange+"标题"+reset {
+		t.Fatalf("PrimaryBoldText() = %q", got)
+	}
+	if got := InfoText("字段"); got != blue+"字段"+reset {
+		t.Fatalf("InfoText() = %q", got)
+	}
+	if got := MutedText("配置项"); got != gray+"配置项"+reset {
+		t.Fatalf("MutedText() = %q", got)
+	}
+
+	want := map[string]string{
+		"安全": green,
+		"风险": red,
+		"信息": blue,
+		"未知": yellow,
+	}
+	for status, color := range want {
+		if got := StatusBadge(status); got != color+"["+status+"]"+reset {
+			t.Fatalf("StatusBadge(%q) = %q", status, got)
+		}
+	}
+}
+
 func TestPauseNormalizesEllipsis(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	view := &UI{reader: bufio.NewReader(strings.NewReader("\n"))}
