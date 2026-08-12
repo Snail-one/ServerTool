@@ -55,6 +55,12 @@ print_completion_card() {
 	printf '%s%s%s\n' "$ORANGE" "╰──────────────────────────────────────────────" "$RESET"
 }
 
+print_result_card() {
+	printf '%s%s%s\n' "$BOLD$ORANGE" "╭─ ServerTool" "$RESET"
+	printf '%s│ %s%s%s\n' "$ORANGE" "$BOLD$GREEN" "$1" "$RESET"
+	printf '%s%s%s\n' "$ORANGE" "╰──────────────────────────────────────────────" "$RESET"
+}
+
 step() {
 	printf '%s[步骤]%s %s\n' "$ORANGE" "$RESET" "$*"
 }
@@ -300,9 +306,9 @@ if [ -e "$TARGET" ]; then
 			print_release_info "$CURRENT_DISPLAY" "$RELEASE_VERSION" "无需更新"
 			printf '\n'
 			if [ "$LATEST_RELEASE" = true ]; then
-				result "当前已是最新正式版本，无需更新。"
+				print_result_card "当前已是最新正式版本，无需更新。"
 			else
-				result "当前已是指定版本，无需更新。"
+				print_result_card "当前已是指定版本，无需更新。"
 			fi
 			exit 0
 		fi
