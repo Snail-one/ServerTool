@@ -15,6 +15,8 @@
 
 ## 一键安装或更新
 
+跨项目统一采用的完整流程、命名、安全要求和验收清单见 [`docs/INSTALL_UPDATE_STANDARD.md`](docs/INSTALL_UPDATE_STANDARD.md)。
+
 脚本会自动识别 Linux amd64/arm64，校验 Release 提供的 SHA-256 后安装到 `/usr/local/sbin/snail`。首次安装和后续更新使用同一条命令：
 
 ```bash
