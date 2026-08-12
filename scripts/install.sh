@@ -9,17 +9,43 @@ RELEASE="${SERVERTOOL_VERSION:-latest}"
 TEMP_DIR=""
 STAGED_FILE=""
 
+print_banner() {
+	printf '%s\n' "╭─ ServerTool"
+	printf '%s\n' "│ 自身安装与更新"
+	printf '%s\n' "╰──────────────────────────────────────────────"
+	printf '\n'
+}
+
+step() {
+	printf '%s\n' "[步骤] $*"
+}
+
 info() {
-	printf '%s\n' "[INFO] $*"
+	printf '%s\n' "[信息] $*"
+}
+
+result() {
+	printf '%s\n' "[结果] $*"
 }
 
 warn() {
-	printf '%s\n' "[WARN] $*"
+	printf '%s\n' "[警告] $*"
 }
 
 fail() {
-	printf '%s\n' "[ERROR] $*" >&2
+	printf '%s\n' "[错误] $*" >&2
 	exit 1
+}
+
+print_release_info() {
+	printf '\n'
+	printf '%s\n' "发布信息"
+	printf '%s\n' "----------------------------------------"
+	printf '  平台：Linux/%s\n' "$ARCH"
+	printf '  当前版本：%s\n' "$1"
+	printf '  目标版本：%s\n' "$2"
+	printf '  执行操作：%s\n' "$3"
+	printf '%s\n' "----------------------------------------"
 }
 
 usage() {
@@ -55,6 +81,8 @@ case "${1:-}" in
 	"") ;;
 	*) RELEASE="$1" ;;
 esac
+
+print_banner
 
 case "$RELEASE" in
 	*[!A-Za-z0-9._-]*) fail "版本号包含不支持的字符：$RELEASE" ;;
@@ -117,14 +145,18 @@ else
 fi
 
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/servertool-install.XXXXXX")"
+step "检查发布版本"
 if [ "$RELEASE" = "latest" ]; then
 	RELEASE_METADATA="${TEMP_DIR}/release.json"
-	info "正在查询最新版本..."
 	download "https://api.github.com/repos/${REPOSITORY}/releases/latest" "$RELEASE_METADATA"
 	RELEASE_VERSION="$(sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' "$RELEASE_METADATA" | sed -n '1p')"
 	[ -n "$RELEASE_VERSION" ] || fail "无法从 GitHub Release 信息中解析最新版本"
+	info "最新正式版本：${RELEASE_VERSION}（GitHub Releases API）"
+	LATEST_RELEASE=true
 else
 	RELEASE_VERSION="$RELEASE"
+	info "指定发布版本：${RELEASE_VERSION}（用户指定）"
+	LATEST_RELEASE=false
 fi
 case "$RELEASE_VERSION" in
 	*[!A-Za-z0-9._-]*) fail "发布版本包含不支持的字符：$RELEASE_VERSION" ;;
@@ -144,12 +176,13 @@ if ! download_optional "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"; the
 	CHECKSUM_NAME="checksums.txt"
 	ASSET_FILE="${TEMP_DIR}/${ASSET}"
 	CHECKSUM_FILE="${TEMP_DIR}/${CHECKSUM_NAME}"
-	info "该版本使用旧版文件名，正在兼容下载..."
+	info "该版本使用旧版发布文件名，正在兼容处理"
 	download "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"
 fi
 EXPECTED_SHA256="$(awk -v asset="$ASSET" '$2 == asset || $2 == "*" asset { print $1; exit }' "$CHECKSUM_FILE")"
 [ -n "$EXPECTED_SHA256" ] || fail "${CHECKSUM_NAME} 中没有 ${ASSET} 的校验值"
 
+CURRENT_DISPLAY="未安装"
 if [ -e "$TARGET" ]; then
 	CURRENT_VERSION=""
 	CURRENT_RELEASE=""
@@ -157,37 +190,57 @@ if [ -e "$TARGET" ]; then
 		CURRENT_VERSION="$("$TARGET" --version 2>/dev/null | sed -n '1p' || true)"
 		CURRENT_RELEASE="$(printf '%s\n' "$CURRENT_VERSION" | awk '$1 == "snailtool" { print $2; exit }')"
 	fi
-	info "当前版本：${CURRENT_VERSION:-未知}"
+	CURRENT_DISPLAY="${CURRENT_RELEASE:-未知}"
 	if [ "$CURRENT_RELEASE" = "$RELEASE_VERSION" ]; then
 		CURRENT_SHA256="$(file_sha256 "$TARGET")"
 		if [ "$CURRENT_SHA256" = "$EXPECTED_SHA256" ]; then
-			info "当前已是最新版本，文件校验通过，无需更新"
+			print_release_info "$CURRENT_DISPLAY" "$RELEASE_VERSION" "无需更新"
+			printf '\n'
+			if [ "$LATEST_RELEASE" = true ]; then
+				result "当前已是最新正式版本，无需更新。"
+			else
+				result "当前已是指定版本，无需更新。"
+			fi
 			exit 0
 		fi
-		warn "当前版本号相同，但文件校验失败，将重新下载修复"
+		ACTION="修复安装"
+		print_release_info "$CURRENT_DISPLAY" "$RELEASE_VERSION" "$ACTION"
+		printf '\n'
+		warn "当前版本号一致，但文件校验失败，将重新下载修复"
+	else
+		ACTION="更新"
+		print_release_info "$CURRENT_DISPLAY" "$RELEASE_VERSION" "$ACTION"
 	fi
-	ACTION="更新"
 else
 	ACTION="安装"
+	print_release_info "$CURRENT_DISPLAY" "$RELEASE_VERSION" "$ACTION"
 fi
 
-info "正在下载 ${ASSET}..."
+printf '\n'
+step "下载发布文件"
+info "正在下载：${ASSET}"
 download_asset "${DOWNLOAD_BASE}/${ASSET}" "$ASSET_FILE"
+result "发布文件下载完成"
 
+printf '\n'
+step "校验发布文件"
 ACTUAL_SHA256="$(file_sha256 "$ASSET_FILE")"
 [ "$ACTUAL_SHA256" = "$EXPECTED_SHA256" ] || fail "安装包 SHA-256 校验失败"
-info "SHA-256 校验通过"
+result "SHA-256 校验通过"
 
 chmod 0755 "$ASSET_FILE"
 DOWNLOADED_VERSION="$("$ASSET_FILE" --version 2>/dev/null | sed -n '1p')"
 [ -n "$DOWNLOADED_VERSION" ] || fail "下载的文件无法正常运行"
 
+printf '\n'
+step "安装程序"
+info "正在写入：${TARGET}"
 install -d -m 0755 "$INSTALL_DIR"
 STAGED_FILE="${INSTALL_DIR}/.${BINARY_NAME}.new.$$"
 install -m 0755 "$ASSET_FILE" "$STAGED_FILE"
 mv -f "$STAGED_FILE" "$TARGET"
 STAGED_FILE=""
 
-info "${ACTION}完成：${TARGET}"
-info "当前版本：${DOWNLOADED_VERSION}"
+result "${ACTION}完成：${TARGET}"
+info "当前版本：${RELEASE_VERSION}"
 info "运行命令：sudo ${BINARY_NAME}"
