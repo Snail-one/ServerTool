@@ -196,7 +196,7 @@ HISTFILESIZE=40000
 `
 
 	body, _, _ := rootBashBlockForContent(existing, false)
-	for _, setting := range []string{"HISTCONTROL=ignoreboth", "shopt -s histappend", "HISTSIZE=5000", "HISTFILESIZE=10000", rootShellBehaviorBlock} {
+	for _, setting := range []string{"HISTCONTROL=ignoredups", "shopt -s histappend", "HISTSIZE=5000", "HISTFILESIZE=10000", rootShellBehaviorBlock} {
 		if strings.Contains(body, setting) {
 			t.Fatalf("existing root setting was duplicated by %q:\n%s", setting, body)
 		}

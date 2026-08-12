@@ -28,8 +28,8 @@ esac`
 # History
 # -------------------------
 
-# Ignore duplicate commands and commands beginning with a space
-HISTCONTROL=ignoreboth
+# Ignore duplicate commands
+HISTCONTROL=ignoredups
 
 # Append history instead of overwriting it
 shopt -s histappend
@@ -182,7 +182,7 @@ func hasActiveShopt(content, option string) bool {
 func rootHistoryBlockForContent(content string) string {
 	lines := make([]string, 0, 4)
 	if !hasActiveAssignment(content, "HISTCONTROL") {
-		lines = append(lines, "HISTCONTROL=ignoreboth")
+		lines = append(lines, "HISTCONTROL=ignoredups")
 	}
 	if !hasActiveShopt(content, "histappend") {
 		lines = append(lines, "shopt -s histappend")
