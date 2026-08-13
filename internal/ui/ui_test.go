@@ -38,7 +38,7 @@ func TestMenuOptionStatusAlignsBadges(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	output := captureStdout(t, func() {
 		MenuOptionStatus("1", "容器管理", "[Podman]")
-		MenuOptionStatus("4", "系统与用户配置", "[已配置 3/4]")
+		MenuOptionStatus("4", "通用配置", "[已配置 3/4]")
 		MenuOptionStatus("5", "开发环境管理", "[Go go1.26.5]")
 	})
 

@@ -16,7 +16,7 @@ func Run(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
 		status := currentStatus()
-		ui.MenuTitle("系统与用户配置")
+		ui.MenuTitle("通用配置")
 		ui.MenuOptionStatusHint("1", "Vim 配置", ui.ConfiguredBadge(status.vim), "~/.vimrc")
 		ui.MenuOptionStatus("2", "Bash 配置", ui.ConfiguredBadge(status.bash))
 		ui.MenuOptionStatus("3", "HTTP/HTTPS 代理", ui.ConfiguredBadge(status.proxy))
@@ -34,15 +34,15 @@ func Run(view *ui.UI) error {
 		}
 		switch strings.ToLower(choice) {
 		case "1":
-			shared.RunAction(view, "Vim 配置失败，已返回系统与用户配置", func() error {
+			shared.RunAction(view, "Vim 配置失败，已返回通用配置", func() error {
 				return commonvim.Run(view)
 			})
 		case "2":
-			shared.RunAction(view, "Bash 配置失败，已返回系统与用户配置", func() error {
+			shared.RunAction(view, "Bash 配置失败，已返回通用配置", func() error {
 				return commonbash.Run()
 			})
 		case "3":
-			shared.RunAction(view, "代理配置失败，已返回系统与用户配置", func() error {
+			shared.RunAction(view, "代理配置失败，已返回通用配置", func() error {
 				return commonproxy.Run(view)
 			})
 		default:
