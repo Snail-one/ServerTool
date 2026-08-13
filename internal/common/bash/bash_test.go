@@ -69,6 +69,48 @@ export EDITOR=vim
 	}
 }
 
+func TestUserBashConfigPreservesActiveGrepAlias(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".bashrc")
+	const existing = "alias grep='grep --color=always'\n"
+	if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := replaceAliases(path); err != nil {
+		t.Fatal(err)
+	}
+
+	content := readTestFile(t, path)
+	if strings.Count(content, "alias grep=") != 1 || !strings.Contains(content, existing) {
+		t.Fatalf("existing grep alias was not preserved:\n%s", content)
+	}
+	managed, ok := shared.ManagedBlockContent(content, bashAliasBegin, bashAliasEnd)
+	if !ok || strings.Contains(managed, grepColorAlias) {
+		t.Fatalf("managed block duplicated the existing grep alias:\n%s", content)
+	}
+}
+
+func TestUserBashConfigKeepsCommentedGrepAliasAndAddsManagedAlias(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".bashrc")
+	const commented = "# alias grep='grep --color=auto'\n"
+	if err := os.WriteFile(path, []byte(commented), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := replaceAliases(path); err != nil {
+		t.Fatal(err)
+	}
+
+	content := readTestFile(t, path)
+	if !strings.Contains(content, commented) {
+		t.Fatalf("commented grep alias was modified:\n%s", content)
+	}
+	managed, ok := shared.ManagedBlockContent(content, bashAliasBegin, bashAliasEnd)
+	if !ok || !strings.Contains(managed, grepColorAlias) {
+		t.Fatalf("managed grep alias was not added:\n%s", content)
+	}
+}
+
 func TestReplaceBashConfigPreservesExistingPermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".bashrc")
 	if err := os.WriteFile(path, []byte("export SECRET=value\n"), 0600); err != nil {
@@ -153,7 +195,7 @@ alias ls='ls --color=auto'
 	if strings.Contains(body, rootPromptBlock) || strings.Contains(body, rootDircolorsBlock) || strings.Contains(body, "alias ls='ls --color=auto'") {
 		t.Fatalf("managed block duplicated existing prompt or ls color configuration:\n%s", body)
 	}
-	for _, required := range []string{bashAliasBlock, rootSafetyAliasBlock} {
+	for _, required := range []string{baseAliasBlock, grepColorAlias, rootSafetyAliasBlock} {
 		if !strings.Contains(body, required) {
 			t.Fatalf("managed root configuration is missing required content %q:\n%s", required, body)
 		}
@@ -173,6 +215,26 @@ func TestRootBashConfigTreatsCommentedSettingsAsMissing(t *testing.T) {
 	}
 	if body != rootBashBlock {
 		t.Fatalf("default root configuration was not generated:\n%s", body)
+	}
+}
+
+func TestRootPromptUsesColorCapabilityFallback(t *testing.T) {
+	for _, required := range []string{
+		`case "$TERM" in`,
+		`if [ "$color_prompt" = yes ]; then`,
+		`PS1='${debian_chroot:+($debian_chroot)}\[\033[38;5;196m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '`,
+		`PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '`,
+		`unset color_prompt force_color_prompt`,
+	} {
+		if !strings.Contains(rootPromptBlock, required) {
+			t.Fatalf("root prompt is missing %q:\n%s", required, rootPromptBlock)
+		}
+	}
+}
+
+func TestRootBashConfigStartsWithInteractiveShellGuard(t *testing.T) {
+	if !strings.HasPrefix(rootBashBlock, rootInteractiveShellBlock+"\n\n") {
+		t.Fatalf("root Bash configuration does not start with the interactive shell guard:\n%s", rootBashBlock)
 	}
 }
 
@@ -206,9 +268,12 @@ alias grep='grep --color=always'
 			t.Fatalf("existing color configuration was duplicated by %q:\n%s", duplicate, colorBlock)
 		}
 	}
-	for _, missing := range []string{"alias fgrep='fgrep --color=auto'", "alias egrep='egrep --color=auto'"} {
-		if !strings.Contains(colorBlock, missing) {
-			t.Fatalf("missing color alias %q was not added:\n%s", missing, colorBlock)
+	if colorBlock != "" {
+		t.Fatalf("complete existing color configuration received extra content:\n%s", colorBlock)
+	}
+	for _, deprecated := range []string{"alias fgrep=", "alias egrep="} {
+		if strings.Contains(rootColorBlock, deprecated) {
+			t.Fatalf("root color configuration contains deprecated alias %q:\n%s", deprecated, rootColorBlock)
 		}
 	}
 }

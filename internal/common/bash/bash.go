@@ -16,10 +16,17 @@ import (
 const (
 	bashAliasBegin = "# ===== BEGIN SNAIL BASH ALIASES ====="
 	bashAliasEnd   = "# ===== END SNAIL BASH ALIASES ====="
-	bashAliasBlock = `alias l='ls -lh'
+	baseAliasBlock = `alias l='ls -lh'
 alias la='ls -A'
 alias ll='ls -lah'
 alias lspath='echo "$PATH" | tr ":" "\n"'`
+	grepColorAlias            = `alias grep='grep --color=auto'`
+	bashAliasBlock            = baseAliasBlock + "\n" + grepColorAlias
+	rootInteractiveShellBlock = `# If not running interactively, don't do anything
+case $- in
+    *i*) ;;
+      *) return;;
+esac`
 	rootHistoryBlock = `# -------------------------
 # History
 # -------------------------
@@ -56,17 +63,23 @@ fi
 
 # root@hostname = red
 # current directory = blue
-PS1='${debian_chroot:+($debian_chroot)}\[\033[38;5;196m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
+case "$TERM" in
+    xterm-color|*-256color) color_prompt=yes;;
+esac
+
+if [ "$color_prompt" = yes ]; then
+    PS1='${debian_chroot:+($debian_chroot)}\[\033[38;5;196m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
+else
+    PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
+fi
+unset color_prompt force_color_prompt
 
 # PS1='\[\033[01;35m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '`
 	rootDircolorsBlock = `if command -v dircolors >/dev/null 2>&1; then
     eval "$(dircolors -b)"
 fi`
-	rootColorAliasBlock = `alias ls='ls --color=auto'
-alias grep='grep --color=auto'
-alias fgrep='fgrep --color=auto'
-alias egrep='egrep --color=auto'`
-	rootColorBlock = `# -------------------------
+	rootColorAliasBlock = `alias ls='ls --color=auto'` + "\n" + grepColorAlias
+	rootColorBlock      = `# -------------------------
 # Colors
 # -------------------------
 
@@ -75,7 +88,7 @@ alias egrep='egrep --color=auto'`
 alias rm='rm -i'
 alias cp='cp -i'
 alias mv='mv -i'`
-	rootBashBlock = rootHistoryBlock + "\n\n" + rootShellBehaviorBlock + "\n\n" + rootPromptBlock + "\n\n" + rootColorBlock + "\n\n" + bashAliasBlock + "\n\n" + rootSafetyAliasBlock
+	rootBashBlock = rootInteractiveShellBlock + "\n\n" + rootHistoryBlock + "\n\n" + rootShellBehaviorBlock + "\n\n" + rootPromptBlock + "\n\n" + rootColorBlock + "\n\n" + baseAliasBlock + "\n\n" + rootSafetyAliasBlock
 )
 
 var (
@@ -95,7 +108,7 @@ func IsBashConfigured(account *system.Account) bool {
 	bashrc := filepath.Join(account.Home, ".bashrc")
 	content := shared.ReadFileString(bashrc)
 	managed, ok := shared.ManagedBlockContent(content, bashAliasBegin, bashAliasEnd)
-	if !ok || !strings.Contains(managed, bashAliasBlock) {
+	if !ok || !strings.Contains(managed, baseAliasBlock) || !hasActiveAlias(content, "grep") {
 		return false
 	}
 	return !isRootAccount(account) || strings.Contains(managed, rootSafetyAliasBlock)
@@ -105,11 +118,19 @@ func isRootAccount(account *system.Account) bool {
 	return account != nil && account.Name == "root"
 }
 
+func userBashBlockForContent(content string) string {
+	if hasActiveAlias(content, "grep") {
+		return baseAliasBlock
+	}
+	return bashAliasBlock
+}
+
 func rootBashBlockForContent(content string) (string, bool, bool) {
 	preservePrompt := hasActiveAssignment(content, "PS1")
 	colorBlock, preserveColor := rootColorBlockForContent(content)
 
-	parts := make([]string, 0, 6)
+	parts := make([]string, 0, 7)
+	parts = append(parts, rootInteractiveShellBlock)
 	if historyBlock := rootHistoryBlockForContent(content); historyBlock != "" {
 		parts = append(parts, historyBlock)
 	}
@@ -122,7 +143,7 @@ func rootBashBlockForContent(content string) (string, bool, bool) {
 	if colorBlock != "" {
 		parts = append(parts, colorBlock)
 	}
-	parts = append(parts, bashAliasBlock, rootSafetyAliasBlock)
+	parts = append(parts, baseAliasBlock, rootSafetyAliasBlock)
 	return strings.Join(parts, "\n\n"), preservePrompt, preserveColor
 }
 
@@ -217,8 +238,6 @@ func rootColorBlockForContent(content string) (string, bool) {
 	}{
 		{name: "ls", line: "alias ls='ls --color=auto'"},
 		{name: "grep", line: "alias grep='grep --color=auto'"},
-		{name: "fgrep", line: "alias fgrep='fgrep --color=auto'"},
-		{name: "egrep", line: "alias egrep='egrep --color=auto'"},
 	} {
 		if hasActiveAlias(content, item.name) {
 			preserved = true
@@ -254,16 +273,15 @@ func ConfigureBash() error {
 	}); err != nil {
 		return err
 	}
-	bashBlock := bashAliasBlock
+	data, err := os.ReadFile(bashrc)
+	if err != nil {
+		return err
+	}
+	unmanaged := shared.RemoveManagedBlock(string(data), bashAliasBegin, bashAliasEnd)
+	bashBlock := userBashBlockForContent(unmanaged)
 	preservedPrompt := false
 	preservedColor := false
 	if isRootAccount(account) {
-		data, err := os.ReadFile(bashrc)
-		if err != nil {
-			return err
-		}
-		content := string(data)
-		unmanaged := shared.RemoveManagedBlock(content, bashAliasBegin, bashAliasEnd)
 		bashBlock, preservedPrompt, preservedColor = rootBashBlockForContent(unmanaged)
 	}
 	if err := replaceBashConfig(bashrc, bashBlock); err != nil {
@@ -299,7 +317,12 @@ func ConfigureBash() error {
 }
 
 func replaceAliases(path string) error {
-	return replaceBashConfig(path, bashAliasBlock)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	unmanaged := shared.RemoveManagedBlock(string(data), bashAliasBegin, bashAliasEnd)
+	return replaceBashConfig(path, userBashBlockForContent(unmanaged))
 }
 
 func replaceBashConfig(path, body string) error {
