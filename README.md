@@ -2,6 +2,8 @@
 
 `snail_tool` 是由原 `snail_tool.sh` 重写而来的 Go 版本，保留原有交互式菜单，并按功能模块拆分，方便后续扩展和维护。
 
+命令、参数、环境变量、权限要求和退出状态详见 [`docs/CLI.md`](docs/CLI.md)。
+
 ## 功能
 
 - 容器管理：检测 Docker/Podman，并在二者并存时明确优先使用 Docker；容器操作以真实子命令显示，支持 `start`、`stop`、`restart`、`pause`/`unpause`、`inspect`、`logs`、`logs -f`、`exec`、Compose `down` 和非强制 `rm`；Compose 项目支持 `up -d`、`stop`、`restart`、不删除卷的 `down`，以及项目扫描、批量更新和重建；Docker 服务配置支持代理和日志轮转；资源清理按影响展示各类 prune 命令并逐次确认；卸载运行时可选择保留数据，完全卸载则经过强确认后永久删除对应数据
@@ -127,6 +129,8 @@ git push origin v1.0.0
 也可以在 GitHub Actions 页面手动触发，并填写 `tag_name` 后发布。
 
 ## 运行
+
+完整 CLI 参数说明见 [`docs/CLI.md`](docs/CLI.md)。
 
 ```bash
 sudo ./snail_tool
