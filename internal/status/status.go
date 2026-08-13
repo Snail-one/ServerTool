@@ -34,7 +34,7 @@ func DetectStatus(account *system.Account) Status {
 		UPS:         commonups.IsUPSConfigured(),
 		Runtime:     RuntimeSummary(containerruntime.DetectAll()),
 		GoVersion:   golang.CurrentVersion(),
-		ConfigTotal: 4,
+		ConfigTotal: 3,
 	}
 	if account != nil {
 		result.SSHKeys = keys.IsConfigured(account)
@@ -43,7 +43,7 @@ func DetectStatus(account *system.Account) Status {
 		result.Bash = commonbash.IsBashConfigured(account)
 		result.Proxy = commonproxy.IsProxyConfigured(account)
 	}
-	for _, configured := range []bool{result.Vim, result.Bash, result.Proxy, result.UPS} {
+	for _, configured := range []bool{result.Vim, result.Bash, result.Proxy} {
 		if configured {
 			result.Configured++
 		}

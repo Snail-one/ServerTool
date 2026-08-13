@@ -21,7 +21,8 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 			Runtime:     "未安装",
 			GoVersion:   "go1.25.1",
 			Configured:  2,
-			ConfigTotal: 4,
+			ConfigTotal: 3,
+			UPS:         true,
 		})
 	})
 
@@ -30,8 +31,11 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 		"[版本 v9.8.7]",
 		"容器管理",
 		"[未安装]",
-		"开发环境管理",
+		"开发环境",
 		"[Go go1.25.1]",
+		"清理配置",
+		"工具",
+		"[UPS 已配置]",
 		"0/q 退出",
 	} {
 		if !strings.Contains(output, expected) {
@@ -43,9 +47,7 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 	}
 	badgeColumn := -1
 	for _, line := range strings.Split(output, "\n") {
-		if !strings.Contains(line, "容器管理") && !strings.Contains(line, "一键配置") &&
-			!strings.Contains(line, "SSH 管理") && !strings.Contains(line, "系统与用户配置") &&
-			!strings.Contains(line, "开发环境管理") {
+		if !isMainStatusRow(line) {
 			continue
 		}
 		badge := strings.Index(line, "[")
@@ -59,6 +61,15 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 			t.Fatalf("主菜单状态徽标未对齐：\n%s", output)
 		}
 	}
+}
+
+func isMainStatusRow(line string) bool {
+	for _, label := range []string{"1   容器管理", "2   一键配置", "3   SSH 管理", "4   系统与用户配置", "5   开发环境", "7   工具"} {
+		if strings.Contains(line, label) {
+			return true
+		}
+	}
+	return false
 }
 
 func testDisplayWidth(text string) int {

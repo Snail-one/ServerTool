@@ -6,7 +6,6 @@ import (
 
 	commonbash "snail_tool/internal/common/bash"
 	commonproxy "snail_tool/internal/common/proxy"
-	commonups "snail_tool/internal/common/ups"
 	commonvim "snail_tool/internal/common/vim"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
@@ -21,7 +20,6 @@ func Run(view *ui.UI) error {
 		ui.MenuOptionStatusHint("1", "Vim 配置", ui.ConfiguredBadge(status.vim), "~/.vimrc")
 		ui.MenuOptionStatus("2", "Bash 配置", ui.ConfiguredBadge(status.bash))
 		ui.MenuOptionStatus("3", "HTTP/HTTPS 代理", ui.ConfiguredBadge(status.proxy))
-		ui.MenuOptionStatus("4", "UPS（NUT）", ui.ConfiguredBadge(status.ups))
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -47,10 +45,6 @@ func Run(view *ui.UI) error {
 			shared.RunAction(view, "代理配置失败，已返回系统与用户配置", func() error {
 				return commonproxy.Run(view)
 			})
-		case "4":
-			shared.RunAction(view, "UPS 配置失败，已返回系统与用户配置", func() error {
-				return commonups.Run(view)
-			})
 		default:
 			ui.InvalidChoice()
 			view.Pause()
@@ -62,7 +56,6 @@ type commonStatus struct {
 	vim   bool
 	bash  bool
 	proxy bool
-	ups   bool
 }
 
 func currentStatus() commonStatus {
@@ -74,6 +67,5 @@ func currentStatus() commonStatus {
 		vim:   commonvim.IsVimConfigured(account),
 		bash:  commonbash.IsBashConfigured(account),
 		proxy: commonproxy.IsProxyConfigured(account),
-		ups:   commonups.IsUPSConfigured(),
 	}
 }

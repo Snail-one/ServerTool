@@ -42,6 +42,21 @@ func TestDetectStatusForUserFiles(t *testing.T) {
 	}
 }
 
+func TestUserConfigurationCountExcludesUPS(t *testing.T) {
+	clearProxyEnv(t)
+
+	home := t.TempDir()
+	account := &system.Account{Name: "test", Home: home}
+	status := DetectStatus(account)
+
+	if status.ConfigTotal != 3 {
+		t.Fatalf("system/user configuration total = %d, want 3", status.ConfigTotal)
+	}
+	if status.UPS && status.Configured != 0 {
+		t.Fatalf("UPS was counted as a system/user configuration: %+v", status)
+	}
+}
+
 func TestRuntimeSummary(t *testing.T) {
 	tests := []struct {
 		name string
