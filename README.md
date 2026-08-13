@@ -7,7 +7,7 @@
 - 容器管理：检测 Docker/Podman，并在二者并存时明确优先使用 Docker；容器操作以真实子命令显示，支持 `start`、`stop`、`restart`、`pause`/`unpause`、`inspect`、`logs`、`logs -f`、`exec`、Compose `down` 和非强制 `rm`；Compose 项目支持 `up -d`、`stop`、`restart`、不删除卷的 `down`，以及项目扫描、批量更新和重建；Docker 服务配置支持代理和日志轮转；资源清理按影响展示各类 prune 命令并逐次确认；卸载运行时可选择保留数据，完全卸载则经过强确认后永久删除对应数据
 - 一键配置：按顺序完成 SSH 公钥添加、SSH 安全策略、Vim 和 Bash 配置；没有已有公钥时必须成功添加一把公钥才会继续安全加固
 - SSH 管理：管理当前用户 SSH 公钥（查看、添加、删除）、写入 SSH 随机端口与禁用密码登录等安全配置、查看当前 SSH 生效安全配置
-- 系统与用户配置：集中管理 Vim `~/.vimrc`、Bash、HTTP/HTTPS 代理环境变量和 UPS（NUT）配置；普通用户的 Bash 提示符使用紫色用户名和蓝色当前目录
+- 系统与用户配置：集中管理 Vim `~/.vimrc`、Bash、HTTP/HTTPS 代理环境变量和 UPS（NUT）配置；普通用户的 Bash 提示符使用紫色用户名，root 使用纯橘色 `#FF7F00`，当前目录均为蓝色
 - 开发环境管理：从 Go 官方 API 获取全部稳定版本，在 `/opt/go` 安装、更新、切换和卸载 amd64/arm64 Go，并为目标用户配置 PATH
 - 清理本工具配置：支持按项清理 SSH、Vim、Bash、代理配置，或在最后一项清理全部
 
