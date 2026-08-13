@@ -240,6 +240,14 @@ GET https://api.github.com/repos/<OWNER>/<REPOSITORY>/releases/latest
 
 API 请求默认遵循系统的代理环境变量。如果代理请求失败且检测到 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY`（含对应小写变量），脚本必须绕过代理直连 API 重试一次，以兼容代理限速或临时不可用的情况。没有配置代理时不得进行无意义的重复请求。
 
+如果 API 请求失败或响应中无法解析 `tag_name`，脚本必须请求下面的固定地址作为兜底：
+
+```text
+https://github.com/<OWNER>/<REPOSITORY>/releases/latest/download/checksums.txt
+```
+
+该地址会重定向到最新 Release 的固定校验文件。脚本从其中形如 `<ASSET_PREFIX>_linux_<ARCH>_<VERSION>` 的文件名提取版本，并要求所有匹配项的版本完全一致；缺少版本或出现多个不同版本时必须停止，不能猜测目标版本。兜底阶段下载的 `checksums.txt` 应在后续 SHA-256 校验中直接复用。
+
 脚本还必须支持指定版本：
 
 ```bash

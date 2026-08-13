@@ -233,13 +233,36 @@ else
 	fail "需要 curl 或 wget 才能下载安装包"
 fi
 
-download_api() {
+download_with_direct_fallback() {
 	if download "$1" "$2"; then
 		return 0
 	fi
 	proxy_configured || return 1
-	warn "通过代理获取 GitHub Releases API 失败，正在尝试直连"
+	warn "通过代理访问 GitHub 失败，正在尝试直连"
 	download_api_direct "$1" "$2"
+}
+
+release_version_from_checksums() {
+	awk '
+		{
+			name = $2
+			sub(/^\*/, "", name)
+			if (name ~ /^snailtool_linux_(amd64|arm64)_/) {
+				sub(/^snailtool_linux_(amd64|arm64)_/, "", name)
+				if (version == "") {
+					version = name
+				} else if (version != name) {
+					mismatch = 1
+				}
+			}
+		}
+		END {
+			if (version == "" || mismatch) {
+				exit 1
+			}
+			print version
+		}
+	' "$1"
 }
 
 if command -v sha256sum >/dev/null 2>&1; then
@@ -258,10 +281,23 @@ TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/servertool-install.XXXXXX")"
 step "检查发布版本"
 if [ "$RELEASE" = "latest" ]; then
 	RELEASE_METADATA="${TEMP_DIR}/release.json"
-	download_api "https://api.github.com/repos/${REPOSITORY}/releases/latest" "$RELEASE_METADATA"
-	RELEASE_VERSION="$(sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' "$RELEASE_METADATA" | sed -n '1p')"
-	[ -n "$RELEASE_VERSION" ] || fail "无法从 GitHub Release 信息中解析最新版本"
-	info "最新正式版本：${RELEASE_VERSION}（GitHub Releases API）"
+	RELEASE_VERSION=""
+	if download_with_direct_fallback "https://api.github.com/repos/${REPOSITORY}/releases/latest" "$RELEASE_METADATA"; then
+		RELEASE_VERSION="$(sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' "$RELEASE_METADATA" | sed -n '1p')"
+	fi
+	if [ -n "$RELEASE_VERSION" ]; then
+		info "最新正式版本：${RELEASE_VERSION}（GitHub Releases API）"
+	else
+		warn "GitHub Releases API 不可用，正在通过 checksums.txt 解析最新版本"
+		CHECKSUM_FILE="${TEMP_DIR}/checksums.txt"
+		if ! download_with_direct_fallback "https://github.com/${REPOSITORY}/releases/latest/download/checksums.txt" "$CHECKSUM_FILE"; then
+			fail "无法通过 GitHub Releases API 或 checksums.txt 获取最新版本"
+		fi
+		if ! RELEASE_VERSION="$(release_version_from_checksums "$CHECKSUM_FILE")"; then
+			fail "checksums.txt 中没有唯一有效的 ServerTool 版本号"
+		fi
+		info "最新正式版本：${RELEASE_VERSION}（checksums.txt 兜底）"
+	fi
 	LATEST_RELEASE=true
 else
 	RELEASE_VERSION="$RELEASE"
@@ -279,7 +315,8 @@ ASSET_FILE="${TEMP_DIR}/${ASSET}"
 CHECKSUM_FILE="${TEMP_DIR}/${CHECKSUM_NAME}"
 
 # 先取得体积很小的校验文件，用它同时验证现有程序和待下载程序。
-if ! download_optional "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"; then
+# API 失败时可能已经通过 latest 下载过该文件，此处直接复用。
+if [ ! -s "$CHECKSUM_FILE" ] && ! download_optional "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"; then
 	# 兼容曾经使用版本化校验文件名的 Release。
 	CHECKSUM_NAME="checksums_${RELEASE_VERSION}.txt"
 	CHECKSUM_FILE="${TEMP_DIR}/${CHECKSUM_NAME}"

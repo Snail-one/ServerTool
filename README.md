@@ -61,7 +61,7 @@ sudo sh scripts/install.sh --uninstall
 curl -fsSL https://raw.githubusercontent.com/Snail-one/ServerTool/main/scripts/install.sh | sudo sh -s -- --uninstall
 ```
 
-更新时会比较当前版本并使用 Release 的 SHA-256 校验本地程序；版本和文件校验均一致时直接退出，文件损坏或内容不一致时会自动重新下载修复。
+更新时会比较当前版本并使用 Release 的 SHA-256 校验本地程序；版本和文件校验均一致时直接退出，文件损坏或内容不一致时会自动重新下载修复。GitHub Releases API 不可用时，安装脚本会通过最新 Release 的 `checksums.txt` 中的版本化二进制文件名解析目标版本，作为更新兜底。
 
 ServerTool 发起的文件下载会显示实时进度、已接收大小和速度；服务器未返回文件总大小时，则显示已接收大小和速度。系统包管理器与 Docker Compose 的下载沿用其自身的实时进度输出。
 
