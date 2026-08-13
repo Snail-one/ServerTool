@@ -49,6 +49,22 @@ shopt -s checkwinsize
 
 # Uncomment if you want ** to recursively match directories
 # shopt -s globstar`
+	userPromptBlock = `# -------------------------
+# Prompt
+# -------------------------
+
+# user@hostname = purple
+# current directory = blue
+case "$TERM" in
+    xterm*|screen*|tmux*|*-256color|linux) color_prompt=yes;;
+esac
+
+if [ "$color_prompt" = yes ]; then
+    PS1='${debian_chroot:+($debian_chroot)}\[\033[01;35m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
+else
+    PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
+fi
+unset color_prompt force_color_prompt`
 	rootPromptBlock = `# -------------------------
 # Debian chroot support
 # -------------------------
@@ -64,7 +80,7 @@ fi
 # root@hostname = red
 # current directory = blue
 case "$TERM" in
-    xterm-color|*-256color) color_prompt=yes;;
+    xterm*|screen*|tmux*|*-256color|linux) color_prompt=yes;;
 esac
 
 if [ "$color_prompt" = yes ]; then
@@ -72,9 +88,7 @@ if [ "$color_prompt" = yes ]; then
 else
     PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
 fi
-unset color_prompt force_color_prompt
-
-# PS1='\[\033[01;35m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '`
+unset color_prompt force_color_prompt`
 	rootDircolorsBlock = `if command -v dircolors >/dev/null 2>&1; then
     eval "$(dircolors -b)"
 fi`
@@ -104,6 +118,11 @@ func BashAliasBlock() string {
 	return bashAliasBlock
 }
 
+// BashManagedBlock returns the default managed block written for a regular user.
+func BashManagedBlock() string {
+	return userBashBlockForContent("")
+}
+
 func IsBashConfigured(account *system.Account) bool {
 	bashrc := filepath.Join(account.Home, ".bashrc")
 	content := shared.ReadFileString(bashrc)
@@ -111,7 +130,10 @@ func IsBashConfigured(account *system.Account) bool {
 	if !ok || !strings.Contains(managed, baseAliasBlock) || !hasActiveAlias(content, "grep") {
 		return false
 	}
-	return !isRootAccount(account) || strings.Contains(managed, rootSafetyAliasBlock)
+	if isRootAccount(account) {
+		return strings.Contains(managed, rootSafetyAliasBlock)
+	}
+	return strings.Contains(managed, userPromptBlock)
 }
 
 func isRootAccount(account *system.Account) bool {
@@ -119,10 +141,11 @@ func isRootAccount(account *system.Account) bool {
 }
 
 func userBashBlockForContent(content string) string {
+	aliases := bashAliasBlock
 	if hasActiveAlias(content, "grep") {
-		return baseAliasBlock
+		aliases = baseAliasBlock
 	}
-	return bashAliasBlock
+	return aliases + "\n\n" + userPromptBlock
 }
 
 func rootBashBlockForContent(content string) (string, bool, bool) {
@@ -305,6 +328,9 @@ func ConfigureBash() error {
 	fields := []ui.CardField{
 		{Label: "配置文件", Value: bashrc},
 		{Label: "立即生效", Value: "source " + bashrc},
+	}
+	if !isRootAccount(account) {
+		fields = append(fields, ui.CardField{Label: "终端提示符", Value: "用户名@主机名为紫色，当前目录为蓝色"})
 	}
 	if preservedPrompt {
 		fields = append(fields, ui.CardField{Label: "已有 PS1", Value: "已保留"})

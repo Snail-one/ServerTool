@@ -24,7 +24,7 @@ func TestReplaceAliasesAddsManagedBlock(t *testing.T) {
 	if !strings.Contains(content, bashAliasBegin) || !strings.Contains(content, bashAliasEnd) {
 		t.Fatalf("managed alias block was not written:\n%s", content)
 	}
-	if want := shared.FormatManagedBlock(bashAliasBegin, bashAliasBlock, bashAliasEnd); !strings.Contains(content, want) {
+	if want := shared.FormatManagedBlock(bashAliasBegin, userBashBlockForContent(""), bashAliasEnd); !strings.Contains(content, want) {
 		t.Fatalf("managed alias block spacing mismatch:\n%s", content)
 	}
 	for _, line := range strings.Split(bashAliasBlock, "\n") {
@@ -178,6 +178,69 @@ func TestNonRootAccountKeepsStandardAliasBlock(t *testing.T) {
 	if isRootAccount(account) {
 		t.Fatal("non-root account was treated as root")
 	}
+	body := userBashBlockForContent("")
+	for _, required := range []string{bashAliasBlock, userPromptBlock} {
+		if !strings.Contains(body, required) {
+			t.Fatalf("regular user Bash configuration is missing %q:\n%s", required, body)
+		}
+	}
+}
+
+func TestUserPromptUsesPurpleUsernameAndBlueDirectory(t *testing.T) {
+	for _, required := range []string{
+		`case "$TERM" in`,
+		`xterm*|screen*|tmux*|*-256color|linux) color_prompt=yes;;`,
+		`PS1='${debian_chroot:+($debian_chroot)}\[\033[01;35m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '`,
+		`PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '`,
+		`unset color_prompt force_color_prompt`,
+	} {
+		if !strings.Contains(userPromptBlock, required) {
+			t.Fatalf("regular user prompt is missing %q:\n%s", required, userPromptBlock)
+		}
+	}
+}
+
+func TestUserBashConfigRetainsExistingPromptForCleanup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".bashrc")
+	const existing = "PS1='custom prompt ' # restored after managed block cleanup\n"
+	if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := replaceAliases(path); err != nil {
+		t.Fatal(err)
+	}
+
+	content := readTestFile(t, path)
+	if !strings.Contains(content, existing) {
+		t.Fatalf("existing prompt was removed:\n%s", content)
+	}
+	managed, ok := shared.ManagedBlockContent(content, bashAliasBegin, bashAliasEnd)
+	if !ok || !strings.Contains(managed, userPromptBlock) {
+		t.Fatalf("managed purple prompt was not added:\n%s", content)
+	}
+}
+
+func TestRegularUserConfigurationStatusRequiresManagedPrompt(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, ".bashrc")
+	account := &system.Account{Name: "alice", Home: home, UID: 1000, GID: 1000}
+
+	legacy := shared.FormatManagedBlock(bashAliasBegin, bashAliasBlock, bashAliasEnd)
+	if err := os.WriteFile(path, []byte(legacy), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if IsBashConfigured(account) {
+		t.Fatal("legacy aliases-only block was treated as the current regular-user configuration")
+	}
+
+	current := shared.FormatManagedBlock(bashAliasBegin, BashManagedBlock(), bashAliasEnd)
+	if err := os.WriteFile(path, []byte(current), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if !IsBashConfigured(account) {
+		t.Fatal("regular-user Bash configuration with managed prompt was not detected")
+	}
 }
 
 func TestRootBashConfigPreservesExistingPromptAndColorConfig(t *testing.T) {
@@ -221,6 +284,7 @@ func TestRootBashConfigTreatsCommentedSettingsAsMissing(t *testing.T) {
 func TestRootPromptUsesColorCapabilityFallback(t *testing.T) {
 	for _, required := range []string{
 		`case "$TERM" in`,
+		`xterm*|screen*|tmux*|*-256color|linux) color_prompt=yes;;`,
 		`if [ "$color_prompt" = yes ]; then`,
 		`PS1='${debian_chroot:+($debian_chroot)}\[\033[38;5;196m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '`,
 		`PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '`,
