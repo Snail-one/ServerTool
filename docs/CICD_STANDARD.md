@@ -361,7 +361,7 @@ needs: build
 ### 9.4 生成校验文件
 
 ```bash
-sha256sum <PRODUCT>_* > "checksums_${RELEASE_TAG}.txt"
+sha256sum <PRODUCT>_* > checksums.txt
 ```
 
 结果示例：
@@ -369,7 +369,7 @@ sha256sum <PRODUCT>_* > "checksums_${RELEASE_TAG}.txt"
 ```text
 snailtool_linux_amd64_v1.2.0
 snailtool_linux_arm64_v1.2.0
-checksums_v1.2.0.txt
+checksums.txt
 ```
 
 校验文件是安装和更新的完整性依据，生成失败必须停止发布。
@@ -426,7 +426,7 @@ ServerTool 使用两层说明：
 7. 构建时注入 `v1.2.0`、提交 SHA 和 UTC 构建时间。
 8. 两个二进制作为内部 Artifact 上传。
 9. Release Job 下载并合并 Artifact。
-10. 生成 `checksums_v1.2.0.txt`。
+10. 生成 `checksums.txt`。
 11. 根据上一个标签和 `v1.2.0` 生成提交说明。
 12. GitHub 补充原生 Release Notes。
 13. 创建 Release 并上传全部文件。
@@ -484,7 +484,7 @@ git push origin v1.2.0
 ```text
 <PRODUCT>_linux_amd64_v1.2.0
 <PRODUCT>_linux_arm64_v1.2.0
-checksums_v1.2.0.txt
+checksums.txt
 ```
 
 验证：

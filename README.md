@@ -70,7 +70,7 @@ Release 文件名会在末尾包含版本号，例如：
 ```text
 snailtool_linux_amd64_v1.2.0
 snailtool_linux_arm64_v1.2.0
-checksums_v1.2.0.txt
+checksums.txt
 ```
 
 ## Go 环境管理

@@ -132,13 +132,13 @@ snailtool_linux_arm64_v1.2.0
 ### 5.2 校验文件命名
 
 ```text
-checksums_<VERSION_TAG>.txt
+checksums.txt
 ```
 
 示例：
 
 ```text
-checksums_v1.2.0.txt
+checksums.txt
 ```
 
 内容使用 `sha256sum` 标准格式：
@@ -159,7 +159,7 @@ checksums_v1.2.0.txt
 3. 校验版本字符是否合法。
 4. 分架构编译，并通过链接参数注入版本信息。
 5. 使用标准文件名上传构建产物。
-6. 汇总所有架构产物并生成 `checksums_<VERSION_TAG>.txt`。
+6. 汇总所有架构产物并生成 `checksums.txt`。
 7. 创建 GitHub Release 并上传二进制和校验文件。
 8. 生成 Release Notes。
 
@@ -176,7 +176,7 @@ checksums_v1.2.0.txt
       -o "dist/<ASSET_PREFIX>_linux_<ARCH>_${VERSION}" ./cmd/<COMMAND>
 
 - name: Generate checksums
-  run: sha256sum <ASSET_PREFIX>_* > "checksums_${RELEASE_TAG}.txt"
+  run: sha256sum <ASSET_PREFIX>_* > checksums.txt
 
 - name: Publish release
   uses: softprops/action-gh-release@v3
@@ -259,7 +259,7 @@ sudo sh scripts/install.sh --uninstall
 必须先下载体积较小的校验文件，再决定是否下载二进制：
 
 ```text
-https://github.com/<OWNER>/<REPOSITORY>/releases/download/<VERSION>/checksums_<VERSION>.txt
+https://github.com/<OWNER>/<REPOSITORY>/releases/download/<VERSION>/checksums.txt
 ```
 
 从校验文件中只读取当前系统和架构对应资产的 SHA-256。
@@ -457,14 +457,14 @@ SHA-256 只能验证文件与 Release 中的校验记录一致，不能防御 Gi
 
 ## 12. 兼容策略
 
-迁移旧项目时，可以临时兼容无版本后缀的旧资产：
+迁移旧项目时，可以临时兼容无版本后缀的旧二进制资产：
 
 ```text
 <ASSET_PREFIX>_linux_<ARCH>
 checksums.txt
 ```
 
-标准脚本应优先请求新版文件名；新版校验文件不存在时才回退旧格式。所有新 Release 必须只使用版本化文件名。
+标准脚本必须优先请求固定名称 `checksums.txt`，并优先查找带版本后缀的二进制文件名。为保证历史 Release 仍可安装，可以在读取时回退曾经使用的 `checksums_<VERSION_TAG>.txt`，以及校验文件中的无版本后缀二进制名称。所有新 Release 必须使用版本化二进制名称和固定校验文件名 `checksums.txt`。
 
 ## 13. 项目接入清单
 

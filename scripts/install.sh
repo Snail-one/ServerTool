@@ -273,22 +273,30 @@ case "$RELEASE_VERSION" in
 esac
 
 ASSET="snailtool_linux_${ARCH}_${RELEASE_VERSION}"
-CHECKSUM_NAME="checksums_${RELEASE_VERSION}.txt"
+CHECKSUM_NAME="checksums.txt"
 DOWNLOAD_BASE="https://github.com/${REPOSITORY}/releases/download/${RELEASE_VERSION}"
 ASSET_FILE="${TEMP_DIR}/${ASSET}"
 CHECKSUM_FILE="${TEMP_DIR}/${CHECKSUM_NAME}"
 
 # 先取得体积很小的校验文件，用它同时验证现有程序和待下载程序。
 if ! download_optional "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"; then
-	# 兼容改用版本化文件名之前发布的版本。
-	ASSET="snailtool_linux_${ARCH}"
-	CHECKSUM_NAME="checksums.txt"
-	ASSET_FILE="${TEMP_DIR}/${ASSET}"
+	# 兼容曾经使用版本化校验文件名的 Release。
+	CHECKSUM_NAME="checksums_${RELEASE_VERSION}.txt"
 	CHECKSUM_FILE="${TEMP_DIR}/${CHECKSUM_NAME}"
-	info "该版本使用旧版发布文件名，正在兼容处理"
+	info "该版本使用旧版校验文件名，正在兼容处理"
 	download "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"
 fi
 EXPECTED_SHA256="$(awk -v asset="$ASSET" '$2 == asset || $2 == "*" asset { print $1; exit }' "$CHECKSUM_FILE")"
+# 兼容早期未在二进制文件名末尾添加版本号的 Release。
+if [ -z "$EXPECTED_SHA256" ]; then
+	LEGACY_ASSET="snailtool_linux_${ARCH}"
+	EXPECTED_SHA256="$(awk -v asset="$LEGACY_ASSET" '$2 == asset || $2 == "*" asset { print $1; exit }' "$CHECKSUM_FILE")"
+	if [ -n "$EXPECTED_SHA256" ]; then
+		ASSET="$LEGACY_ASSET"
+		ASSET_FILE="${TEMP_DIR}/${ASSET}"
+		info "该版本使用旧版发布文件名，正在兼容处理"
+	fi
+fi
 [ -n "$EXPECTED_SHA256" ] || fail "${CHECKSUM_NAME} 中没有 ${ASSET} 的校验值"
 
 CURRENT_DISPLAY="未安装"

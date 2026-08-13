@@ -109,7 +109,7 @@ jobs:
 
       - name: Generate checksums
         working-directory: release-assets
-        run: sha256sum snailtool_* > "checksums_${RELEASE_TAG}.txt"
+        run: sha256sum snailtool_* > checksums.txt
 
       - name: Generate release notes from commits
         env:
