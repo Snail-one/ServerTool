@@ -131,7 +131,7 @@ func IsBashConfigured(account *system.Account) bool {
 		return false
 	}
 	if isRootAccount(account) {
-		return strings.Contains(managed, rootSafetyAliasBlock)
+		return strings.Contains(managed, rootSafetyAliasBlock) && strings.Contains(managed, rootPromptBlock)
 	}
 	return strings.Contains(managed, userPromptBlock)
 }
@@ -160,9 +160,10 @@ func rootBashBlockForContent(content string) (string, bool, bool) {
 	if !hasActiveShopt(content, "checkwinsize") {
 		parts = append(parts, rootShellBehaviorBlock)
 	}
-	if !preservePrompt {
-		parts = append(parts, rootPromptBlock)
-	}
+	// Keep an existing user prompt outside the managed block so cleanup can
+	// restore it, but always append the tool prompt so the current managed
+	// configuration wins while it is installed.
+	parts = append(parts, rootPromptBlock)
 	if colorBlock != "" {
 		parts = append(parts, colorBlock)
 	}
@@ -319,7 +320,7 @@ func ConfigureBash() error {
 	fmt.Println(ui.PrimaryBoldText("已经写入以下 Bash 配置："))
 	fmt.Println(bashBlock)
 	if preservedPrompt {
-		fmt.Println("保留了已有的 PS1 配置")
+		fmt.Println("保留了已有的 PS1 配置，工具的橙色提示符将优先生效")
 	}
 	if preservedColor {
 		fmt.Println("保留了已有的颜色配置")
@@ -333,7 +334,7 @@ func ConfigureBash() error {
 		fields = append(fields, ui.CardField{Label: "终端提示符", Value: "用户名@主机名为紫色，当前目录为蓝色"})
 	}
 	if preservedPrompt {
-		fields = append(fields, ui.CardField{Label: "已有 PS1", Value: "已保留"})
+		fields = append(fields, ui.CardField{Label: "已有 PS1", Value: "已保留（橙色配置优先生效）"})
 	}
 	if preservedColor {
 		fields = append(fields, ui.CardField{Label: "已有颜色配置", Value: "已保留"})

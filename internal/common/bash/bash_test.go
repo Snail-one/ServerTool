@@ -243,7 +243,7 @@ func TestRegularUserConfigurationStatusRequiresManagedPrompt(t *testing.T) {
 	}
 }
 
-func TestRootBashConfigPreservesExistingPromptAndColorConfig(t *testing.T) {
+func TestRootBashConfigOverridesExistingPromptAndPreservesColorConfig(t *testing.T) {
 	existing := `# PS1='commented prompt'
 PS1='custom prompt '
 export LS_COLORS='custom colors'
@@ -255,13 +255,73 @@ alias ls='ls --color=auto'
 	if !preservedPrompt || !preservedColor {
 		t.Fatalf("existing root settings were not detected: prompt=%v color=%v", preservedPrompt, preservedColor)
 	}
-	if strings.Contains(body, rootPromptBlock) || strings.Contains(body, rootDircolorsBlock) || strings.Contains(body, "alias ls='ls --color=auto'") {
-		t.Fatalf("managed block duplicated existing prompt or ls color configuration:\n%s", body)
+	if !strings.Contains(body, rootPromptBlock) {
+		t.Fatalf("managed block did not override the existing prompt:\n%s", body)
+	}
+	if strings.Contains(body, rootDircolorsBlock) || strings.Contains(body, "alias ls='ls --color=auto'") {
+		t.Fatalf("managed block duplicated existing ls color configuration:\n%s", body)
 	}
 	for _, required := range []string{baseAliasBlock, grepColorAlias, rootSafetyAliasBlock} {
 		if !strings.Contains(body, required) {
 			t.Fatalf("managed root configuration is missing required content %q:\n%s", required, body)
 		}
+	}
+}
+
+func TestRootConfigurationStatusRequiresCurrentOrangePrompt(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, ".bashrc")
+	account := &system.Account{Name: "root", Home: home, UID: 0, GID: 0}
+	legacyPrompt := strings.Replace(rootPromptBlock, "38;2;255;127;0", "38;5;196", 1)
+	legacyBlock := strings.Replace(rootBashBlock, rootPromptBlock, legacyPrompt, 1)
+
+	if err := os.WriteFile(path, []byte(shared.FormatManagedBlock(bashAliasBegin, legacyBlock, bashAliasEnd)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if IsBashConfigured(account) {
+		t.Fatal("legacy red root prompt was treated as the current configuration")
+	}
+
+	if err := os.WriteFile(path, []byte(shared.FormatManagedBlock(bashAliasBegin, rootBashBlock, bashAliasEnd)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if !IsBashConfigured(account) {
+		t.Fatal("current orange root prompt was not detected")
+	}
+}
+
+func TestRootBashRewriteRemovesLegacyManagedConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".bashrc")
+	legacyPrompt := strings.Replace(rootPromptBlock, "38;2;255;127;0", "38;5;196", 1)
+	legacyBlock := strings.Replace(rootBashBlock, rootPromptBlock, legacyPrompt, 1)
+	existing := "PS1='user prompt ' # preserved outside the managed block\n\n" +
+		shared.FormatManagedBlock(bashAliasBegin, legacyBlock, bashAliasEnd)
+	if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	unmanaged := shared.RemoveManagedBlock(existing, bashAliasBegin, bashAliasEnd)
+	currentBlock, _, _ := rootBashBlockForContent(unmanaged)
+	if err := replaceBashConfig(path, currentBlock); err != nil {
+		t.Fatal(err)
+	}
+
+	content := readTestFile(t, path)
+	managed, ok := shared.ManagedBlockContent(content, bashAliasBegin, bashAliasEnd)
+	if !ok {
+		t.Fatal("rewritten root Bash configuration is missing its managed block")
+	}
+	if strings.Contains(managed, "38;5;196") {
+		t.Fatalf("legacy red prompt remained in the managed block:\n%s", managed)
+	}
+	if !strings.Contains(managed, "38;2;255;127;0") {
+		t.Fatalf("current orange prompt was not written:\n%s", managed)
+	}
+	if strings.Count(content, bashAliasBegin) != 1 || strings.Count(content, bashAliasEnd) != 1 {
+		t.Fatalf("managed Bash configuration was duplicated:\n%s", content)
+	}
+	if !strings.Contains(content, "PS1='user prompt '") {
+		t.Fatalf("configuration outside the managed block was removed:\n%s", content)
 	}
 }
 
