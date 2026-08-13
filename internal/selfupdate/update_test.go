@@ -12,11 +12,15 @@ func TestRunDownloadsAndExecutesScript(t *testing.T) {
 	client := testClient(http.StatusOK, "#!/bin/sh\nprintf 'update-called\\n'\n")
 
 	var output bytes.Buffer
-	if err := run(client, "https://example.invalid/install.sh", strings.NewReader(""), &output, &output); err != nil {
+	var progress bytes.Buffer
+	if err := run(client, "https://example.invalid/install.sh", strings.NewReader(""), &output, &progress); err != nil {
 		t.Fatal(err)
 	}
 	if output.String() != "update-called\n" {
 		t.Fatalf("意外的脚本输出：%q", output.String())
+	}
+	if !strings.Contains(progress.String(), "下载 ServerTool 更新脚本") || !strings.Contains(progress.String(), "100%") {
+		t.Fatalf("更新脚本下载进度异常：%q", progress.String())
 	}
 }
 
@@ -24,7 +28,8 @@ func TestRunPassesArgumentsToScript(t *testing.T) {
 	client := testClient(http.StatusOK, "#!/bin/sh\nprintf '%s\\n' \"$1\"\n")
 
 	var output bytes.Buffer
-	if err := run(client, "https://example.invalid/install.sh", strings.NewReader(""), &output, &output, "--uninstall"); err != nil {
+	var progress bytes.Buffer
+	if err := run(client, "https://example.invalid/install.sh", strings.NewReader(""), &output, &progress, "--uninstall"); err != nil {
 		t.Fatal(err)
 	}
 	if output.String() != "--uninstall\n" {
@@ -59,11 +64,12 @@ func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, 
 func testClient(status int, body string) *http.Client {
 	return &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return &http.Response{
-			StatusCode: status,
-			Status:     http.StatusText(status),
-			Body:       io.NopCloser(strings.NewReader(body)),
-			Header:     make(http.Header),
-			Request:    request,
+			StatusCode:    status,
+			Status:        http.StatusText(status),
+			Body:          io.NopCloser(strings.NewReader(body)),
+			ContentLength: int64(len(body)),
+			Header:        make(http.Header),
+			Request:       request,
 		}, nil
 	})}
 }

@@ -736,14 +736,14 @@ func uniqueStrings(values []string) []string {
 }
 
 func downloadDockerKey(url, path string) error {
-	return downloadDockerArtifact(url, path, 1024*1024)
+	return downloadDockerArtifact(url, path, 1024*1024, "下载 Docker 仓库密钥")
 }
 
 func downloadDockerInstallScript(url, path string) error {
-	return downloadDockerArtifact(url, path, 2*1024*1024)
+	return downloadDockerArtifact(url, path, 2*1024*1024, "下载 Docker 安装脚本")
 }
 
-func downloadDockerArtifact(url, path string, maxSize int64) error {
+func downloadDockerArtifact(url, path string, maxSize int64, progressLabel string) error {
 	client := &http.Client{Timeout: 30 * time.Second}
 	response, err := client.Get(url)
 	if err != nil {
@@ -757,7 +757,13 @@ func downloadDockerArtifact(url, path string, maxSize int64) error {
 	if err != nil {
 		return err
 	}
-	_, copyErr := io.Copy(file, io.LimitReader(response.Body, maxSize+1))
+	_, copyErr := ui.CopyWithProgress(
+		file,
+		io.LimitReader(response.Body, maxSize+1),
+		os.Stdout,
+		progressLabel,
+		response.ContentLength,
+	)
 	closeErr := file.Close()
 	if copyErr != nil {
 		return copyErr

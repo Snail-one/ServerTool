@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"time"
+
+	"snail_tool/internal/ui"
 )
 
 const (
@@ -31,10 +33,18 @@ func run(client *http.Client, scriptURL string, stdin io.Reader, stdout, stderr 
 		return fmt.Errorf("下载程序管理脚本失败: HTTP %d %s", response.StatusCode, http.StatusText(response.StatusCode))
 	}
 
-	data, err := io.ReadAll(io.LimitReader(response.Body, maxScriptSize+1))
+	var downloaded bytes.Buffer
+	_, err = ui.CopyWithProgress(
+		&downloaded,
+		io.LimitReader(response.Body, maxScriptSize+1),
+		stderr,
+		"下载 ServerTool 更新脚本",
+		response.ContentLength,
+	)
 	if err != nil {
 		return fmt.Errorf("读取程序管理脚本失败: %w", err)
 	}
+	data := downloaded.Bytes()
 	if len(data) > maxScriptSize {
 		return fmt.Errorf("程序管理脚本超过 %d 字节限制", maxScriptSize)
 	}

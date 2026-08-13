@@ -881,7 +881,13 @@ func downloadArchive(url, expectedSHA string) (string, error) {
 		}
 	}()
 	hash := sha256.New()
-	written, err := io.Copy(io.MultiWriter(file, hash), response.Body)
+	written, err := ui.CopyWithProgress(
+		io.MultiWriter(file, hash),
+		response.Body,
+		os.Stdout,
+		"下载 Go "+filepath.Base(url),
+		response.ContentLength,
+	)
 	if err != nil {
 		return "", fmt.Errorf("保存 Go 归档失败: %w", err)
 	}
