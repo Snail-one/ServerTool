@@ -88,7 +88,7 @@ func ConfigureUPS(view *ui.UI) error {
 
 	for {
 		ui.ClearScreen()
-		ui.MenuTitle("工具", "UPS（NUT）")
+		ui.MenuTitle("系统工具", "UPS（NUT）")
 		ui.MenuOption("1", "配置或更新 UPS")
 		ui.MenuOptionHint("2", "恢复首次备份", "官方默认配置")
 		ui.MenuOption("3", "删除 UPS 配置备份")

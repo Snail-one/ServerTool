@@ -14,7 +14,7 @@ import (
 func Run(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
-		ui.MenuTitle("工具")
+		ui.MenuTitle("系统工具")
 		ui.MenuOptionStatus("1", "UPS（NUT）", ui.ConfiguredBadge(commonups.IsUPSConfigured()))
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
@@ -30,7 +30,7 @@ func Run(view *ui.UI) error {
 		}
 		switch strings.ToLower(strings.TrimSpace(choice)) {
 		case "1":
-			shared.RunAction(view, "UPS 配置失败，已返回工具菜单", func() error {
+			shared.RunAction(view, "UPS 配置失败，已返回系统工具菜单", func() error {
 				return commonups.Run(view)
 			})
 		default:

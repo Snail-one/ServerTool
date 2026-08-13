@@ -34,7 +34,7 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 		"开发环境",
 		"[Go go1.25.1]",
 		"清理配置",
-		"工具",
+		"系统工具",
 		"[UPS 已配置]",
 		"0/q 退出",
 	} {
@@ -64,7 +64,7 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 }
 
 func isMainStatusRow(line string) bool {
-	for _, label := range []string{"1   容器管理", "2   一键配置", "3   SSH 管理", "4   系统与用户配置", "5   开发环境", "7   工具"} {
+	for _, label := range []string{"1   容器管理", "2   一键配置", "3   SSH 管理", "4   系统与用户配置", "5   开发环境", "7   系统工具"} {
 		if strings.Contains(line, label) {
 			return true
 		}

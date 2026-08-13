@@ -69,7 +69,7 @@ func (a *App) Run() error {
 				return cleanup.Run(a.ui)
 			})
 		case "7":
-			shared.RunAction(a.ui, "工具菜单执行失败，已返回菜单", func() error {
+			shared.RunAction(a.ui, "系统工具菜单执行失败，已返回菜单", func() error {
 				return toolbox.Run(a.ui)
 			})
 		default:
@@ -97,7 +97,7 @@ func showMenu(status status.Status) {
 	ui.MenuOptionStatus("4", "系统与用户配置", ui.Badge(fmt.Sprintf("已配置 %d/%d", status.Configured, status.ConfigTotal), status.ConfigTotal > 0 && status.Configured == status.ConfigTotal))
 	ui.MenuOptionStatus("5", "开发环境", ui.Badge("Go "+defaultStatus(status.GoVersion, "未配置"), status.GoVersion != ""))
 	ui.MenuOption("6", "清理配置")
-	ui.MenuOptionStatus("7", "工具", ui.Badge("UPS "+configuredStatus(status.UPS), status.UPS))
+	ui.MenuOptionStatus("7", "系统工具", ui.Badge("UPS "+configuredStatus(status.UPS), status.UPS))
 	ui.MenuExit("0/q", "退出")
 }
 
