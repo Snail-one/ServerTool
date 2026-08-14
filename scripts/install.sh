@@ -55,6 +55,16 @@ print_completion_card() {
 	printf '%s%s%s\n' "$ORANGE" "╰──────────────────────────────────────────────" "$RESET"
 }
 
+print_uninstall_completion_card() {
+	printf '\n'
+	printf '%s%s%s\n' "$BOLD$ORANGE" "╭─ ServerTool" "$RESET"
+	printf '%s│ %s%s%s\n' "$ORANGE" "$BOLD$GREEN" "卸载完成" "$RESET"
+	printf '%s│ %s版本：%s%s%s%s\n' "$ORANGE" "$BLUE" "$RESET" "$BOLD" "$1" "$RESET"
+	printf '%s│ %s已删除：%s%s\n' "$ORANGE" "$BLUE" "$RESET" "$2"
+	printf '%s│ %s已保留：%s系统服务和用户配置\n' "$ORANGE" "$BLUE" "$RESET"
+	printf '%s%s%s\n' "$ORANGE" "╰──────────────────────────────────────────────" "$RESET"
+}
+
 print_result_card() {
 	printf '%s%s%s\n' "$BOLD$ORANGE" "╭─ ServerTool" "$RESET"
 	printf '%s│ %s%s%s\n' "$ORANGE" "$BOLD$GREEN" "$1" "$RESET"
@@ -184,6 +194,7 @@ if [ "$MODE" = "uninstall" ]; then
 	[ ! -e "$TARGET" ] && [ ! -L "$TARGET" ] || fail "无法删除程序文件：${TARGET}"
 	result "ServerTool 卸载完成。"
 	info "本工具配置的系统服务和用户配置均已保留。"
+	print_uninstall_completion_card "${CURRENT_RELEASE:-未知}" "$TARGET"
 	exit 0
 fi
 
