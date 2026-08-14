@@ -46,29 +46,33 @@ print_banner() {
 	printf '\n'
 }
 
-print_completion_card() {
+print_card() {
 	printf '\n'
 	printf '%s%s%s\n' "$BOLD$ORANGE" "╭─ ServerTool" "$RESET"
-	printf '%s│ %s%s%s\n' "$ORANGE" "$BOLD$GREEN" "$1完成" "$RESET"
-	printf '%s│ %s版本：%s%s%s%s\n' "$ORANGE" "$BLUE" "$RESET" "$BOLD" "$2" "$RESET"
-	printf '%s│ %s位置：%s%s\n' "$ORANGE" "$BLUE" "$RESET" "$3"
+	printf '%s│ %s%s%s%s\n' "$ORANGE" "$BOLD" "$1" "$2" "$RESET"
+	shift 2
+	while [ "$#" -ge 2 ]; do
+		printf '%s│ %s%s：%s%s\n' "$ORANGE" "$BLUE" "$1" "$RESET" "$2"
+		shift 2
+	done
 	printf '%s%s%s\n' "$ORANGE" "╰──────────────────────────────────────────────" "$RESET"
+}
+
+print_completion_card() {
+	print_card "$GREEN" "$1完成" \
+		"版本" "$2" \
+		"位置" "$3"
 }
 
 print_uninstall_completion_card() {
-	printf '\n'
-	printf '%s%s%s\n' "$BOLD$ORANGE" "╭─ ServerTool" "$RESET"
-	printf '%s│ %s%s%s\n' "$ORANGE" "$BOLD$GREEN" "卸载完成" "$RESET"
-	printf '%s│ %s版本：%s%s%s%s\n' "$ORANGE" "$BLUE" "$RESET" "$BOLD" "$1" "$RESET"
-	printf '%s│ %s已删除：%s%s\n' "$ORANGE" "$BLUE" "$RESET" "$2"
-	printf '%s│ %s已保留：%s系统服务和用户配置\n' "$ORANGE" "$BLUE" "$RESET"
-	printf '%s%s%s\n' "$ORANGE" "╰──────────────────────────────────────────────" "$RESET"
+	print_card "$GREEN" "卸载完成" \
+		"版本" "$1" \
+		"已删除" "$2" \
+		"已保留" "系统服务和用户配置"
 }
 
 print_result_card() {
-	printf '%s%s%s\n' "$BOLD$ORANGE" "╭─ ServerTool" "$RESET"
-	printf '%s│ %s%s%s\n' "$ORANGE" "$BOLD$GREEN" "$1" "$RESET"
-	printf '%s%s%s\n' "$ORANGE" "╰──────────────────────────────────────────────" "$RESET"
+	print_card "$GREEN" "$1"
 }
 
 step() {
@@ -80,7 +84,7 @@ info() {
 }
 
 result() {
-	printf '%s[结果]%s %s\n' "$GREEN" "$RESET" "$*"
+	print_result_card "$*"
 }
 
 warn() {
@@ -93,14 +97,11 @@ fail() {
 }
 
 print_release_info() {
-	printf '\n'
-	printf '%s%s%s\n' "$BOLD$ORANGE" "╭─ ServerTool" "$RESET"
-	printf '%s│ %s%s%s\n' "$ORANGE" "$BOLD$ORANGE" "发布信息" "$RESET"
-	printf '%s│ %s平台：%sLinux/%s\n' "$ORANGE" "$BLUE" "$RESET" "$ARCH"
-	printf '%s│ %s当前版本：%s%s\n' "$ORANGE" "$BLUE" "$RESET" "$1"
-	printf '%s│ %s目标版本：%s%s%s%s\n' "$ORANGE" "$BLUE" "$RESET" "$BOLD" "$2" "$RESET"
-	printf '%s│ %s执行操作：%s%s%s%s\n' "$ORANGE" "$BLUE" "$RESET" "$BOLD" "$3" "$RESET"
-	printf '%s%s%s\n' "$ORANGE" "╰──────────────────────────────────────────────" "$RESET"
+	print_card "$ORANGE" "发布信息" \
+		"平台" "Linux/$ARCH" \
+		"当前版本" "$1" \
+		"目标版本" "$2" \
+		"执行操作" "$3"
 }
 
 usage() {
@@ -175,7 +176,6 @@ if [ "$MODE" = "uninstall" ]; then
 	step "检查安装状态"
 	if [ ! -e "$TARGET" ] && [ ! -L "$TARGET" ]; then
 		info "程序文件不存在：${TARGET}"
-		printf '\n'
 		result "ServerTool 当前未安装，无需卸载。"
 		exit 0
 	fi
@@ -192,8 +192,6 @@ if [ "$MODE" = "uninstall" ]; then
 	step "卸载程序"
 	rm -f "$TARGET"
 	[ ! -e "$TARGET" ] && [ ! -L "$TARGET" ] || fail "无法删除程序文件：${TARGET}"
-	result "ServerTool 卸载完成。"
-	info "本工具配置的系统服务和用户配置均已保留。"
 	print_uninstall_completion_card "${CURRENT_RELEASE:-未知}" "$TARGET"
 	exit 0
 fi
@@ -360,7 +358,6 @@ if [ -e "$TARGET" ]; then
 		CURRENT_SHA256="$(file_sha256 "$TARGET")"
 		if [ "$CURRENT_SHA256" = "$EXPECTED_SHA256" ]; then
 			print_release_info "$CURRENT_DISPLAY" "$RELEASE_VERSION" "无需更新"
-			printf '\n'
 			if [ "$LATEST_RELEASE" = true ]; then
 				print_result_card "当前已是最新正式版本，无需更新。"
 			else
