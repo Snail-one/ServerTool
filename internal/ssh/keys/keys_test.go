@@ -10,34 +10,73 @@ import (
 
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
-	"snail_tool/internal/ui"
 )
 
 func TestEnsureSSHAuthorizedKeysAllowsQToReturn(t *testing.T) {
 	home := t.TempDir()
 	account := &system.Account{Name: "test", Home: home}
-	reader, writer, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := writer.WriteString("q\n"); err != nil {
-		t.Fatal(err)
-	}
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
-	previousStdin := os.Stdin
-	os.Stdin = reader
-	view := ui.New()
-	os.Stdin = previousStdin
-	t.Cleanup(func() { _ = reader.Close() })
+	view := newUIWithInput(t, "q\n")
 
-	err = ensureSSHAuthorizedKeys(view, account)
+	err := ensureSSHAuthorizedKeys(view, account)
 	if !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatalf("输入 q 应返回菜单，得到：%v", err)
 	}
 	if system.DirExists(filepath.Join(home, ".ssh")) {
 		t.Fatal("取消一键配置时不应创建 .ssh 目录")
+	}
+}
+
+func TestAddSSHAuthorizedKeysRetriesInvalidKey(t *testing.T) {
+	home := t.TempDir()
+	account := &system.Account{Name: "test", Home: home, UID: os.Getuid(), GID: os.Getgid()}
+	validKey := generateTestPublicKey(t)
+	view := newUIWithInput(t, "not-a-key\n"+validKey+"\n\n")
+
+	if err := addSSHAuthorizedKeys(view, account); err != nil {
+		t.Fatalf("无效公钥应提示后重试，不应返回错误：%v", err)
+	}
+
+	content := readTestFile(t, filepath.Join(home, ".ssh", "authorized_keys"))
+	if !strings.Contains(content, validKey) {
+		t.Fatalf("重试后未写入有效公钥：\n%s", content)
+	}
+	if strings.Contains(content, "not-a-key") {
+		t.Fatalf("无效公钥不应写入 authorized_keys：\n%s", content)
+	}
+}
+
+func TestAddSSHAuthorizedKeysEmptyInputReturnsWithoutError(t *testing.T) {
+	home := t.TempDir()
+	account := &system.Account{Name: "test", Home: home}
+	view := newUIWithInput(t, "bad-key\n\n")
+
+	if err := addSSHAuthorizedKeys(view, account); err != nil {
+		t.Fatalf("无效公钥后回车结束应留在当前菜单，得到：%v", err)
+	}
+	if system.DirExists(filepath.Join(home, ".ssh")) {
+		t.Fatal("未成功添加公钥时不应创建 .ssh 目录")
+	}
+}
+
+func TestDeleteSSHAuthorizedKeysRetriesInvalidSelection(t *testing.T) {
+	home := t.TempDir()
+	sshDir := filepath.Join(home, ".ssh")
+	if err := os.Mkdir(sshDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	authKeys := filepath.Join(sshDir, "authorized_keys")
+	key := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIkeep keep@example"
+	if err := os.WriteFile(authKeys, []byte(key+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	account := &system.Account{Name: "test", Home: home}
+	view := newUIWithInput(t, "99\nabc\n1\ny\n")
+
+	if err := deleteSSHAuthorizedKeys(view, account); err != nil {
+		t.Fatalf("无效编号应提示后重试，不应返回错误：%v", err)
+	}
+	if strings.Contains(readTestFile(t, authKeys), "AAAAC3NzaC1lZDI1NTE5AAAAIkeep") {
+		t.Fatal("重试选择后公钥应被删除")
 	}
 }
 

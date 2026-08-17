@@ -148,6 +148,7 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 			}
 		default:
 			ui.InvalidChoice()
+			view.Pause()
 		}
 		fmt.Println()
 	}
@@ -163,7 +164,8 @@ func addSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 			return nil
 		}
 		if err := system.ValidateSSHPublicKey(pubkey); err != nil {
-			return err
+			log.Warn(err)
+			continue
 		}
 
 		if err := installAuthorizedKey(account, pubkey); err != nil {
@@ -193,50 +195,53 @@ func deleteSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 	}
 
 	printAuthorizedKeyEntries(entries)
-	rawSelection, err := view.Ask("请输入要删除的编号（多个用逗号或空格分隔，直接回车返回）：")
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(rawSelection) == "" {
+	for {
+		rawSelection, err := view.Ask("请输入要删除的编号（多个用逗号或空格分隔，直接回车返回）：")
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(rawSelection) == "" {
+			return nil
+		}
+
+		indexes, err := parseAuthorizedKeySelection(rawSelection, len(entries))
+		if err != nil {
+			log.Warn(err)
+			continue
+		}
+
+		fmt.Println()
+		fmt.Println("即将删除以下 SSH 公钥：")
+		for _, index := range indexes {
+			entry := entries[index-1]
+			fmt.Printf("%d) %s\n", entry.index, summarizeAuthorizedKey(entry.line))
+		}
+		fmt.Println()
+
+		confirmed, err := view.Confirm("确认删除选中的 SSH 公钥？(y/N)：")
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			fmt.Println("已取消删除")
+			return nil
+		}
+
+		selected := make(map[int]struct{}, len(indexes))
+		for _, index := range indexes {
+			selected[index] = struct{}{}
+		}
+		cleaned := removeAuthorizedKeyIndexes(content, selected)
+		if err := shared.AtomicWriteFile(authKeys, []byte(cleaned), shared.AtomicWriteOptions{Mode: 0600, ForceMode: true}); err != nil {
+			return err
+		}
+
+		ui.PrintSuccessCard("SSH 公钥删除完成",
+			ui.CardField{Label: "删除数量", Value: fmt.Sprintf("%d 把", len(indexes))},
+			ui.CardField{Label: "配置文件", Value: authKeys},
+		)
 		return nil
 	}
-
-	indexes, err := parseAuthorizedKeySelection(rawSelection, len(entries))
-	if err != nil {
-		return err
-	}
-
-	fmt.Println()
-	fmt.Println("即将删除以下 SSH 公钥：")
-	for _, index := range indexes {
-		entry := entries[index-1]
-		fmt.Printf("%d) %s\n", entry.index, summarizeAuthorizedKey(entry.line))
-	}
-	fmt.Println()
-
-	confirmed, err := view.Confirm("确认删除选中的 SSH 公钥？(y/N)：")
-	if err != nil {
-		return err
-	}
-	if !confirmed {
-		fmt.Println("已取消删除")
-		return nil
-	}
-
-	selected := make(map[int]struct{}, len(indexes))
-	for _, index := range indexes {
-		selected[index] = struct{}{}
-	}
-	cleaned := removeAuthorizedKeyIndexes(content, selected)
-	if err := shared.AtomicWriteFile(authKeys, []byte(cleaned), shared.AtomicWriteOptions{Mode: 0600, ForceMode: true}); err != nil {
-		return err
-	}
-
-	ui.PrintSuccessCard("SSH 公钥删除完成",
-		ui.CardField{Label: "删除数量", Value: fmt.Sprintf("%d 把", len(indexes))},
-		ui.CardField{Label: "配置文件", Value: authKeys},
-	)
-	return nil
 }
 
 func printAuthorizedKeys(account *system.Account) error {
