@@ -170,8 +170,9 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 
 		ui.MenuSection("请选择公钥操作")
 		ui.MenuOption("1", "添加公钥")
-		ui.MenuOptionHint("2", "修改公钥", "按编号替换或用编辑器打开")
-		ui.MenuOption("3", "删除公钥")
+		ui.MenuOption("2", "选择替换")
+		ui.MenuOptionHint("3", "编辑文件", "vim / nano / vi")
+		ui.MenuOption("4", "删除公钥")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -190,10 +191,14 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 				return err
 			}
 		case "2":
-			if err := editSSHAuthorizedKeys(view, account); err != nil {
+			if err := replaceSSHAuthorizedKey(view, account); err != nil {
 				return err
 			}
 		case "3":
+			if _, err := openAuthorizedKeysWithChosenEditor(view, account); err != nil {
+				return err
+			}
+		case "4":
 			if err := deleteSSHAuthorizedKeys(view, account); err != nil {
 				return err
 			}
@@ -202,47 +207,6 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 			view.Pause()
 		}
 		fmt.Println()
-	}
-}
-
-func editSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
-	for {
-		ui.ClearScreen()
-		ui.MenuTitle("SSH 管理", "SSH 公钥", "修改公钥")
-		if err := printAuthorizedKeys(account); err != nil {
-			return err
-		}
-
-		ui.MenuSection("请选择修改方式")
-		ui.MenuOption("1", "按编号替换公钥")
-		ui.MenuOptionHint("2", "使用编辑器打开", "vim / nano / vi")
-		ui.MenuExit("0/q", "返回")
-		fmt.Println()
-
-		choice, err := view.Ask("请选择：")
-		if err != nil {
-			return err
-		}
-		fmt.Println()
-		if shared.IsReturnChoice(choice) {
-			return nil
-		}
-
-		switch strings.ToLower(choice) {
-		case "1":
-			return replaceSSHAuthorizedKey(view, account)
-		case "2":
-			opened, err := openAuthorizedKeysWithChosenEditor(view, account)
-			if err != nil {
-				return err
-			}
-			if opened {
-				return nil
-			}
-		default:
-			ui.InvalidChoice()
-			view.Pause()
-		}
 	}
 }
 
@@ -690,7 +654,7 @@ func parseSingleAuthorizedKeyIndex(raw string, max int) (int, error) {
 		return 0, err
 	}
 	if len(indexes) != 1 {
-		return 0, fmt.Errorf("修改公钥一次只能选择一个编号")
+		return 0, fmt.Errorf("选择替换一次只能选择一个编号")
 	}
 	return indexes[0], nil
 }
