@@ -39,6 +39,18 @@ func newUIWithInput(t *testing.T, input string) *ui.UI {
 	return view
 }
 
+func restoreEditors(t *testing.T, available func(string) bool, run func(string, ...string) error) {
+	t.Helper()
+	previousAvailable := editorAvailable
+	previousRun := runEditor
+	editorAvailable = available
+	runEditor = run
+	t.Cleanup(func() {
+		editorAvailable = previousAvailable
+		runEditor = previousRun
+	})
+}
+
 func generateTestPublicKey(t *testing.T) string {
 	t.Helper()
 	keyPath := filepath.Join(t.TempDir(), "id_ed25519")

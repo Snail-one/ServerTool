@@ -24,6 +24,12 @@ const (
 	sshAuthorizedKeysEnd   = "# ===== END SNAIL SSH AUTHORIZED KEYS ====="
 )
 
+var (
+	runEditor       = system.Run
+	editorAvailable = system.CommandExists
+	pubkeyEditors   = []string{"vim", "nano", "vi"}
+)
+
 var authorizedKeyTypes = map[string]struct{}{
 	"ssh-ed25519":                              {},
 	"ssh-rsa":                                  {},
@@ -82,13 +88,53 @@ func ensureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 
 	log.Warn("一键配置必须先添加至少一把有效 SSH 公钥")
 	for {
+		if IsConfigured(account) {
+			return nil
+		}
+
+		ui.MenuSection("请选择添加方式")
+		ui.MenuOption("1", "粘贴公钥")
+		ui.MenuOptionHint("2", "使用编辑器打开", "vim / nano / vi")
+		ui.MenuExit("0/q", "返回")
+		fmt.Println()
+
+		choice, err := view.Ask("请选择：")
+		if err != nil {
+			return err
+		}
+		fmt.Println()
+		if shared.IsReturnChoice(choice) {
+			log.Info("已取消一键配置")
+			return shared.ErrReturnToMenu
+		}
+
+		switch strings.ToLower(choice) {
+		case "1":
+			if err := pasteRequiredSSHAuthorizedKey(view, account); err != nil {
+				return err
+			}
+		case "2":
+			if _, err := openAuthorizedKeysWithChosenEditor(view, account); err != nil {
+				return err
+			}
+			if !IsConfigured(account) {
+				log.Warn("仍未检测到有效 SSH 公钥")
+			}
+		default:
+			ui.InvalidChoice()
+		}
+		fmt.Println()
+	}
+}
+
+func pasteRequiredSSHAuthorizedKey(view *ui.UI, account *system.Account) error {
+	for {
 		pubkey, err := view.Ask("请粘贴 SSH 公钥（必填，输入 q 返回）：")
 		if err != nil {
 			return err
 		}
 		if shared.IsReturnChoice(pubkey) {
-			log.Info("已取消一键配置")
-			return shared.ErrReturnToMenu
+			return nil
 		}
 		if strings.TrimSpace(pubkey) == "" {
 			log.Warn("SSH 公钥不能为空；未添加公钥不会继续配置 SSH 安全策略")
@@ -124,7 +170,8 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 
 		ui.MenuSection("请选择公钥操作")
 		ui.MenuOption("1", "添加公钥")
-		ui.MenuOption("2", "删除公钥")
+		ui.MenuOptionHint("2", "修改公钥", "按编号替换或用编辑器打开")
+		ui.MenuOption("3", "删除公钥")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -143,6 +190,10 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 				return err
 			}
 		case "2":
+			if err := editSSHAuthorizedKeys(view, account); err != nil {
+				return err
+			}
+		case "3":
 			if err := deleteSSHAuthorizedKeys(view, account); err != nil {
 				return err
 			}
@@ -151,6 +202,141 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 			view.Pause()
 		}
 		fmt.Println()
+	}
+}
+
+func editSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
+	for {
+		ui.ClearScreen()
+		ui.MenuTitle("SSH 管理", "SSH 公钥", "修改公钥")
+		if err := printAuthorizedKeys(account); err != nil {
+			return err
+		}
+
+		ui.MenuSection("请选择修改方式")
+		ui.MenuOption("1", "按编号替换公钥")
+		ui.MenuOptionHint("2", "使用编辑器打开", "vim / nano / vi")
+		ui.MenuExit("0/q", "返回")
+		fmt.Println()
+
+		choice, err := view.Ask("请选择：")
+		if err != nil {
+			return err
+		}
+		fmt.Println()
+		if shared.IsReturnChoice(choice) {
+			return nil
+		}
+
+		switch strings.ToLower(choice) {
+		case "1":
+			return replaceSSHAuthorizedKey(view, account)
+		case "2":
+			opened, err := openAuthorizedKeysWithChosenEditor(view, account)
+			if err != nil {
+				return err
+			}
+			if opened {
+				return nil
+			}
+		default:
+			ui.InvalidChoice()
+			view.Pause()
+		}
+	}
+}
+
+func replaceSSHAuthorizedKey(view *ui.UI, account *system.Account) error {
+	authKeys := filepath.Join(account.Home, ".ssh", "authorized_keys")
+	if !system.FileExists(authKeys) {
+		log.Info("未发现 SSH authorized_keys，跳过")
+		return nil
+	}
+
+	data, err := os.ReadFile(authKeys)
+	if err != nil {
+		return err
+	}
+
+	content := string(data)
+	entries := authorizedKeyEntries(content)
+	if len(entries) == 0 {
+		log.Info("未发现可修改的 SSH 公钥")
+		return nil
+	}
+
+	printAuthorizedKeyEntries(entries)
+	for {
+		rawSelection, err := view.Ask("请输入要修改的编号（直接回车返回）：")
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(rawSelection) == "" {
+			return nil
+		}
+
+		index, err := parseSingleAuthorizedKeyIndex(rawSelection, len(entries))
+		if err != nil {
+			log.Warn(err)
+			continue
+		}
+
+		entry := entries[index-1]
+		fmt.Println()
+		fmt.Println(ui.PrimaryBoldText("当前公钥："))
+		fmt.Println(summarizeAuthorizedKey(entry.line))
+		fmt.Println()
+
+		for {
+			pubkey, err := view.Ask("请粘贴新的 SSH 公钥（直接回车返回）：")
+			if err != nil {
+				return err
+			}
+			if strings.TrimSpace(pubkey) == "" {
+				return nil
+			}
+			if err := system.ValidateSSHPublicKey(pubkey); err != nil {
+				log.Warn(err)
+				continue
+			}
+			if strings.TrimSpace(pubkey) == strings.TrimSpace(entry.line) {
+				log.Info("公钥未变化")
+				return nil
+			}
+			if shared.ContainsLine(content, pubkey) {
+				log.Warn("该 SSH 公钥已存在")
+				continue
+			}
+
+			fmt.Println()
+			fmt.Println("即将替换：")
+			fmt.Printf("%d) %s\n", entry.index, summarizeAuthorizedKey(entry.line))
+			fmt.Println("替换为：")
+			fmt.Println(summarizeAuthorizedKey(pubkey))
+			fmt.Println()
+
+			confirmed, err := view.Confirm("确认替换选中的 SSH 公钥？(y/N)：")
+			if err != nil {
+				return err
+			}
+			if !confirmed {
+				fmt.Println("已取消修改")
+				return nil
+			}
+
+			updated := replaceAuthorizedKeyIndex(content, index, pubkey)
+			if err := shared.AtomicWriteFile(authKeys, []byte(updated), shared.AtomicWriteOptions{Mode: 0600, ForceMode: true}); err != nil {
+				return err
+			}
+
+			ui.PrintSuccessCard("SSH 公钥修改完成",
+				ui.CardField{Label: "编号", Value: strconv.Itoa(entry.index)},
+				ui.CardField{Label: "原公钥", Value: summarizeAuthorizedKey(entry.line)},
+				ui.CardField{Label: "新公钥", Value: summarizeAuthorizedKey(pubkey)},
+				ui.CardField{Label: "配置文件", Value: authKeys},
+			)
+			return nil
+		}
 	}
 }
 
@@ -266,16 +452,155 @@ func printAuthorizedKeys(account *system.Account) error {
 	return nil
 }
 
-func installAuthorizedKey(account *system.Account, pubkey string) error {
+func openAuthorizedKeysWithChosenEditor(view *ui.UI, account *system.Account) (bool, error) {
+	editor, err := chooseAuthorizedKeyEditor(view)
+	if err != nil || editor == "" {
+		return false, err
+	}
+	return true, openAuthorizedKeysWithEditor(view, account, editor)
+}
+
+func chooseAuthorizedKeyEditor(view *ui.UI) (string, error) {
+	for {
+		ui.MenuSection("请选择编辑器")
+		for index, editor := range pubkeyEditors {
+			ui.MenuOptionHint(strconv.Itoa(index+1), editor, editorChoiceHint(editor, index == 0))
+		}
+		ui.MenuExit("0/q", "返回")
+		fmt.Println()
+
+		raw, err := view.Ask("请选择（直接回车默认 1）：")
+		if err != nil {
+			return "", err
+		}
+		fmt.Println()
+		if shared.IsReturnChoice(raw) {
+			return "", nil
+		}
+
+		editor, ok := editorFromChoice(raw)
+		if !ok {
+			ui.InvalidChoice()
+			fmt.Println()
+			continue
+		}
+		if !editorAvailable(editor) {
+			log.Warn("未找到 ", editor, "，请先安装或改用其他编辑器")
+			fmt.Println()
+			continue
+		}
+		return editor, nil
+	}
+}
+
+func editorFromChoice(raw string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", "1":
+		return "vim", true
+	case "2":
+		return "nano", true
+	case "3":
+		return "vi", true
+	default:
+		return "", false
+	}
+}
+
+func editorChoiceHint(editor string, def bool) string {
+	switch {
+	case def && !editorAvailable(editor):
+		return "默认，未安装"
+	case def:
+		return "默认"
+	case !editorAvailable(editor):
+		return "未安装"
+	default:
+		return ""
+	}
+}
+
+func openAuthorizedKeysWithEditor(view *ui.UI, account *system.Account, editor string) error {
+	if !editorAvailable(editor) {
+		log.Warn("未找到 ", editor, "，请先安装或改用其他方式")
+		return nil
+	}
+
+	authKeys, err := ensureAuthorizedKeysFile(account)
+	if err != nil {
+		return err
+	}
+
+	log.Info("正在使用 ", editor, " 打开：", authKeys)
+	if err := runEditor(editor, authKeys); err != nil {
+		if system.IsInterrupted(err) {
+			log.Info("已取消编辑")
+			return nil
+		}
+		log.Warn("打开 ", editor, " 失败：", err)
+		return nil
+	}
+
+	if err := secureAuthorizedKeysFile(account, authKeys); err != nil {
+		return err
+	}
+
+	data, err := os.ReadFile(authKeys)
+	if err != nil {
+		return err
+	}
+	invalid := unrecognizedAuthorizedKeyLines(string(data))
+	if len(invalid) == 0 {
+		return nil
+	}
+	for _, line := range invalid {
+		log.Warn("无效 SSH 公钥：", truncateString(line, 80))
+	}
+	view.Pause()
+	return nil
+}
+
+func unrecognizedAuthorizedKeyLines(content string) []string {
+	var lines []string
+	for _, raw := range strings.Split(content, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if err := system.ValidateSSHPublicKey(line); err != nil {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+func ensureAuthorizedKeysFile(account *system.Account) (string, error) {
 	sshDir := filepath.Join(account.Home, ".ssh")
 	authKeys := filepath.Join(sshDir, "authorized_keys")
-
 	if err := os.MkdirAll(sshDir, 0700); err != nil {
-		return err
+		return "", err
 	}
 	if err := shared.EnsureFileWithOptions(authKeys, shared.AtomicWriteOptions{
 		Mode: 0600, Owner: &shared.FileOwner{UID: account.UID, GID: account.GID},
 	}); err != nil {
+		return "", err
+	}
+	return authKeys, nil
+}
+
+func secureAuthorizedKeysFile(account *system.Account, authKeys string) error {
+	sshDir := filepath.Dir(authKeys)
+	if err := os.Chmod(sshDir, 0700); err != nil {
+		return err
+	}
+	if err := os.Chmod(authKeys, 0600); err != nil {
+		return err
+	}
+	return system.ChownPath(sshDir, account, true)
+}
+
+func installAuthorizedKey(account *system.Account, pubkey string) error {
+	authKeys, err := ensureAuthorizedKeysFile(account)
+	if err != nil {
 		return err
 	}
 
@@ -292,13 +617,7 @@ func installAuthorizedKey(account *system.Account, pubkey string) error {
 		log.Info("SSH 公钥已存在，跳过添加")
 	}
 
-	if err := os.Chmod(sshDir, 0700); err != nil {
-		return err
-	}
-	if err := os.Chmod(authKeys, 0600); err != nil {
-		return err
-	}
-	return system.ChownPath(sshDir, account, true)
+	return secureAuthorizedKeysFile(account, authKeys)
 }
 
 func writeManagedAuthorizedKey(path, content, pubkey string) error {
@@ -365,12 +684,52 @@ func printAuthorizedKeyEntries(entries []authorizedKeyEntry) {
 	fmt.Println()
 }
 
+func parseSingleAuthorizedKeyIndex(raw string, max int) (int, error) {
+	indexes, err := parseAuthorizedKeySelection(raw, max)
+	if err != nil {
+		return 0, err
+	}
+	if len(indexes) != 1 {
+		return 0, fmt.Errorf("修改公钥一次只能选择一个编号")
+	}
+	return indexes[0], nil
+}
+
+func replaceAuthorizedKeyIndex(content string, index int, pubkey string) string {
+	lines := strings.SplitAfter(content, "\n")
+	var builder strings.Builder
+	current := 0
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		trimmed := strings.TrimSpace(strings.TrimRight(line, "\r\n"))
+		if isAuthorizedKeyLine(trimmed) {
+			current++
+			if current == index {
+				newline := ""
+				switch {
+				case strings.HasSuffix(line, "\r\n"):
+					newline = "\r\n"
+				case strings.HasSuffix(line, "\n"):
+					newline = "\n"
+				}
+				builder.WriteString(pubkey)
+				builder.WriteString(newline)
+				continue
+			}
+		}
+		builder.WriteString(line)
+	}
+	return builder.String()
+}
+
 func parseAuthorizedKeySelection(raw string, max int) ([]int, error) {
 	parts := strings.FieldsFunc(raw, func(r rune) bool {
 		return r == ',' || r == ' ' || r == '\t' || r == '\n' || r == '\r'
 	})
 	if len(parts) == 0 {
-		return nil, fmt.Errorf("未选择要删除的 SSH 公钥编号")
+		return nil, fmt.Errorf("未选择 SSH 公钥编号")
 	}
 
 	indexes := make([]int, 0, len(parts))

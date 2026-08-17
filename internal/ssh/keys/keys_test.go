@@ -26,6 +26,129 @@ func TestEnsureSSHAuthorizedKeysAllowsQToReturn(t *testing.T) {
 	}
 }
 
+func TestEnsureSSHAuthorizedKeysOpensEditor(t *testing.T) {
+	home := t.TempDir()
+	account := &system.Account{Name: "test", Home: home, UID: os.Getuid(), GID: os.Getgid()}
+	validKey := generateTestPublicKey(t)
+	restoreEditors(t, func(name string) bool { return name == "vim" }, func(name string, args ...string) error {
+		if name != "vim" || len(args) != 1 {
+			t.Fatalf("unexpected editor launch: %s %v", name, args)
+		}
+		return os.WriteFile(args[0], []byte(validKey+"\n"), 0600)
+	})
+	view := newUIWithInput(t, "2\n\n")
+
+	if err := ensureSSHAuthorizedKeys(view, account); err != nil {
+		t.Fatalf("使用 vim 添加公钥失败：%v", err)
+	}
+	if !IsConfigured(account) {
+		t.Fatal("编辑器保存的公钥未被识别")
+	}
+}
+
+func TestOpenAuthorizedKeysWithEditorWritesFile(t *testing.T) {
+	home := t.TempDir()
+	account := &system.Account{Name: "test", Home: home, UID: os.Getuid(), GID: os.Getgid()}
+	validKey := generateTestPublicKey(t)
+	restoreEditors(t, func(name string) bool { return name == "nano" }, func(name string, args ...string) error {
+		if name != "nano" || len(args) != 1 {
+			t.Fatalf("unexpected editor launch: %s %v", name, args)
+		}
+		return os.WriteFile(args[0], []byte(validKey+"\n"), 0600)
+	})
+
+	if err := openAuthorizedKeysWithEditor(newUIWithInput(t, ""), account, "nano"); err != nil {
+		t.Fatal(err)
+	}
+	content := readTestFile(t, filepath.Join(home, ".ssh", "authorized_keys"))
+	if !strings.Contains(content, validKey) {
+		t.Fatalf("编辑器内容未写入 authorized_keys：\n%s", content)
+	}
+}
+
+func TestOpenAuthorizedKeysWithEditorMissingEditor(t *testing.T) {
+	home := t.TempDir()
+	account := &system.Account{Name: "test", Home: home}
+	restoreEditors(t, func(string) bool { return false }, func(string, ...string) error {
+		t.Fatal("未安装的编辑器不应被启动")
+		return nil
+	})
+
+	if err := openAuthorizedKeysWithEditor(newUIWithInput(t, ""), account, "vim"); err != nil {
+		t.Fatal(err)
+	}
+	if system.DirExists(filepath.Join(home, ".ssh")) {
+		t.Fatal("未安装编辑器时不应创建 .ssh 目录")
+	}
+}
+
+func TestOpenAuthorizedKeysWithEditorWarnsInvalidLines(t *testing.T) {
+	home := t.TempDir()
+	account := &system.Account{Name: "test", Home: home, UID: os.Getuid(), GID: os.Getgid()}
+	restoreEditors(t, func(string) bool { return true }, func(_ string, args ...string) error {
+		return os.WriteFile(args[0], []byte("123123\n"), 0600)
+	})
+
+	if err := openAuthorizedKeysWithEditor(newUIWithInput(t, "\n"), account, "vi"); err != nil {
+		t.Fatal(err)
+	}
+	if got := readTestFile(t, filepath.Join(home, ".ssh", "authorized_keys")); !strings.Contains(got, "123123") {
+		t.Fatalf("编辑器保存的内容应保留：\n%s", got)
+	}
+}
+
+func TestEditorFromChoice(t *testing.T) {
+	for _, item := range []struct {
+		raw    string
+		editor string
+		ok     bool
+	}{
+		{raw: "", editor: "vim", ok: true},
+		{raw: "1", editor: "vim", ok: true},
+		{raw: "2", editor: "nano", ok: true},
+		{raw: "3", editor: "vi", ok: true},
+		{raw: " 2 ", editor: "nano", ok: true},
+		{raw: "9", ok: false},
+		{raw: "vim", ok: false},
+	} {
+		editor, ok := editorFromChoice(item.raw)
+		if ok != item.ok || editor != item.editor {
+			t.Fatalf("editorFromChoice(%q) = %q %v, want %q %v", item.raw, editor, ok, item.editor, item.ok)
+		}
+	}
+}
+
+func TestChooseAuthorizedKeyEditorDefaultsToVim(t *testing.T) {
+	restoreEditors(t, func(string) bool { return true }, nil)
+	editor, err := chooseAuthorizedKeyEditor(newUIWithInput(t, "\n"))
+	if err != nil || editor != "vim" {
+		t.Fatalf("直接回车应默认 vim，得到：%q %v", editor, err)
+	}
+}
+
+func TestChooseAuthorizedKeyEditorSelectsNano(t *testing.T) {
+	restoreEditors(t, func(string) bool { return true }, nil)
+	editor, err := chooseAuthorizedKeyEditor(newUIWithInput(t, "2\n"))
+	if err != nil || editor != "nano" {
+		t.Fatalf("选择 2 应为 nano，得到：%q %v", editor, err)
+	}
+}
+
+func TestChooseAuthorizedKeyEditorAllowsReturn(t *testing.T) {
+	editor, err := chooseAuthorizedKeyEditor(newUIWithInput(t, "q\n"))
+	if err != nil || editor != "" {
+		t.Fatalf("输入 q 应返回上层，得到：%q %v", editor, err)
+	}
+}
+
+func TestChooseAuthorizedKeyEditorRetriesMissingDefault(t *testing.T) {
+	restoreEditors(t, func(name string) bool { return name == "nano" }, nil)
+	editor, err := chooseAuthorizedKeyEditor(newUIWithInput(t, "\n2\n"))
+	if err != nil || editor != "nano" {
+		t.Fatalf("默认 vim 未安装时应能改选 nano，得到：%q %v", editor, err)
+	}
+}
+
 func TestAddSSHAuthorizedKeysRetriesInvalidKey(t *testing.T) {
 	home := t.TempDir()
 	account := &system.Account{Name: "test", Home: home, UID: os.Getuid(), GID: os.Getgid()}
@@ -55,6 +178,67 @@ func TestAddSSHAuthorizedKeysEmptyInputReturnsWithoutError(t *testing.T) {
 	}
 	if system.DirExists(filepath.Join(home, ".ssh")) {
 		t.Fatal("未成功添加公钥时不应创建 .ssh 目录")
+	}
+}
+
+func TestReplaceAuthorizedKeyIndexKeepsSurroundingKeys(t *testing.T) {
+	content := "ssh-ed25519 AAAAmanual-one one@example\n" +
+		sshAuthorizedKeysBegin + "\n" +
+		"ssh-rsa AAAAmanaged managed@example\n" +
+		sshAuthorizedKeysEnd + "\n" +
+		"ssh-ed25519 AAAAmanual-two two@example\n"
+
+	got := replaceAuthorizedKeyIndex(content, 2, "ssh-ed25519 AAAAreplaced replaced@example")
+	if !strings.Contains(got, "AAAAmanual-one") || !strings.Contains(got, "AAAAmanual-two") {
+		t.Fatalf("unselected keys were changed:\n%s", got)
+	}
+	if strings.Contains(got, "AAAAmanaged") {
+		t.Fatalf("selected key remained:\n%s", got)
+	}
+	if !strings.Contains(got, sshAuthorizedKeysBegin) || !strings.Contains(got, "AAAAreplaced") {
+		t.Fatalf("replacement was not written into the managed block:\n%s", got)
+	}
+}
+
+func TestParseSingleAuthorizedKeyIndex(t *testing.T) {
+	got, err := parseSingleAuthorizedKeyIndex("2", 3)
+	if err != nil || got != 2 {
+		t.Fatalf("got %d %v, want 2", got, err)
+	}
+	if _, err := parseSingleAuthorizedKeyIndex("1,2", 3); err == nil {
+		t.Fatal("multiple indexes should be rejected when replacing")
+	}
+}
+
+func TestReplaceSSHAuthorizedKeyRetriesThenReplaces(t *testing.T) {
+	home := t.TempDir()
+	sshDir := filepath.Join(home, ".ssh")
+	if err := os.Mkdir(sshDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	oldKey := generateTestPublicKey(t)
+	newKey := generateTestPublicKey(t)
+	authKeys := filepath.Join(sshDir, "authorized_keys")
+	content := shared.FormatManagedBlock(sshAuthorizedKeysBegin, oldKey, sshAuthorizedKeysEnd)
+	if err := os.WriteFile(authKeys, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	account := &system.Account{Name: "test", Home: home, UID: os.Getuid(), GID: os.Getgid()}
+	view := newUIWithInput(t, "9\n1\nbad-key\n"+newKey+"\ny\n")
+
+	if err := replaceSSHAuthorizedKey(view, account); err != nil {
+		t.Fatalf("修改公钥失败：%v", err)
+	}
+
+	got := readTestFile(t, authKeys)
+	if strings.Contains(got, oldKey) {
+		t.Fatalf("原公钥仍在文件中：\n%s", got)
+	}
+	if !strings.Contains(got, newKey) {
+		t.Fatalf("新公钥未写入：\n%s", got)
+	}
+	if !strings.Contains(got, sshAuthorizedKeysBegin) {
+		t.Fatalf("替换后丢失本工具管理标记：\n%s", got)
 	}
 }
 
