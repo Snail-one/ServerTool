@@ -18,6 +18,8 @@ if !exists('g:skip_defaults_vim')
 endif
 
 " --- 第二步：写你自己的『覆盖』命令 ---
+syntax on
+filetype plugin indent on
 set mouse=
 set pastetoggle=<F2>
 nnoremap <F3> :set number!<CR>
