@@ -69,17 +69,7 @@ func Run(view *ui.UI) error {
 		}
 		active := activeVersion(currentLink)
 		ui.MenuTitle("开发环境管理", "Go 语言")
-		fields := []ui.CardField{}
-		if active == "" {
-			fields = append(fields, ui.CardField{Label: "当前版本", Value: ui.ConfiguredBadge(false)})
-		} else {
-			fields = append(fields, ui.CardField{Label: "当前版本", Value: ui.Badge(active, true)})
-		}
-		fields = append(fields, ui.CardField{Label: "已安装版本", Value: fmt.Sprintf("%d 个", len(installed))})
-		if officialMigrationDetected() {
-			fields = append(fields, ui.CardField{Label: "官方位置 Go", Value: ui.StatusBadge("需确认"), Detail: "/usr/local/go 或 ~/.bashrc 环境变量，可在安装或更新时迁移"})
-		}
-		ui.PrintInfoCard("Go 环境状态", fields...)
+		ui.PrintInfoCard("Go 环境状态", goStatusFields(active, len(installed), officialMigrationDetected())...)
 		fmt.Println()
 		ui.MenuOption("1", "安装 Go")
 		ui.MenuOption("2", "更新到最新稳定版")
@@ -409,6 +399,29 @@ func removeOfficialGoAndEnv() error {
 	return nil
 }
 
+func goStatusFields(active string, installedCount int, official bool) []ui.CardField {
+	fields := make([]ui.CardField, 0, 4)
+	if active == "" {
+		fields = append(fields, ui.CardField{Label: "当前版本", Value: ui.ConfiguredBadge(false)})
+	} else {
+		fields = append(fields, ui.CardField{Label: "当前版本", Value: ui.Badge(active, true)})
+		fields = append(fields, ui.CardField{Label: "安装位置", Value: versionInstallPath(active)})
+	}
+	fields = append(fields, ui.CardField{Label: "已安装版本", Value: fmt.Sprintf("%d 个", installedCount)})
+	if official {
+		fields = append(fields, ui.CardField{
+			Label:  "官方位置 Go",
+			Value:  ui.StatusBadge("需确认"),
+			Detail: officialRoot + " 或 ~/.bashrc 环境变量，可在安装或更新时迁移",
+		})
+	}
+	return fields
+}
+
+func versionInstallPath(version string) string {
+	return filepath.Join(installRoot, version)
+}
+
 func officialMigrationDetected() bool {
 	detected, err := officialMigrationState()
 	return err == nil && detected
@@ -538,10 +551,10 @@ func uninstallSelected(view *ui.UI) error {
 	for {
 		ui.MenuSection("请选择要卸载的 Go")
 		if official {
-			ui.MenuOptionHint("1", "官方位置 Go", "/usr/local/go 及 ~/.bashrc 环境变量")
+			ui.MenuOptionHint("1", "官方位置 Go", officialRoot)
 		}
 		for i, version := range versions {
-			ui.MenuOption(strconv.Itoa(i+1+offset), version)
+			ui.MenuOptionHint(strconv.Itoa(i+1+offset), version, versionInstallPath(version))
 		}
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
@@ -626,7 +639,7 @@ func selectInstalled(view *ui.UI, versions []string, prompt string) (string, err
 	}
 	for {
 		for i, version := range versions {
-			ui.MenuOption(strconv.Itoa(i+1), version)
+			ui.MenuOptionHint(strconv.Itoa(i+1), version, versionInstallPath(version))
 		}
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
