@@ -12,7 +12,7 @@
 - 通用配置：集中管理 Vim `~/.vimrc`、Bash 和 HTTP/HTTPS 代理环境变量；普通用户的 Bash 提示符使用紫色用户名，root 使用纯橘色 `#FF7F00`，当前目录均为蓝色
 - 开发环境：从 Go 官方 API 获取全部稳定版本，在 `/opt/go` 安装、更新、切换和卸载 amd64/arm64 Go，并为目标用户配置 PATH
 - 清理配置：支持按项清理 SSH、Vim、Bash、代理配置，或在最后一项清理全部
-- 系统工具：配置和管理 UPS（NUT）等独立服务器工具
+- 系统工具：配置和管理 UPS（NUT），检测并安装 rg、jq、curl、wget、tree、htop、tmux、unzip 等常用命令行工具
 
 主菜单使用固定状态列的彩色徽标显示工具版本、容器运行时、SSH 配置、通用配置数量和当前 Go 版本。所有界面使用统一的橙色主视觉、`ServerTool › 功能 › 子功能` 路径标题、对齐的彩色快捷键和中文选择提示，并以 `0/q 返回`（同时兼容 `exit`）退出当前菜单；主菜单使用 `0/q 退出`。操作名称保持主文字，命令或影响说明统一显示为灰色 `-- 说明`，日志统一使用 `[信息]`、`[警告]` 和 `[错误]`。菜单和日志配色在非交互输出、`TERM=dumb` 或设置 `NO_COLOR` 时会自动关闭，空输入或无效输入不会执行容器清理。
 
@@ -152,7 +152,7 @@ internal/ssh        SSH 管理：公钥、安全配置、生效安全配置查�
 internal/common     通用配置：Vim、Bash、HTTP/HTTPS 代理
 internal/environment 开发环境管理：Go 官方多版本安装、更新、切换、卸载及用户 PATH 管理
 internal/cleanup    清理本工具配置：按项或全部清理本工具写入的配置
-internal/toolbox    系统工具菜单：UPS（NUT）等服务器工具
+internal/toolbox    系统工具菜单：UPS（NUT）、常用命令行工具安装
 internal/status     菜单状态检测汇总
 internal/shared     跨菜单复用的小型辅助能力
 internal/system     系统命令、用户、端口、文件辅助能力

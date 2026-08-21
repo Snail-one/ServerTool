@@ -173,12 +173,37 @@ func Badge(text string, positive bool) string {
 	return paint(color, "["+text+"]")
 }
 
+// InstallationBadge distinguishes installed software from missing optional
+// software without using the success/warning colors reserved for outcomes.
+func InstallationBadge(installed bool) string {
+	if installed {
+		return SoftwareBadge("已安装", true)
+	}
+	return SoftwareBadge("未安装", false)
+}
+
+// SoftwareBadge colors an installed software name or count orange and a
+// missing software state gray.
+func SoftwareBadge(text string, installed bool) string {
+	color := gray
+	if installed {
+		color = orange
+	}
+	return paint(color, "["+text+"]")
+}
+
 // ConfiguredBadge keeps configuration status wording and color consistent.
 func ConfiguredBadge(configured bool) string {
 	if configured {
-		return Badge("已配置", true)
+		return ConfigurationBadge("已配置", true)
 	}
-	return Badge("未配置", false)
+	return ConfigurationBadge("未配置", false)
+}
+
+// ConfigurationBadge colors configured state orange and unconfigured state
+// gray, matching installation-state badges.
+func ConfigurationBadge(text string, configured bool) string {
+	return SoftwareBadge(text, configured)
 }
 
 // PrimaryText, InfoText and MutedText expose the shared terminal palette for

@@ -189,6 +189,34 @@ func TestReportPaletteUsesSemanticColors(t *testing.T) {
 	}
 }
 
+func TestInstallationBadgeUsesOrangeAndGray(t *testing.T) {
+	t.Setenv("CLICOLOR_FORCE", "1")
+	t.Setenv("NO_COLOR", "")
+	os.Unsetenv("NO_COLOR")
+
+	if got := InstallationBadge(true); got != orange+"[已安装]"+reset {
+		t.Fatalf("InstallationBadge(true) = %q", got)
+	}
+	if got := InstallationBadge(false); got != gray+"[未安装]"+reset {
+		t.Fatalf("InstallationBadge(false) = %q", got)
+	}
+	if got := SoftwareBadge("Docker 28", true); got != orange+"[Docker 28]"+reset {
+		t.Fatalf("SoftwareBadge(installed) = %q", got)
+	}
+	if got := SoftwareBadge("未安装", false); got != gray+"[未安装]"+reset {
+		t.Fatalf("SoftwareBadge(missing) = %q", got)
+	}
+	if got := ConfiguredBadge(true); got != orange+"[已配置]"+reset {
+		t.Fatalf("ConfiguredBadge(true) = %q", got)
+	}
+	if got := ConfiguredBadge(false); got != gray+"[未配置]"+reset {
+		t.Fatalf("ConfiguredBadge(false) = %q", got)
+	}
+	if got := ConfigurationBadge("已配置 3/4", true); got != orange+"[已配置 3/4]"+reset {
+		t.Fatalf("ConfigurationBadge(partial) = %q", got)
+	}
+}
+
 func TestSemanticCardsUseSharedLayoutAndColors(t *testing.T) {
 	t.Setenv("CLICOLOR_FORCE", "1")
 	t.Setenv("NO_COLOR", "")

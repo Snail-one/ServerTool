@@ -20,7 +20,7 @@ func Run(view *ui.UI) error {
 		ui.MenuTitle("通用配置")
 		ui.MenuOptionStatusHint("1", "Vim 配置", ui.ConfiguredBadge(status.vim), "~/.vimrc")
 		ui.MenuOptionStatus("2", "Bash 配置", ui.ConfiguredBadge(status.bash))
-		ui.MenuOptionStatusHint("3", "Bash 自动补全", installedBadge(status.completion), "bash-completion")
+		ui.MenuOptionStatusHint("3", "Bash 自动补全", ui.InstallationBadge(status.completion), "bash-completion")
 		ui.MenuOptionStatus("4", "HTTP/HTTPS 代理", ui.ConfiguredBadge(status.proxy))
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
@@ -76,11 +76,4 @@ func currentStatus() commonStatus {
 		completion: commoncompletion.IsInstalled(),
 		proxy:      commonproxy.IsProxyConfigured(account),
 	}
-}
-
-func installedBadge(installed bool) string {
-	if installed {
-		return ui.Badge("已安装", true)
-	}
-	return ui.Badge("未安装", false)
 }
