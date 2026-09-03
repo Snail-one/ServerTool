@@ -13,7 +13,8 @@ func TestRunRemovesManagedBlocksOnly(t *testing.T) {
 	home := t.TempDir()
 	account := &system.Account{Name: "test", Home: home}
 	bashrc := filepath.Join(home, ".bashrc")
-	content := "export EDITOR=vim\n\n" +
+	manual := "export EDITOR=vim\nalias ll='eza -la'\nPS1='custom prompt '\n"
+	content := manual + "\n" +
 		bashAliasBegin + "\n" + bashAliasBlock + "\n" + bashAliasEnd + "\n\n" +
 		legacyBashCommandBegin + "\nsnail() {\n  sudo '/usr/local/bin/snail_tool' \"$@\"\n}\n" + legacyBashCommandEnd + "\n"
 	if err := os.WriteFile(bashrc, []byte(content), 0644); err != nil {
@@ -30,8 +31,8 @@ func TestRunRemovesManagedBlocksOnly(t *testing.T) {
 			t.Fatalf("managed bash content remained:\n%s", got)
 		}
 	}
-	if !strings.Contains(got, "export EDITOR=vim") {
-		t.Fatalf("unrelated bash content was removed:\n%s", got)
+	if got != manual {
+		t.Fatalf("manual Bash configuration was not restored:\ngot:\n%s\nwant:\n%s", got, manual)
 	}
 }
 

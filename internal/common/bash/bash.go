@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"snail_tool/internal/log"
@@ -102,12 +101,8 @@ fi`
 alias rm='rm -i'
 alias cp='cp -i'
 alias mv='mv -i'`
+	userBashBlock = bashAliasBlock + "\n\n" + userPromptBlock
 	rootBashBlock = rootInteractiveShellBlock + "\n\n" + rootHistoryBlock + "\n\n" + rootShellBehaviorBlock + "\n\n" + rootPromptBlock + "\n\n" + rootColorBlock + "\n\n" + baseAliasBlock + "\n\n" + rootSafetyAliasBlock
-)
-
-var (
-	activeAssignment = regexp.MustCompile(`^(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*=`)
-	activeAlias      = regexp.MustCompile(`^alias[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*=`)
 )
 
 func BashAliasMarkers() (string, string) {
@@ -120,159 +115,25 @@ func BashAliasBlock() string {
 
 // BashManagedBlock returns the default managed block written for a regular user.
 func BashManagedBlock() string {
-	return userBashBlockForContent("")
+	return userBashBlock
 }
 
 func IsBashConfigured(account *system.Account) bool {
 	bashrc := filepath.Join(account.Home, ".bashrc")
 	content := shared.ReadFileString(bashrc)
 	managed, ok := shared.ManagedBlockContent(content, bashAliasBegin, bashAliasEnd)
-	if !ok || !strings.Contains(managed, baseAliasBlock) || !hasActiveAlias(content, "grep") {
+	if !ok {
 		return false
 	}
+	expected := userBashBlock
 	if isRootAccount(account) {
-		return strings.Contains(managed, rootSafetyAliasBlock) && strings.Contains(managed, rootPromptBlock)
+		expected = rootBashBlock
 	}
-	return strings.Contains(managed, userPromptBlock)
+	return strings.TrimSpace(managed) == strings.TrimSpace(expected)
 }
 
 func isRootAccount(account *system.Account) bool {
 	return account != nil && account.Name == "root"
-}
-
-func userBashBlockForContent(content string) string {
-	aliases := bashAliasBlock
-	if hasActiveAlias(content, "grep") {
-		aliases = baseAliasBlock
-	}
-	return aliases + "\n\n" + userPromptBlock
-}
-
-func rootBashBlockForContent(content string) (string, bool, bool) {
-	preservePrompt := hasActiveAssignment(content, "PS1")
-	colorBlock, preserveColor := rootColorBlockForContent(content)
-
-	parts := make([]string, 0, 7)
-	parts = append(parts, rootInteractiveShellBlock)
-	if historyBlock := rootHistoryBlockForContent(content); historyBlock != "" {
-		parts = append(parts, historyBlock)
-	}
-	if !hasActiveShopt(content, "checkwinsize") {
-		parts = append(parts, rootShellBehaviorBlock)
-	}
-	// Keep an existing user prompt outside the managed block so cleanup can
-	// restore it, but always append the tool prompt so the current managed
-	// configuration wins while it is installed.
-	parts = append(parts, rootPromptBlock)
-	if colorBlock != "" {
-		parts = append(parts, colorBlock)
-	}
-	parts = append(parts, baseAliasBlock, rootSafetyAliasBlock)
-	return strings.Join(parts, "\n\n"), preservePrompt, preserveColor
-}
-
-func activeShellLines(content string) []string {
-	lines := make([]string, 0)
-	for _, rawLine := range strings.Split(content, "\n") {
-		line := strings.TrimSpace(rawLine)
-		if line != "" && !strings.HasPrefix(line, "#") {
-			lines = append(lines, line)
-		}
-	}
-	return lines
-}
-
-func hasActiveAssignment(content, name string) bool {
-	for _, line := range activeShellLines(content) {
-		match := activeAssignment.FindStringSubmatch(line)
-		if match != nil && match[1] == name {
-			return true
-		}
-	}
-	return false
-}
-
-func hasActiveAlias(content, name string) bool {
-	for _, line := range activeShellLines(content) {
-		match := activeAlias.FindStringSubmatch(line)
-		if match != nil && match[1] == name {
-			return true
-		}
-	}
-	return false
-}
-
-func hasActiveShopt(content, option string) bool {
-	for _, line := range activeShellLines(content) {
-		fields := strings.Fields(line)
-		if len(fields) < 3 || fields[0] != "shopt" || fields[1] != "-s" {
-			continue
-		}
-		for _, field := range fields[2:] {
-			if field == option {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func rootHistoryBlockForContent(content string) string {
-	lines := make([]string, 0, 4)
-	if !hasActiveAssignment(content, "HISTCONTROL") {
-		lines = append(lines, "HISTCONTROL=ignoredups")
-	}
-	if !hasActiveShopt(content, "histappend") {
-		lines = append(lines, "shopt -s histappend")
-	}
-	if !hasActiveAssignment(content, "HISTSIZE") {
-		lines = append(lines, "HISTSIZE=5000")
-	}
-	if !hasActiveAssignment(content, "HISTFILESIZE") {
-		lines = append(lines, "HISTFILESIZE=10000")
-	}
-	if len(lines) == 0 {
-		return ""
-	}
-	if len(lines) == 4 {
-		return rootHistoryBlock
-	}
-	return "# -------------------------\n# History\n# -------------------------\n\n" + strings.Join(lines, "\n")
-}
-
-func rootColorBlockForContent(content string) (string, bool) {
-	hasDircolors := hasActiveAssignment(content, "LS_OPTIONS") || hasActiveAssignment(content, "LS_COLORS")
-	if !hasDircolors {
-		for _, line := range activeShellLines(content) {
-			if strings.Contains(line, "eval") && strings.Contains(line, "dircolors") {
-				hasDircolors = true
-				break
-			}
-		}
-	}
-
-	parts := make([]string, 0, 5)
-	if !hasDircolors {
-		parts = append(parts, rootDircolorsBlock)
-	}
-	preserved := hasDircolors
-	for _, item := range []struct {
-		name string
-		line string
-	}{
-		{name: "ls", line: "alias ls='ls --color=auto'"},
-		{name: "grep", line: "alias grep='grep --color=auto'"},
-	} {
-		if hasActiveAlias(content, item.name) {
-			preserved = true
-			continue
-		}
-		parts = append(parts, item.line)
-	}
-	if len(parts) == 0 {
-		return "", preserved
-	}
-	return "# -------------------------\n# Colors\n# -------------------------\n\n" + strings.Join(parts, "\n"), preserved
 }
 
 func Run() error {
@@ -297,16 +158,9 @@ func ConfigureBash() error {
 	}); err != nil {
 		return err
 	}
-	data, err := os.ReadFile(bashrc)
-	if err != nil {
-		return err
-	}
-	unmanaged := shared.RemoveManagedBlock(string(data), bashAliasBegin, bashAliasEnd)
-	bashBlock := userBashBlockForContent(unmanaged)
-	preservedPrompt := false
-	preservedColor := false
+	bashBlock := userBashBlock
 	if isRootAccount(account) {
-		bashBlock, preservedPrompt, preservedColor = rootBashBlockForContent(unmanaged)
+		bashBlock = rootBashBlock
 	}
 	if err := replaceBashConfig(bashrc, bashBlock); err != nil {
 		return err
@@ -319,12 +173,6 @@ func ConfigureBash() error {
 	fmt.Println()
 	fmt.Println(ui.PrimaryBoldText("已经写入以下 Bash 配置："))
 	fmt.Println(bashBlock)
-	if preservedPrompt {
-		fmt.Println("保留了已有的 PS1 配置，工具的橙色提示符将优先生效")
-	}
-	if preservedColor {
-		fmt.Println("保留了已有的颜色配置")
-	}
 	fmt.Println()
 	fields := []ui.CardField{
 		{Label: "配置文件", Value: bashrc},
@@ -333,23 +181,12 @@ func ConfigureBash() error {
 	if !isRootAccount(account) {
 		fields = append(fields, ui.CardField{Label: "终端提示符", Value: "用户名@主机名为紫色，当前目录为蓝色"})
 	}
-	if preservedPrompt {
-		fields = append(fields, ui.CardField{Label: "已有 PS1", Value: "已保留（橙色配置优先生效）"})
-	}
-	if preservedColor {
-		fields = append(fields, ui.CardField{Label: "已有颜色配置", Value: "已保留"})
-	}
 	ui.PrintSuccessCard("Bash 配置完成", fields...)
 	return nil
 }
 
 func replaceAliases(path string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	unmanaged := shared.RemoveManagedBlock(string(data), bashAliasBegin, bashAliasEnd)
-	return replaceBashConfig(path, userBashBlockForContent(unmanaged))
+	return replaceBashConfig(path, userBashBlock)
 }
 
 func replaceBashConfig(path, body string) error {
@@ -359,17 +196,6 @@ func replaceBashConfig(path, body string) error {
 	}
 
 	content := shared.RemoveManagedBlock(string(data), bashAliasBegin, bashAliasEnd)
-	patterns := []string{
-		`(?m)^[[:space:]]*#?[[:space:]]*alias lspath=.*\n?`,
-		`(?m)^[[:space:]]*#?[[:space:]]*alias ll=.*\n?`,
-		`(?m)^[[:space:]]*#?[[:space:]]*alias la=.*\n?`,
-		`(?m)^[[:space:]]*#?[[:space:]]*alias l=.*\n?`,
-	}
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
-		content = re.ReplaceAllString(content, "")
-	}
-
 	block := shared.FormatManagedBlock(bashAliasBegin, body, bashAliasEnd)
 	return shared.AtomicWriteFile(path, []byte(shared.AppendBlock(content, block)), shared.AtomicWriteOptions{Mode: 0644})
 }

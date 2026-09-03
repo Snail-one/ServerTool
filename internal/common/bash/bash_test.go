@@ -10,178 +10,161 @@ import (
 	"snail_tool/internal/system"
 )
 
-func TestReplaceAliasesAddsManagedBlock(t *testing.T) {
+func TestReplaceAliasesPreservesManualConfigAndIsIdempotent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".bashrc")
-	if err := os.WriteFile(path, []byte("export PATH=$PATH:/usr/local/bin\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := replaceAliases(path); err != nil {
-		t.Fatal(err)
-	}
-
-	content := readTestFile(t, path)
-	if !strings.Contains(content, bashAliasBegin) || !strings.Contains(content, bashAliasEnd) {
-		t.Fatalf("managed alias block was not written:\n%s", content)
-	}
-	if want := shared.FormatManagedBlock(bashAliasBegin, userBashBlockForContent(""), bashAliasEnd); !strings.Contains(content, want) {
-		t.Fatalf("managed alias block spacing mismatch:\n%s", content)
-	}
-	for _, line := range strings.Split(bashAliasBlock, "\n") {
-		if !strings.Contains(content, line) {
-			t.Fatalf("missing alias %q in:\n%s", line, content)
-		}
-	}
-}
-
-func TestReplaceAliasesReplacesLegacyAliasesAndIsIdempotent(t *testing.T) {
-	path := filepath.Join(t.TempDir(), ".bashrc")
-	input := `alias ll='ls $LS_OPTIONS -l'
-alias la='ls -A'
-alias l='ls -la'
-export EDITOR=vim
+	manual := `alias l='eza'
+alias la='eza -a'
+alias ll='eza -la'
+alias lspath='printf custom-path'
+alias grep='grep --color=always'
+alias ls='eza --color=always'
+alias rm='rm --verbose'
+PS1='custom prompt '
+HISTSIZE=20000
+export LS_COLORS='custom colors'
 `
-	if err := os.WriteFile(path, []byte(input), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(manual), 0600); err != nil {
 		t.Fatal(err)
 	}
 
 	if err := replaceAliases(path); err != nil {
 		t.Fatal(err)
 	}
+	first := readTestFile(t, path)
+	if !strings.HasPrefix(first, manual) {
+		t.Fatalf("manual Bash configuration was changed:\n%s", first)
+	}
+	wantBlock := shared.FormatManagedBlock(bashAliasBegin, userBashBlock, bashAliasEnd)
+	if !strings.Contains(first, wantBlock) {
+		t.Fatalf("complete managed Bash block was not written:\n%s", first)
+	}
+	if !strings.HasSuffix(first, wantBlock) {
+		t.Fatalf("managed Bash block was not appended after manual configuration:\n%s", first)
+	}
+	if strings.Count(first, bashAliasBegin) != 1 || strings.Count(first, bashAliasEnd) != 1 {
+		t.Fatalf("managed Bash markers were duplicated:\n%s", first)
+	}
+	if info, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	} else if info.Mode().Perm() != 0600 {
+		t.Fatalf("file mode = %o, want 600", info.Mode().Perm())
+	}
+
 	if err := replaceAliases(path); err != nil {
 		t.Fatal(err)
 	}
-
-	content := readTestFile(t, path)
-	if strings.Contains(content, "ls $LS_OPTIONS") || strings.Contains(content, "alias l='ls -la'") {
-		t.Fatalf("legacy aliases were not removed:\n%s", content)
-	}
-	if strings.Count(content, bashAliasBegin) != 1 || strings.Count(content, bashAliasEnd) != 1 {
-		t.Fatalf("alias block is not idempotent:\n%s", content)
-	}
-	for _, line := range strings.Split(bashAliasBlock, "\n") {
-		if strings.Count(content, line) != 1 {
-			t.Fatalf("alias line %q is not idempotent:\n%s", line, content)
-		}
-	}
-	if !strings.Contains(content, "export EDITOR=vim") {
-		t.Fatalf("unrelated bashrc content was removed:\n%s", content)
+	if second := readTestFile(t, path); second != first {
+		t.Fatalf("second write changed Bash configuration:\nfirst:\n%s\nsecond:\n%s", first, second)
 	}
 }
 
-func TestUserBashConfigPreservesActiveGrepAlias(t *testing.T) {
+func TestReplaceBashConfigReplacesOnlyManagedBlock(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".bashrc")
-	const existing = "alias grep='grep --color=always'\n"
+	manual := "alias ll='my-list-command'\nPS1='my prompt ' # restored after cleanup\n"
+	legacyBody := "alias ll='legacy-managed-value'\n"
+	existing := manual + "\n" + shared.FormatManagedBlock(bashAliasBegin, legacyBody, bashAliasEnd)
 	if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := replaceAliases(path); err != nil {
+	if err := replaceBashConfig(path, userBashBlock); err != nil {
 		t.Fatal(err)
 	}
-
 	content := readTestFile(t, path)
-	if strings.Count(content, "alias grep=") != 1 || !strings.Contains(content, existing) {
-		t.Fatalf("existing grep alias was not preserved:\n%s", content)
+	if !strings.HasPrefix(content, manual) {
+		t.Fatalf("configuration outside the managed block was changed:\n%s", content)
 	}
-	managed, ok := shared.ManagedBlockContent(content, bashAliasBegin, bashAliasEnd)
-	if !ok || strings.Contains(managed, grepColorAlias) {
-		t.Fatalf("managed block duplicated the existing grep alias:\n%s", content)
+	if strings.Contains(content, "legacy-managed-value") {
+		t.Fatalf("old managed Bash content remained:\n%s", content)
 	}
-}
-
-func TestUserBashConfigKeepsCommentedGrepAliasAndAddsManagedAlias(t *testing.T) {
-	path := filepath.Join(t.TempDir(), ".bashrc")
-	const commented = "# alias grep='grep --color=auto'\n"
-	if err := os.WriteFile(path, []byte(commented), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := replaceAliases(path); err != nil {
-		t.Fatal(err)
-	}
-
-	content := readTestFile(t, path)
-	if !strings.Contains(content, commented) {
-		t.Fatalf("commented grep alias was modified:\n%s", content)
-	}
-	managed, ok := shared.ManagedBlockContent(content, bashAliasBegin, bashAliasEnd)
-	if !ok || !strings.Contains(managed, grepColorAlias) {
-		t.Fatalf("managed grep alias was not added:\n%s", content)
-	}
-}
-
-func TestReplaceBashConfigPreservesExistingPermissions(t *testing.T) {
-	path := filepath.Join(t.TempDir(), ".bashrc")
-	if err := os.WriteFile(path, []byte("export SECRET=value\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := replaceBashConfig(path, bashAliasBlock); err != nil {
-		t.Fatal(err)
-	}
-
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, want := info.Mode().Perm(), os.FileMode(0600); got != want {
-		t.Fatalf(".bashrc permissions changed: got %04o, want %04o", got, want)
-	}
-}
-
-func TestRootBashConfigWritesRequestedManagedBlockAndIsIdempotent(t *testing.T) {
-	path := filepath.Join(t.TempDir(), ".bashrc")
-	if err := os.WriteFile(path, []byte("# existing root setting\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	body, preservedPrompt, preservedColor := rootBashBlockForContent("# existing root setting\n")
-	if body != rootBashBlock {
-		t.Fatal("root account did not build the default root Bash configuration")
-	}
-	if preservedPrompt || preservedColor {
-		t.Fatal("comment-only root configuration was treated as active")
-	}
-	if err := replaceBashConfig(path, body); err != nil {
-		t.Fatal(err)
-	}
-	if err := replaceBashConfig(path, body); err != nil {
-		t.Fatal(err)
-	}
-
-	content := readTestFile(t, path)
-	want := shared.FormatManagedBlock(bashAliasBegin, rootBashBlock, bashAliasEnd)
-	if !strings.Contains(content, want) {
-		t.Fatalf("root Bash configuration was not written:\n%s", content)
+	if strings.Count(content, "alias ll='my-list-command'") != 1 {
+		t.Fatalf("manual ll alias was removed or duplicated:\n%s", content)
 	}
 	if strings.Count(content, bashAliasBegin) != 1 || strings.Count(content, bashAliasEnd) != 1 {
-		t.Fatalf("root Bash configuration is not idempotent:\n%s", content)
-	}
-	if !strings.Contains(content, "# existing root setting") {
-		t.Fatalf("existing root Bash content was removed:\n%s", content)
-	}
-	for _, alias := range strings.Split(bashAliasBlock, "\n") {
-		if !strings.Contains(rootBashBlock, alias) {
-			t.Fatalf("root Bash configuration is missing standard alias %q", alias)
-		}
-	}
-	for _, oldAlias := range []string{"alias ll='ls $LS_OPTIONS -l'", "alias l='ls $LS_OPTIONS -lA'"} {
-		if strings.Contains(rootBashBlock, oldAlias) {
-			t.Fatalf("root Bash configuration still contains old alias %q", oldAlias)
-		}
+		t.Fatalf("managed Bash block was duplicated:\n%s", content)
 	}
 }
 
-func TestNonRootAccountKeepsStandardAliasBlock(t *testing.T) {
+func TestManagedBlockUsesFixedTemplateDespiteExistingConfig(t *testing.T) {
+	manual := `alias grep='grep --color=always'
+alias ls='eza'
+PS1='custom prompt '
+HISTCONTROL=erasedups
+HISTSIZE=20000
+HISTFILESIZE=40000
+export LS_COLORS='custom colors'
+eval "$(dircolors -b ~/.dircolors)"
+`
+
+	for _, tt := range []struct {
+		name string
+		body string
+	}{
+		{name: "regular user", body: userBashBlock},
+		{name: "root", body: rootBashBlock},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), ".bashrc")
+			if err := os.WriteFile(path, []byte(manual), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if err := replaceBashConfig(path, tt.body); err != nil {
+				t.Fatal(err)
+			}
+
+			content := readTestFile(t, path)
+			if !strings.HasPrefix(content, manual) {
+				t.Fatalf("manual configuration was changed:\n%s", content)
+			}
+			managed, ok := shared.ManagedBlockContent(content, bashAliasBegin, bashAliasEnd)
+			if !ok || strings.TrimSpace(managed) != strings.TrimSpace(tt.body) {
+				t.Fatalf("managed block depends on manual configuration:\n%s", content)
+			}
+		})
+	}
+}
+
+func TestBashConfigurationStatusRequiresCurrentCompleteTemplate(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		account *system.Account
+		body    string
+	}{
+		{name: "regular user", account: &system.Account{Name: "alice", UID: 1000, GID: 1000}, body: userBashBlock},
+		{name: "root", account: &system.Account{Name: "root"}, body: rootBashBlock},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			tt.account.Home = home
+			path := filepath.Join(home, ".bashrc")
+			manual := "alias ll='custom value'\n\n"
+			current := manual + shared.FormatManagedBlock(bashAliasBegin, tt.body, bashAliasEnd)
+			if err := os.WriteFile(path, []byte(current), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if !IsBashConfigured(tt.account) {
+				t.Fatal("current complete managed Bash template was not detected")
+			}
+
+			modified := strings.Replace(current, "alias l='ls -lh'", "alias l='changed'", 1)
+			if err := os.WriteFile(path, []byte(modified), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if IsBashConfigured(tt.account) {
+				t.Fatal("modified managed Bash template was reported as configured")
+			}
+		})
+	}
+}
+
+func TestNonRootAccountUsesRegularUserTemplate(t *testing.T) {
 	account := &system.Account{Name: "alice", UID: 1000, GID: 1000}
 	if isRootAccount(account) {
 		t.Fatal("non-root account was treated as root")
 	}
-	body := userBashBlockForContent("")
 	for _, required := range []string{bashAliasBlock, userPromptBlock} {
-		if !strings.Contains(body, required) {
-			t.Fatalf("regular user Bash configuration is missing %q:\n%s", required, body)
+		if !strings.Contains(BashManagedBlock(), required) {
+			t.Fatalf("regular user Bash configuration is missing %q:\n%s", required, BashManagedBlock())
 		}
 	}
 }
@@ -200,144 +183,26 @@ func TestUserPromptUsesPurpleUsernameAndBlueDirectory(t *testing.T) {
 	}
 }
 
-func TestUserBashConfigRetainsExistingPromptForCleanup(t *testing.T) {
-	path := filepath.Join(t.TempDir(), ".bashrc")
-	const existing = "PS1='custom prompt ' # restored after managed block cleanup\n"
-	if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
-		t.Fatal(err)
+func TestRootManagedBlockContainsCompleteConfiguration(t *testing.T) {
+	if !strings.HasPrefix(rootBashBlock, rootInteractiveShellBlock+"\n\n") {
+		t.Fatalf("root Bash configuration does not start with the interactive shell guard:\n%s", rootBashBlock)
 	}
-
-	if err := replaceAliases(path); err != nil {
-		t.Fatal(err)
-	}
-
-	content := readTestFile(t, path)
-	if !strings.Contains(content, existing) {
-		t.Fatalf("existing prompt was removed:\n%s", content)
-	}
-	managed, ok := shared.ManagedBlockContent(content, bashAliasBegin, bashAliasEnd)
-	if !ok || !strings.Contains(managed, userPromptBlock) {
-		t.Fatalf("managed purple prompt was not added:\n%s", content)
-	}
-}
-
-func TestRegularUserConfigurationStatusRequiresManagedPrompt(t *testing.T) {
-	home := t.TempDir()
-	path := filepath.Join(home, ".bashrc")
-	account := &system.Account{Name: "alice", Home: home, UID: 1000, GID: 1000}
-
-	legacy := shared.FormatManagedBlock(bashAliasBegin, bashAliasBlock, bashAliasEnd)
-	if err := os.WriteFile(path, []byte(legacy), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if IsBashConfigured(account) {
-		t.Fatal("legacy aliases-only block was treated as the current regular-user configuration")
-	}
-
-	current := shared.FormatManagedBlock(bashAliasBegin, BashManagedBlock(), bashAliasEnd)
-	if err := os.WriteFile(path, []byte(current), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if !IsBashConfigured(account) {
-		t.Fatal("regular-user Bash configuration with managed prompt was not detected")
-	}
-}
-
-func TestRootBashConfigOverridesExistingPromptAndPreservesColorConfig(t *testing.T) {
-	existing := `# PS1='commented prompt'
-PS1='custom prompt '
-export LS_COLORS='custom colors'
-eval "$(dircolors -b ~/.dircolors)"
-alias ls='ls --color=auto'
-`
-
-	body, preservedPrompt, preservedColor := rootBashBlockForContent(existing)
-	if !preservedPrompt || !preservedColor {
-		t.Fatalf("existing root settings were not detected: prompt=%v color=%v", preservedPrompt, preservedColor)
-	}
-	if !strings.Contains(body, rootPromptBlock) {
-		t.Fatalf("managed block did not override the existing prompt:\n%s", body)
-	}
-	if strings.Contains(body, rootDircolorsBlock) || strings.Contains(body, "alias ls='ls --color=auto'") {
-		t.Fatalf("managed block duplicated existing ls color configuration:\n%s", body)
-	}
-	for _, required := range []string{baseAliasBlock, grepColorAlias, rootSafetyAliasBlock} {
-		if !strings.Contains(body, required) {
-			t.Fatalf("managed root configuration is missing required content %q:\n%s", required, body)
+	for _, required := range []string{
+		rootHistoryBlock,
+		rootShellBehaviorBlock,
+		rootPromptBlock,
+		rootColorBlock,
+		baseAliasBlock,
+		rootSafetyAliasBlock,
+	} {
+		if !strings.Contains(rootBashBlock, required) {
+			t.Fatalf("root Bash configuration is missing %q:\n%s", required, rootBashBlock)
 		}
 	}
-}
-
-func TestRootConfigurationStatusRequiresCurrentOrangePrompt(t *testing.T) {
-	home := t.TempDir()
-	path := filepath.Join(home, ".bashrc")
-	account := &system.Account{Name: "root", Home: home, UID: 0, GID: 0}
-	legacyPrompt := strings.Replace(rootPromptBlock, "38;2;255;127;0", "38;5;196", 1)
-	legacyBlock := strings.Replace(rootBashBlock, rootPromptBlock, legacyPrompt, 1)
-
-	if err := os.WriteFile(path, []byte(shared.FormatManagedBlock(bashAliasBegin, legacyBlock, bashAliasEnd)), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if IsBashConfigured(account) {
-		t.Fatal("legacy red root prompt was treated as the current configuration")
-	}
-
-	if err := os.WriteFile(path, []byte(shared.FormatManagedBlock(bashAliasBegin, rootBashBlock, bashAliasEnd)), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if !IsBashConfigured(account) {
-		t.Fatal("current orange root prompt was not detected")
-	}
-}
-
-func TestRootBashRewriteRemovesLegacyManagedConfig(t *testing.T) {
-	path := filepath.Join(t.TempDir(), ".bashrc")
-	legacyPrompt := strings.Replace(rootPromptBlock, "38;2;255;127;0", "38;5;196", 1)
-	legacyBlock := strings.Replace(rootBashBlock, rootPromptBlock, legacyPrompt, 1)
-	existing := "PS1='user prompt ' # preserved outside the managed block\n\n" +
-		shared.FormatManagedBlock(bashAliasBegin, legacyBlock, bashAliasEnd)
-	if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	unmanaged := shared.RemoveManagedBlock(existing, bashAliasBegin, bashAliasEnd)
-	currentBlock, _, _ := rootBashBlockForContent(unmanaged)
-	if err := replaceBashConfig(path, currentBlock); err != nil {
-		t.Fatal(err)
-	}
-
-	content := readTestFile(t, path)
-	managed, ok := shared.ManagedBlockContent(content, bashAliasBegin, bashAliasEnd)
-	if !ok {
-		t.Fatal("rewritten root Bash configuration is missing its managed block")
-	}
-	if strings.Contains(managed, "38;5;196") {
-		t.Fatalf("legacy red prompt remained in the managed block:\n%s", managed)
-	}
-	if !strings.Contains(managed, "38;2;255;127;0") {
-		t.Fatalf("current orange prompt was not written:\n%s", managed)
-	}
-	if strings.Count(content, bashAliasBegin) != 1 || strings.Count(content, bashAliasEnd) != 1 {
-		t.Fatalf("managed Bash configuration was duplicated:\n%s", content)
-	}
-	if !strings.Contains(content, "PS1='user prompt '") {
-		t.Fatalf("configuration outside the managed block was removed:\n%s", content)
-	}
-}
-
-func TestRootBashConfigTreatsCommentedSettingsAsMissing(t *testing.T) {
-	existing := `# PS1='commented prompt'
-# export LS_OPTIONS='--color=auto'
-# eval "$(dircolors)"
-# alias ls='ls --color=auto'
-`
-
-	body, preservedPrompt, preservedColor := rootBashBlockForContent(existing)
-	if preservedPrompt || preservedColor {
-		t.Fatalf("commented settings were treated as active: prompt=%v color=%v", preservedPrompt, preservedColor)
-	}
-	if body != rootBashBlock {
-		t.Fatalf("default root configuration was not generated:\n%s", body)
+	for _, deprecated := range []string{"alias fgrep=", "alias egrep="} {
+		if strings.Contains(rootBashBlock, deprecated) {
+			t.Fatalf("root color configuration contains deprecated alias %q:\n%s", deprecated, rootBashBlock)
+		}
 	}
 }
 
@@ -352,52 +217,6 @@ func TestRootPromptUsesColorCapabilityFallback(t *testing.T) {
 	} {
 		if !strings.Contains(rootPromptBlock, required) {
 			t.Fatalf("root prompt is missing %q:\n%s", required, rootPromptBlock)
-		}
-	}
-}
-
-func TestRootBashConfigStartsWithInteractiveShellGuard(t *testing.T) {
-	if !strings.HasPrefix(rootBashBlock, rootInteractiveShellBlock+"\n\n") {
-		t.Fatalf("root Bash configuration does not start with the interactive shell guard:\n%s", rootBashBlock)
-	}
-}
-
-func TestRootBashConfigPreservesHistoryAndShellBehavior(t *testing.T) {
-	existing := `HISTCONTROL=erasedups
-shopt -s histappend checkwinsize
-HISTSIZE=20000
-HISTFILESIZE=40000
-`
-
-	body, _, _ := rootBashBlockForContent(existing)
-	for _, setting := range []string{"HISTCONTROL=ignoredups", "shopt -s histappend", "HISTSIZE=5000", "HISTFILESIZE=10000", rootShellBehaviorBlock} {
-		if strings.Contains(body, setting) {
-			t.Fatalf("existing root setting was duplicated by %q:\n%s", setting, body)
-		}
-	}
-}
-
-func TestRootColorConfigOnlyAddsMissingParts(t *testing.T) {
-	existing := `eval "$(dircolors -b)"
-alias ls='ls --color=always'
-alias grep='grep --color=always'
-`
-
-	colorBlock, preserved := rootColorBlockForContent(existing)
-	if !preserved {
-		t.Fatal("existing color configuration was not detected")
-	}
-	for _, duplicate := range []string{rootDircolorsBlock, "alias ls='ls --color=auto'", "alias grep='grep --color=auto'"} {
-		if strings.Contains(colorBlock, duplicate) {
-			t.Fatalf("existing color configuration was duplicated by %q:\n%s", duplicate, colorBlock)
-		}
-	}
-	if colorBlock != "" {
-		t.Fatalf("complete existing color configuration received extra content:\n%s", colorBlock)
-	}
-	for _, deprecated := range []string{"alias fgrep=", "alias egrep="} {
-		if strings.Contains(rootColorBlock, deprecated) {
-			t.Fatalf("root color configuration contains deprecated alias %q:\n%s", deprecated, rootColorBlock)
 		}
 	}
 }
