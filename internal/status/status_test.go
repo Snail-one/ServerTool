@@ -9,6 +9,7 @@ import (
 	commonproxy "snail_tool/internal/common/proxy"
 	commonvim "snail_tool/internal/common/vim"
 	containerruntime "snail_tool/internal/container/runtime"
+	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
 )
 
@@ -18,7 +19,10 @@ func TestDetectStatusForUserFiles(t *testing.T) {
 	home := t.TempDir()
 	account := &system.Account{Name: "test", Home: home}
 
-	if err := os.WriteFile(filepath.Join(home, ".vimrc"), []byte(commonvim.ManagedVimConfigContent()), 0644); err != nil {
+	vimBegin, vimEnd := commonvim.VimMarkers()
+	if err := os.WriteFile(filepath.Join(home, ".vimrc"), []byte(
+		"set number\n\n"+shared.FormatManagedBlock(vimBegin, commonvim.ManagedVimConfigContent(), vimEnd),
+	), 0644); err != nil {
 		t.Fatal(err)
 	}
 	bashAliasBegin, bashAliasEnd := commonbash.BashAliasMarkers()

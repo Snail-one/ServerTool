@@ -9,8 +9,6 @@ import (
 	"snail_tool/internal/system"
 )
 
-var vimrcContent = commonvim.ManagedVimConfigContent()
-
 func Run(account *system.Account) error {
 	vimrc := filepath.Join(account.Home, ".vimrc")
 	if !system.FileExists(vimrc) {
@@ -19,14 +17,26 @@ func Run(account *system.Account) error {
 	}
 
 	content := shared.ReadFileString(vimrc)
-	if !commonvim.IsManagedVimConfigContent(content) {
-		log.Warn("当前 Vim 配置与本工具模板不完全一致，已跳过：", vimrc)
+	begin, end := commonvim.VimMarkers()
+	if _, hasManagedBlock := shared.ManagedBlockContent(content, begin, end); !hasManagedBlock {
+		if !commonvim.IsManagedVimConfigContent(content) {
+			log.Info("未发现 Vim 托管配置，跳过")
+			return nil
+		}
+		// 兼容清理旧版本整份写入的模板。
+		if err := shared.AtomicWriteFile(vimrc, nil, shared.AtomicWriteOptions{Mode: 0644}); err != nil {
+			return err
+		}
+		log.Info("已清理旧版 Vim 配置：", vimrc)
 		return nil
 	}
 
-	if err := shared.AtomicWriteFile(vimrc, nil, shared.AtomicWriteOptions{Mode: 0644}); err != nil {
+	changed, err := shared.CleanupManagedBlocks(vimrc, shared.BlockMarker{Begin: begin, End: end})
+	if err != nil {
 		return err
 	}
-	log.Info("已清空 Vim 配置：", vimrc)
+	if changed {
+		log.Info("已清理 Vim 托管配置：", vimrc)
+	}
 	return nil
 }

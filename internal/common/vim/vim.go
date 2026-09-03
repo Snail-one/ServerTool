@@ -12,18 +12,36 @@ import (
 	"snail_tool/internal/ui"
 )
 
-const vimrcContent = `" --- 第一步：加载官方默认设置 ---
-if !exists('g:skip_defaults_vim')
-  source $VIMRUNTIME/defaults.vim
-endif
-
-" --- 第二步：写你自己的『覆盖』命令 ---
-syntax on
+const vimSettings = `syntax on
 filetype plugin indent on
 set mouse=
 set pastetoggle=<F2>
 nnoremap <F3> :set number!<CR>
 `
+
+const legacyVimrcContent = `" --- 第一步：加载官方默认设置 ---
+if !exists('g:skip_defaults_vim')
+  source $VIMRUNTIME/defaults.vim
+endif
+
+" --- 第二步：写你自己的『覆盖』命令 ---
+` + vimSettings
+
+const vimrcContent = `" SNAIL TOOL 默认配置；请在托管区块外添加自定义配置
+if !exists('g:skip_defaults_vim')
+  source $VIMRUNTIME/defaults.vim
+endif
+
+` + vimSettings
+
+const (
+	vimrcBegin = `" ===== BEGIN SNAIL VIM CONFIG =====`
+	vimrcEnd   = `" ===== END SNAIL VIM CONFIG =====`
+)
+
+func VimMarkers() (string, string) {
+	return vimrcBegin, vimrcEnd
+}
 
 func ManagedVimConfigContent() string {
 	return vimrcContent
@@ -35,14 +53,20 @@ func IsVimConfigured(account *system.Account) bool {
 }
 
 func IsManagedVimConfigContent(content string) bool {
-	return strings.TrimSpace(content) == strings.TrimSpace(vimrcContent)
+	managed, ok := shared.ManagedBlockContent(content, vimrcBegin, vimrcEnd)
+	if ok {
+		return strings.TrimSpace(managed) == strings.TrimSpace(vimrcContent)
+	}
+
+	// 兼容旧版本整份写入的模板，下次配置时会自动迁移到托管区块。
+	return strings.TrimSpace(content) == strings.TrimSpace(legacyVimrcContent)
 }
 
 func Run(view *ui.UI) error {
 	return ConfigureVim(view)
 }
 
-func ConfigureVim(view *ui.UI) error {
+func ConfigureVim(_ *ui.UI) error {
 	account, err := system.CurrentTargetUser()
 	if err != nil {
 		return err
@@ -61,31 +85,17 @@ func ConfigureVim(view *ui.UI) error {
 	vimrc := filepath.Join(account.Home, ".vimrc")
 	fmt.Println()
 
-	if system.FileNonEmpty(vimrc) {
-		ui.PrintInfoCard("检测到已有 Vim 配置", ui.CardField{Label: "配置文件", Value: vimrc})
-		if err := printExistingVimConfig(vimrc); err != nil {
-			return err
-		}
-		confirmed, err := view.Confirm("是否覆盖现有配置？(y/N)：")
-		if err != nil {
-			return err
-		}
-		if !confirmed {
-			fmt.Println("已取消覆盖")
-			return nil
-		}
-
-		backup, err := system.Backup(vimrc)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("已备份原配置：%s\n\n", backup)
+	if err := shared.EnsureFileWithOptions(vimrc, shared.AtomicWriteOptions{
+		Mode: 0644, Owner: &shared.FileOwner{UID: account.UID, GID: account.GID},
+	}); err != nil {
+		return err
 	}
 
-	fmt.Println("写入 ~/.vimrc ...")
-	if err := shared.AtomicWriteFile(vimrc, []byte(vimrcContent), shared.AtomicWriteOptions{
-		Mode: 0644, ForceMode: true, Owner: &shared.FileOwner{UID: account.UID, GID: account.GID},
-	}); err != nil {
+	fmt.Println("更新 ~/.vimrc 中的 Vim 托管配置 ...")
+	if err := replaceVimConfig(vimrc); err != nil {
+		return err
+	}
+	if err := system.ChownPath(vimrc, account, false); err != nil {
 		return err
 	}
 
@@ -94,21 +104,22 @@ func ConfigureVim(view *ui.UI) error {
 	return nil
 }
 
-func printExistingVimConfig(path string) error {
-	content, err := os.ReadFile(path)
+func replaceVimConfig(path string) error {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println(ui.PrimaryBoldText("当前 Vim 配置内容："))
-	fmt.Println(ui.MutedText("----------------------------------------"))
-	fmt.Print(string(content))
-	if len(content) > 0 && content[len(content)-1] != '\n' {
-		fmt.Println()
+	content := string(data)
+	if strings.TrimSpace(content) == strings.TrimSpace(legacyVimrcContent) {
+		// 旧版本会将模板写成整个文件；迁移时避免保留一份重复配置。
+		content = ""
+	} else {
+		content = shared.RemoveManagedBlock(content, vimrcBegin, vimrcEnd)
 	}
-	fmt.Println(ui.MutedText("----------------------------------------"))
-	fmt.Println()
-	return nil
+
+	block := shared.FormatManagedBlock(vimrcBegin, vimrcContent, vimrcEnd)
+	return shared.AtomicWriteFile(path, []byte(shared.AppendBlock(content, block)), shared.AtomicWriteOptions{Mode: 0644})
 }
 
 func installVim() error {
