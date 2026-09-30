@@ -4,6 +4,8 @@
 
 命令、参数、环境变量、权限要求和退出状态详见 [`docs/CLI.md`](docs/CLI.md)。
 
+首页「常用」与服务器体检的待开发方案见 [`docs/SERVER_HEALTH_DEVELOPMENT.md`](docs/SERVER_HEALTH_DEVELOPMENT.md)。
+
 ## 功能
 
 - 容器管理：检测 Docker/Podman，并在二者并存时明确优先使用 Docker；容器操作以真实子命令显示，支持 `start`、`stop`、`restart`、`pause`/`unpause`、`inspect`、`logs`、`logs -f`、`exec`、Compose `down` 和非强制 `rm`；Compose 项目支持 `up -d`、`stop`、`restart`、不删除卷的 `down`，以及项目扫描、批量更新和重建；Docker 服务配置支持代理和日志轮转；资源清理按影响展示各类 prune 命令并逐次确认；卸载运行时可选择保留数据，完全卸载则经过强确认后永久删除对应数据
