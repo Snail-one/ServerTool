@@ -24,7 +24,7 @@ var commonTools = []commandLineTool{
 	{name: "curl", command: "curl", packageName: "curl", description: "HTTP 请求与下载"},
 	{name: "wget", command: "wget", packageName: "wget", description: "文件下载"},
 	{name: "tree", command: "tree", packageName: "tree", description: "目录树查看"},
-	{name: "htop", command: "htop", packageName: "htop", description: "交互式进程监控"},
+	{name: "btop", command: "btop", packageName: "btop", description: "交互式资源监控"},
 	{name: "tmux", command: "tmux", packageName: "tmux", description: "终端会话管理"},
 	{name: "unzip", command: "unzip", packageName: "unzip", description: "ZIP 解压"},
 }
