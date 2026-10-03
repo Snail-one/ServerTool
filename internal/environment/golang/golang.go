@@ -74,9 +74,10 @@ func Run(view *ui.UI) error {
 		ui.MenuOption("1", "安装 Go")
 		ui.MenuOption("2", "更新到最新稳定版")
 		ui.MenuOption("3", "切换当前版本")
-		ui.MenuOption("4", "卸载 Go 版本")
-		ui.MenuOptionHint("5", "修复当前 Go", "重新安装并修复 PATH")
-		ui.MenuOption("6", "清理 Go 安装残留")
+		ui.MenuOptionHint("4", "创建 Go 命令软链接", "/usr/local/bin")
+		ui.MenuOption("5", "卸载 Go 版本")
+		ui.MenuOptionHint("6", "修复当前 Go", "重新安装并修复 PATH")
+		ui.MenuOption("7", "清理 Go 安装残留")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -103,14 +104,16 @@ func Run(view *ui.UI) error {
 				return switchSelected(view)
 			})
 		case "4":
+			shared.RunAction(view, "创建 Go 命令软链接失败，已返回 Go 语言菜单", createGoCommandLinks)
+		case "5":
 			shared.RunAction(view, "卸载 Go 版本失败，已返回 Go 语言菜单", func() error {
 				return uninstallSelected(view)
 			})
-		case "5":
+		case "6":
 			shared.RunAction(view, "修复当前 Go 失败，已返回 Go 语言菜单", func() error {
 				return repairCurrent(view)
 			})
-		case "6":
+		case "7":
 			shared.RunAction(view, "清理 Go 安装残留失败，已返回 Go 语言菜单", func() error {
 				return cleanupInstallArtifacts(view)
 			})
@@ -610,6 +613,9 @@ func uninstallSelected(view *ui.UI) error {
 		return nil
 	}
 	if err := removeCurrentLink(currentLink); err != nil {
+		return err
+	}
+	if err := cleanupGoCommandLinks(commandBinDir, currentLink); err != nil {
 		return err
 	}
 	if err := cleanupTargetUserPath(); err != nil {

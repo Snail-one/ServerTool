@@ -83,6 +83,8 @@ checksums.txt
 
 各版本保存在 `/opt/go/goX.Y.Z`，`/opt/go/current` 指向当前版本。旧版本会保留，卸载当前版本后会自动切换到剩余版本中版本号最高的一个。除下述经用户确认的迁移外，工具只管理 `/opt/go` 下的版本。
 
+Go 菜单的“创建 Go 命令软链接”可手动将 `/usr/local/bin/go` 和 `/usr/local/bin/gofmt` 链接到 `/opt/go/current/bin` 中的对应命令，让 PATH 包含 `/usr/local/bin` 的终端或非交互式命令直接使用 Go。安装、更新和修复不会自动创建这些链接；已有同名文件或其他来源的链接不会被覆盖。链接会随当前版本切换，卸载最后一个工具管理的 Go 版本时会清理仍指向本工具的命令链接。
+
 如果检测到 `/usr/local/go/bin/go`，或目标用户 `~/.bashrc` 中存在引用 `/usr/local/go` 的 `PATH`、`GOROOT` 赋值，安装或更新时会提示迁移。只有用户确认且 `/opt/go` 安装成功后，才会删除 `/usr/local/go` 及这些环境变量行；也可以从卸载列表直接选择“官方位置 Go”单独清理。注释和其他 Bash 配置保持不变，系统包管理器安装的 Go 不会被自动卸载。
 
 PATH 配置写入 sudo 发起用户的 `~/.bashrc`。安装或切换后请重新登录，或者执行：
