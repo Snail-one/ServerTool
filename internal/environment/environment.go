@@ -13,7 +13,12 @@ func Run(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("开发环境管理")
-		ui.MenuOption("1", "Go 语言")
+		goVersion := golang.CurrentVersion()
+		goStatus := "未安装"
+		if goVersion != "" {
+			goStatus = "已安装 " + goVersion
+		}
+		ui.MenuOptionStatus("1", "Go 语言", ui.SoftwareBadge(goStatus, goVersion != ""))
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 

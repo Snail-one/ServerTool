@@ -32,10 +32,10 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 		"容器管理",
 		"[未安装]",
 		"开发环境",
-		"[Go go1.25.1]",
+		"2   SSH 管理",
+		"3   通用配置",
 		"清理配置",
 		"系统工具",
-		"[UPS 已配置]",
 		"0/q 退出",
 	} {
 		if !strings.Contains(output, expected) {
@@ -52,6 +52,11 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 	}
 	badgeColumn := -1
 	for _, line := range strings.Split(output, "\n") {
+		for _, label := range []string{"3   通用配置", "4   系统工具", "5   开发环境"} {
+			if strings.Contains(line, label) && strings.Contains(line, "[") {
+				t.Fatalf("主菜单 %s 不应显示状态徽标：%q", label, line)
+			}
+		}
 		if !isMainStatusRow(line) {
 			continue
 		}
@@ -69,7 +74,7 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 }
 
 func isMainStatusRow(line string) bool {
-	for _, label := range []string{"1   一键配置", "2   通用配置", "3   SSH 管理", "4   系统工具", "5   开发环境", "6   容器管理"} {
+	for _, label := range []string{"1   一键配置", "2   SSH 管理", "6   容器管理"} {
 		if strings.Contains(line, label) {
 			return true
 		}

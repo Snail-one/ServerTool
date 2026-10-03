@@ -49,12 +49,12 @@ func (a *App) Run() error {
 				return quicksetup.Run(a.ui)
 			})
 		case "2":
-			shared.RunAction(a.ui, "通用配置失败，已返回菜单", func() error {
-				return common.Run(a.ui)
-			})
-		case "3":
 			shared.RunAction(a.ui, "SSH 管理失败，已返回菜单", func() error {
 				return ssh.Run(a.ui)
+			})
+		case "3":
+			shared.RunAction(a.ui, "通用配置失败，已返回菜单", func() error {
+				return common.Run(a.ui)
 			})
 		case "4":
 			shared.RunAction(a.ui, "系统工具菜单执行失败，已返回菜单", func() error {
@@ -92,10 +92,10 @@ func showMenu(status status.Status) {
 	runtimeConfigured := strings.TrimSpace(status.Runtime) != "" && status.Runtime != "未安装"
 	ui.HomeTitle(version.Version)
 	ui.MenuOptionStatus("1", "一键配置", ui.ConfigurationBadge(fmt.Sprintf("已配置 %d/4", quickConfigured), quickConfigured > 0))
-	ui.MenuOptionStatus("2", "通用配置", ui.ConfigurationBadge(fmt.Sprintf("已配置 %d/%d", status.Configured, status.ConfigTotal), status.Configured > 0))
-	ui.MenuOptionStatus("3", "SSH 管理", ui.ConfiguredBadge(status.SSH))
-	ui.MenuOptionStatus("4", "系统工具", ui.ConfigurationBadge("UPS "+configuredStatus(status.UPS), status.UPS))
-	ui.MenuOptionStatus("5", "开发环境", ui.ConfigurationBadge("Go "+defaultStatus(status.GoVersion, "未配置"), status.GoVersion != ""))
+	ui.MenuOptionStatus("2", "SSH 管理", ui.ConfiguredBadge(status.SSH))
+	ui.MenuOption("3", "通用配置")
+	ui.MenuOption("4", "系统工具")
+	ui.MenuOption("5", "开发环境")
 	ui.MenuOptionStatus("6", "容器管理", ui.SoftwareBadge(defaultStatus(status.Runtime, "未安装"), runtimeConfigured))
 	ui.MenuOption("7", "清理配置")
 	ui.MenuExit("0/q", "退出")
@@ -116,11 +116,4 @@ func defaultStatus(value, fallback string) string {
 		return fallback
 	}
 	return value
-}
-
-func configuredStatus(configured bool) string {
-	if configured {
-		return "已配置"
-	}
-	return "未配置"
 }
