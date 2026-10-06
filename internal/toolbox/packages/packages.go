@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	commoncompletion "snail_tool/internal/common/completion"
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
@@ -12,27 +13,43 @@ import (
 )
 
 type commandLineTool struct {
-	name        string
-	command     string
-	packageName string
-	description string
+	name              string
+	command           string
+	packageName       string
+	description       string
+	extraCommands     []string
+	packagesByManager map[string][]string
 }
 
 var commonTools = []commandLineTool{
-	{name: "ripgrep", command: "rg", packageName: "ripgrep", description: "快速文本搜索"},
-	{name: "jq", command: "jq", packageName: "jq", description: "JSON 处理"},
 	{name: "curl", command: "curl", packageName: "curl", description: "HTTP 请求与下载"},
 	{name: "wget", command: "wget", packageName: "wget", description: "文件下载"},
-	{name: "tree", command: "tree", packageName: "tree", description: "目录树查看"},
-	{name: "btop", command: "btop", packageName: "btop", description: "交互式资源监控"},
+	{name: "bash-completion", packageName: "bash-completion", description: "Bash 命令自动补全"},
 	{name: "tmux", command: "tmux", packageName: "tmux", description: "终端会话管理"},
+	{name: "btop", command: "btop", packageName: "btop", description: "交互式资源监控"},
 	{name: "unzip", command: "unzip", packageName: "unzip", description: "ZIP 解压"},
+	{name: "jq", command: "jq", packageName: "jq", description: "JSON 处理"},
+	{name: "ripgrep", command: "rg", packageName: "ripgrep", description: "快速文本搜索"},
+	{name: "tree", command: "tree", packageName: "tree", description: "目录树查看"},
+	{
+		name: "build-essential", command: "gcc", packageName: "build-essential",
+		description: "C/C++ 编译工具", extraCommands: []string{"g++", "make"},
+		packagesByManager: map[string][]string{
+			"dnf":    {"gcc", "gcc-c++", "make"},
+			"yum":    {"gcc", "gcc-c++", "make"},
+			"pacman": {"base-devel"},
+			"zypper": {"gcc", "gcc-c++", "make"},
+			"apk":    {"build-base"},
+		},
+	},
 }
 
 var (
-	commandExists = system.CommandExists
-	commandRun    = system.Run
-	isRoot        = system.IsRoot
+	commandExists       = system.CommandExists
+	commandRun          = system.Run
+	commandOutput       = system.Output
+	completionInstalled = commoncompletion.IsInstalled
+	isRoot              = system.IsRoot
 )
 
 type packageManager struct {
@@ -50,8 +67,8 @@ func Run(view *ui.UI) error {
 			ui.MenuOptionStatusHint(
 				fmt.Sprintf("%d", index+1),
 				tool.name,
-				ui.InstallationBadge(commandExists(tool.command)),
-				tool.command+" · "+tool.description,
+				ui.InstallationBadge(tool.installed()),
+				tool.commandLabel()+" · "+tool.description,
 			)
 		}
 		ui.MenuOptionHint("a", "安装全部缺失工具", "使用系统包管理器")
@@ -98,7 +115,7 @@ func Run(view *ui.UI) error {
 func InstalledCount() (int, int) {
 	installed := 0
 	for _, tool := range commonTools {
-		if commandExists(tool.command) {
+		if tool.installed() {
 			installed++
 		}
 	}
@@ -106,9 +123,13 @@ func InstalledCount() (int, int) {
 }
 
 func installSelected(view *ui.UI, tool commandLineTool) error {
-	if commandExists(tool.command) {
+	if tool.installed() {
+		label := "命令"
+		if tool.command == "" {
+			label = "软件包"
+		}
 		ui.PrintInfoCard(tool.name+" 已安装",
-			ui.CardField{Label: "命令", Value: tool.command},
+			ui.CardField{Label: label, Value: tool.commandLabel()},
 			ui.CardField{Label: "用途", Value: tool.description},
 		)
 		return nil
@@ -119,7 +140,7 @@ func installSelected(view *ui.UI, tool commandLineTool) error {
 func installMissing(view *ui.UI) error {
 	missing := make([]commandLineTool, 0, len(commonTools))
 	for _, tool := range commonTools {
-		if !commandExists(tool.command) {
+		if !tool.installed() {
 			missing = append(missing, tool)
 		}
 	}
@@ -141,7 +162,7 @@ func confirmAndInstall(view *ui.UI, tools []commandLineTool) error {
 
 	names := make([]string, 0, len(tools))
 	for _, tool := range tools {
-		names = append(names, fmt.Sprintf("%s（%s）", tool.name, tool.command))
+		names = append(names, fmt.Sprintf("%s（%s）", tool.name, tool.commandLabel()))
 	}
 	sort.Strings(names)
 	confirmed, err := view.Confirm(fmt.Sprintf(
@@ -162,12 +183,12 @@ func confirmAndInstall(view *ui.UI, tools []commandLineTool) error {
 	}
 	missing := make([]string, 0)
 	for _, tool := range tools {
-		if !commandExists(tool.command) {
-			missing = append(missing, tool.command)
+		if !tool.installed() {
+			missing = append(missing, tool.name)
 		}
 	}
 	if len(missing) > 0 {
-		return fmt.Errorf("安装完成后仍未检测到命令：%s", strings.Join(missing, "、"))
+		return fmt.Errorf("安装完成后仍未检测到工具：%s", strings.Join(missing, "、"))
 	}
 
 	ui.PrintSuccessCard("常用命令行工具安装完成",
@@ -205,9 +226,15 @@ func installPackages(manager packageManager, tools []commandLineTool) error {
 	packages := make([]string, 0, len(tools))
 	seen := make(map[string]bool)
 	for _, tool := range tools {
-		if !seen[tool.packageName] {
-			packages = append(packages, tool.packageName)
-			seen[tool.packageName] = true
+		packageNames := tool.packagesByManager[manager.name]
+		if len(packageNames) == 0 {
+			packageNames = []string{tool.packageName}
+		}
+		for _, name := range packageNames {
+			if !seen[name] {
+				packages = append(packages, name)
+				seen[name] = true
+			}
 		}
 	}
 	args := append(append([]string{}, manager.installArgs...), packages...)
@@ -216,4 +243,30 @@ func installPackages(manager packageManager, tools []commandLineTool) error {
 		return fmt.Errorf("%s 安装软件包失败: %w", manager.name, err)
 	}
 	return nil
+}
+
+func (tool commandLineTool) commandLabel() string {
+	if tool.command == "" {
+		return tool.packageName
+	}
+	return strings.Join(append([]string{tool.command}, tool.extraCommands...), " / ")
+}
+
+func (tool commandLineTool) installed() bool {
+	if tool.packageName == "bash-completion" {
+		return completionInstalled()
+	}
+	for _, command := range append([]string{tool.command}, tool.extraCommands...) {
+		if !commandExists(command) {
+			return false
+		}
+	}
+	// Debian's meta-package also provides development headers and packaging
+	// tools, so compiler commands alone do not prove it is installed.
+	if tool.packageName == "build-essential" &&
+		(commandExists("apt-get") || commandExists("apt")) && commandExists("dpkg-query") {
+		output, err := commandOutput("dpkg-query", "-W", "-f=${Status}", tool.packageName)
+		return err == nil && strings.TrimSpace(output) == "install ok installed"
+	}
+	return true
 }

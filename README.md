@@ -14,7 +14,7 @@
 - 通用配置：集中管理 Vim `~/.vimrc`、Bash 和 HTTP/HTTPS 代理环境变量；普通用户的 Bash 提示符使用紫色用户名，root 使用纯橘色 `#FF7F00`，当前目录均为蓝色
 - 开发环境：从 Go 官方 API 获取全部稳定版本，在 `/opt/go` 安装、更新、切换和卸载 amd64/arm64 Go，并为目标用户配置 PATH
 - 清理配置：支持按项清理 SSH、Vim、Bash、代理配置，或在最后一项清理全部
-- 系统工具：配置和管理 UPS（NUT），检测并安装 rg、jq、curl、wget、tree、btop、tmux、unzip 等常用命令行工具
+- 系统工具：配置和管理 UPS（NUT），常用工具按 curl、wget、bash-completion、tmux、btop、unzip、jq、ripgrep（rg）、tree、build-essential 排列；build-essential 提供 C/C++ 编译环境，并按包管理器选择对应编译工具包；bash-completion 提供 Bash 命令自动补全，按补全脚本或软件包状态判断是否安装。所有工具均支持单独安装和批量安装
 
 主菜单使用彩色徽标显示工具版本，并在固定状态列显示一键配置进度、SSH 配置和容器运行时状态；通用配置、开发环境和系统工具只显示名称。所有界面使用统一的橙色主视觉、`ServerTool › 功能 › 子功能` 路径标题、对齐的彩色快捷键和中文选择提示，并以 `0/q 返回`（同时兼容 `exit`）退出当前菜单；主菜单使用 `0/q 退出`。操作名称保持主文字，命令或影响说明统一显示为灰色 `-- 说明`，日志统一使用 `[信息]`、`[警告]` 和 `[错误]`。菜单和日志配色在非交互输出、`TERM=dumb` 或设置 `NO_COLOR` 时会自动关闭，空输入或无效输入不会执行容器清理。
 
