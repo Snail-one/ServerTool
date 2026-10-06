@@ -8,7 +8,9 @@ import (
 	"snail_tool/internal/app"
 	"snail_tool/internal/log"
 	"snail_tool/internal/selfupdate"
+	"snail_tool/internal/startup"
 	"snail_tool/internal/system"
+	"snail_tool/internal/ui"
 	"snail_tool/internal/version"
 )
 
@@ -17,12 +19,19 @@ func main() {
 		return
 	}
 
-	if !system.IsRoot() {
+	var isRoot bool
+	report := startup.New(version.Version)
+	report.Record("运行权限（id -u）", func() {
+		ui.NewDetectionProgress(os.Stdout).Step("运行权限（id -u）", func() {
+			isRoot = system.IsRoot()
+		})
+	})
+	if !isRoot {
 		log.Error("请使用 sudo 或 root 运行此工具")
 		os.Exit(1)
 	}
 
-	if err := app.New().Run(); err != nil {
+	if err := app.NewWithStartupReport(report).Run(); err != nil {
 		log.Error(err)
 		os.Exit(1)
 	}

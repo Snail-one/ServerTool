@@ -48,3 +48,33 @@ func TestProbeContainerRuntimeScenarios(t *testing.T) {
 		})
 	}
 }
+
+func TestProbeReportsDockerCommandBeforeRunningIt(t *testing.T) {
+	currentStep := ""
+	got := probeContainerRuntimesWithProgress(func(name string) bool {
+		return name == "docker"
+	}, func(_ string, args ...string) (string, error) {
+		switch args[0] {
+		case "--version":
+			if currentStep != "Docker 版本（docker --version）" {
+				t.Fatalf("version command started with step %q", currentStep)
+			}
+			return "Docker version 29", nil
+		case "info":
+			if currentStep != "Docker 服务（docker info）" {
+				t.Fatalf("daemon command started with step %q", currentStep)
+			}
+			return "Cannot connect to daemon", errors.New("daemon down")
+		default:
+			t.Fatalf("unexpected Docker arguments: %v", args)
+			return "", nil
+		}
+	}, func(label string, detect func()) {
+		currentStep = label
+		detect()
+		currentStep = ""
+	})
+	if len(got) != 1 || got[0].Name != "docker" || !strings.Contains(got[0].Display, "服务异常：Cannot connect to daemon") {
+		t.Fatalf("progress changed daemon failure detection: %v", got)
+	}
+}

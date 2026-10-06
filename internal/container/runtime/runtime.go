@@ -94,6 +94,11 @@ func DetectAll() []Runtime {
 	return probeContainerRuntimes(system.CommandExists, system.Output)
 }
 
+// DetectAllWithProgress reports command discovery and each Docker probe.
+func DetectAllWithProgress(step func(string, func())) []Runtime {
+	return probeContainerRuntimesWithProgress(system.CommandExists, system.Output, step)
+}
+
 func runtimesForCommands(hasDocker, hasPodman bool) []Runtime {
 	var runtimes []Runtime
 	if hasDocker {
@@ -178,22 +183,44 @@ func ensureContainerRuntimeAbsentWithProbe(commandExists func(string) bool, outp
 }
 
 func probeContainerRuntimes(commandExists func(string) bool, output func(string, ...string) (string, error)) []Runtime {
+	return probeContainerRuntimesWithProgress(commandExists, output, nil)
+}
+
+func probeContainerRuntimesWithProgress(commandExists func(string) bool, output func(string, ...string) (string, error), step func(string, func())) []Runtime {
+	if step == nil {
+		step = func(_ string, detect func()) { detect() }
+	}
 	var runtimes []Runtime
-	hasPodman := commandExists("podman")
-	if commandExists("docker") {
-		version, versionErr := output("docker", "--version")
+	var hasPodman, hasDocker bool
+	step("Docker / Podman 命令", func() {
+		hasPodman = commandExists("podman")
+		hasDocker = commandExists("docker")
+	})
+	if hasDocker {
+		var version string
+		var versionErr error
+		step("Docker 版本（docker --version）", func() {
+			version, versionErr = output("docker", "--version")
+		})
 		if strings.Contains(strings.ToLower(version), "podman") {
 			hasPodman = true
 		} else {
 			display := "Docker"
 			if versionErr != nil {
 				display = "Docker（CLI 异常）"
-			} else if info, err := output("docker", "info"); err != nil {
-				detail := firstOutputLine(info)
-				if detail == "" {
-					detail = "daemon 不可达"
+			} else {
+				var info string
+				var infoErr error
+				step("Docker 服务（docker info）", func() {
+					info, infoErr = output("docker", "info")
+				})
+				if infoErr != nil {
+					detail := firstOutputLine(info)
+					if detail == "" {
+						detail = "daemon 不可达"
+					}
+					display = "Docker（服务异常：" + detail + "）"
 				}
-				display = "Docker（服务异常：" + detail + "）"
 			}
 			runtimes = append(runtimes, Runtime{Name: "docker", Display: display})
 		}

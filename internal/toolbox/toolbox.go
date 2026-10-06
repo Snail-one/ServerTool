@@ -6,19 +6,22 @@ import (
 
 	commonups "snail_tool/internal/common/ups"
 	"snail_tool/internal/shared"
+	"snail_tool/internal/startup"
 	toolpackages "snail_tool/internal/toolbox/packages"
+	"snail_tool/internal/toolbox/startupinfo"
 	"snail_tool/internal/ui"
 )
 
 // Run displays standalone server tools that do not belong to user or
 // development-environment configuration.
-func Run(view *ui.UI) error {
+func Run(view *ui.UI, report *startup.Report) error {
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("系统工具")
 		installed, total := toolpackages.InstalledCount()
 		ui.MenuOptionStatus("1", "常用命令行工具", ui.SoftwareBadge(fmt.Sprintf("已安装 %d/%d", installed, total), installed > 0))
 		ui.MenuOptionStatus("2", "UPS（NUT）", ui.ConfiguredBadge(commonups.IsUPSConfigured()))
+		ui.MenuOption("3", "查看本次启动信息")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -39,6 +42,10 @@ func Run(view *ui.UI) error {
 		case "2":
 			shared.RunAction(view, "UPS 配置失败，已返回系统工具菜单", func() error {
 				return commonups.Run(view)
+			})
+		case "3":
+			shared.RunAction(view, "查看启动信息失败，已返回系统工具菜单", func() error {
+				return startupinfo.Show(report)
 			})
 		default:
 			ui.InvalidChoice()

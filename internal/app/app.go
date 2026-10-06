@@ -2,7 +2,9 @@ package app
 
 import (
 	"fmt"
+	"os"
 	"strings"
+	"time"
 
 	"snail_tool/internal/cleanup"
 	"snail_tool/internal/common"
@@ -11,6 +13,7 @@ import (
 	"snail_tool/internal/quicksetup"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/ssh"
+	"snail_tool/internal/startup"
 	"snail_tool/internal/status"
 	"snail_tool/internal/system"
 	"snail_tool/internal/toolbox"
@@ -19,17 +22,28 @@ import (
 )
 
 type App struct {
-	ui *ui.UI
+	ui      *ui.UI
+	startup *startup.Report
 }
 
 func New() *App {
-	return &App{ui: ui.New()}
+	return NewWithStartupReport(startup.New(version.Version))
+}
+
+func NewWithStartupReport(report *startup.Report) *App {
+	if report == nil {
+		report = startup.New(version.Version)
+	}
+	return &App{ui: ui.New(), startup: report}
 }
 
 func (a *App) Run() error {
+	ui.ClearScreen()
+	ui.MenuTitle("状态检测")
+	menuStatus := currentStatus(a.startup)
 	for {
 		ui.ClearScreen()
-		showMenu(currentStatus())
+		showMenu(menuStatus)
 		fmt.Println()
 
 		choice, err := a.ui.Ask("请选择：")
@@ -58,7 +72,7 @@ func (a *App) Run() error {
 			})
 		case "4":
 			shared.RunAction(a.ui, "系统工具菜单执行失败，已返回菜单", func() error {
-				return toolbox.Run(a.ui)
+				return toolbox.Run(a.ui, a.startup)
 			})
 		case "5":
 			shared.RunAction(a.ui, "开发环境管理失败，已返回菜单", func() error {
@@ -79,12 +93,24 @@ func (a *App) Run() error {
 	}
 }
 
-func currentStatus() status.Status {
-	account, err := system.CurrentTargetUser()
-	if err != nil {
-		return status.DetectStatus(nil)
+func currentStatus(report *startup.Report) status.Status {
+	started := time.Now()
+	progress := ui.NewDetectionProgress(os.Stdout)
+	step := func(label string, detect func()) {
+		report.Record(label, func() { progress.Step(label, detect) })
 	}
-	return status.DetectStatus(account)
+	var account *system.Account
+	var userErr error
+	step("用户信息（getent passwd）", func() {
+		account, userErr = system.CurrentTargetUser()
+		if userErr != nil {
+			account = nil
+		}
+	})
+	result := status.DetectStatusWithProgress(account, step)
+	report.Complete(account, userErr, result)
+	fmt.Printf("状态检测完成，总耗时 %.1f 秒\n\n", time.Since(started).Seconds())
+	return result
 }
 
 func showMenu(status status.Status) {
