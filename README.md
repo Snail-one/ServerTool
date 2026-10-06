@@ -1,30 +1,14 @@
-# snail_tool
+# ServerTool
 
-`snail_tool` 是由原 `snail_tool.sh` 重写而来的 Go 版本，保留原有交互式菜单，并按功能模块拆分，方便后续扩展和维护。
+ServerTool 是一个面向 Linux 服务器的交互式管理工具，提供 SSH 配置、容器管理、Go 多版本管理和常用系统工具安装。使用 Go 编写，由原 `snail_tool.sh` 重写而来，保留中文交互菜单，并按功能模块组织代码。
 
-命令、参数、环境变量、权限要求和退出状态详见 [`docs/CLI.md`](docs/CLI.md)。
+支持 Linux **amd64 / arm64**。安装后的命令为 `snail`，通过 `sudo snail` 进入菜单。
 
-首页「常用」与服务器体检的待开发方案见 [`docs/SERVER_HEALTH_DEVELOPMENT.md`](docs/SERVER_HEALTH_DEVELOPMENT.md)。
+## 快速开始
 
-## 功能
+### 安装并启动
 
-- 容器管理：检测 Docker/Podman，并在二者并存时明确优先使用 Docker；容器操作以真实子命令显示，支持 `start`、`stop`、`restart`、`pause`/`unpause`、`inspect`、`logs`、`logs -f`、`exec`、Compose `down` 和非强制 `rm`；Compose 项目支持 `up -d`、`stop`、`restart`、不删除卷的 `down`，以及项目扫描、批量更新和重建；Docker 服务配置支持代理和日志轮转；资源清理按影响展示各类 prune 命令并逐次确认；卸载运行时可选择保留数据，完全卸载则经过强确认后永久删除对应数据
-- 一键配置：按顺序完成 SSH 公钥添加、SSH 安全策略、Vim 和 Bash 配置；没有已有公钥时必须成功添加一把公钥才会继续安全加固
-- SSH 管理：管理当前用户 SSH 公钥（查看、添加、删除）、写入 SSH 随机端口与禁用密码登录等安全配置、查看当前 SSH 生效安全配置
-- 通用配置：集中管理 Vim `~/.vimrc`、Bash 和 HTTP/HTTPS 代理环境变量；普通用户的 Bash 提示符使用紫色用户名，root 使用纯橘色 `#FF7F00`，当前目录均为蓝色
-- 开发环境：从 Go 官方 API 获取全部稳定版本，在 `/opt/go` 安装、更新、切换和卸载 amd64/arm64 Go，并为目标用户配置 PATH
-- 清理配置：支持按项清理 SSH、Vim、Bash、代理配置，或在最后一项清理全部
-- 系统工具：配置和管理 UPS（NUT），常用工具按 curl、wget、bash-completion、tmux、btop、unzip、jq、ripgrep（rg）、tree、build-essential 排列；build-essential 提供 C/C++ 编译环境，并按包管理器选择对应编译工具包；bash-completion 提供 Bash 命令自动补全。所有工具均支持单独安装和批量安装
-
-工具安装页面统一通过包管理器的本地安装记录判断状态，检测与安装共用软件包映射；工具对应多个包时，全部安装才显示“已安装”。进入系统工具时批量查询一次，菜单徽标、已安装数量及批量安装筛选共用结果，安装后自动刷新，也可在工具页面选择 `r 刷新安装状态`。查询失败显示“检测失败”，不会误判为“未安装”；查询命令设有 5 秒超时。手动下载到 PATH、没有软件包安装记录的工具会显示“未安装”。这套查询不改变工具仅在启动时执行一次的启动检测。
-
-主菜单使用彩色徽标显示工具版本，并在固定状态列显示一键配置进度、SSH 配置和容器运行时状态；通用配置、开发环境和系统工具只显示名称。所有界面使用统一的橙色主视觉、`ServerTool › 功能 › 子功能` 路径标题、对齐的彩色快捷键和中文选择提示，并以 `0/q 返回`（同时兼容 `exit`）退出当前菜单；主菜单使用 `0/q 退出`。操作名称保持主文字，命令或影响说明统一显示为灰色 `-- 说明`，日志统一使用 `[信息]`、`[警告]` 和 `[错误]`。菜单和日志配色在非交互输出、`TERM=dumb` 或设置 `NO_COLOR` 时会自动关闭，空输入或无效输入不会执行容器清理。
-
-## 一键安装或更新
-
-跨项目统一采用的完整流程、命名、安全要求和验收清单见 [`docs/INSTALL_UPDATE_STANDARD.md`](docs/INSTALL_UPDATE_STANDARD.md)。
-
-脚本会自动识别 Linux amd64/arm64，校验 Release 提供的 SHA-256 后安装到 `/usr/local/sbin/snail`。首次安装和后续更新使用同一条命令：
+安装或更新到最新正式版：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Snail-one/ServerTool/main/scripts/install.sh | sudo sh
@@ -36,80 +20,95 @@ curl -fsSL https://raw.githubusercontent.com/Snail-one/ServerTool/main/scripts/i
 wget -qO- https://raw.githubusercontent.com/Snail-one/ServerTool/main/scripts/install.sh | sudo sh
 ```
 
-直接安装指定版本：
+安装脚本会自动识别架构，校验 Release 提供的 SHA-256，并安装到 `/usr/local/sbin/snail`。
+
+启动交互菜单：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Snail-one/ServerTool/main/scripts/install.sh | sudo sh -s -- v1.2.0
+sudo snail
 ```
 
-也可以下载脚本后安装指定版本：
+### 使用要求
+
+- 交互菜单、安装、更新和卸载需要 root 权限；帮助和版本查询无需 root。
+- 通过 `sudo` 启动时，写入用户目录的功能以 `SUDO_USER` 为目标用户。
+- 菜单使用 `0/q` 返回或退出，同时兼容 `exit`。
 
 ```bash
-sudo sh scripts/install.sh v1.2.0
+snail --help
+snail --version
 ```
 
-已安装后，可直接通过程序调用仓库中的安装脚本更新到最新版本：
+## 功能概览
+
+| 模块 | 主要能力 |
+| --- | --- |
+| 一键配置 | 按顺序添加 SSH 公钥、配置 SSH 安全策略、Vim 和 Bash |
+| SSH 管理 | 查看、添加和删除公钥，配置随机端口、禁用密码登录，查看生效配置 |
+| 通用配置 | 管理 Vim、Bash 和 HTTP/HTTPS 代理环境变量 |
+| 系统工具 | 配置 UPS（NUT），单独或批量安装常用命令行工具，查看本次启动信息 |
+| 开发环境 | 安装、更新、切换、修复和卸载 Go 官方稳定版本，管理用户 PATH |
+| 容器管理 | 管理 Docker/Podman 容器和 Compose 项目，配置 Docker 代理与日志轮转，清理资源 |
+| 清理配置 | 按项或全部清理本工具写入的 SSH、Vim、Bash 和代理配置 |
+
+详细操作与行为说明见 [使用指南](docs/USAGE.md)。
+
+## 更新与卸载
+
+更新到最新正式版：
 
 ```bash
 sudo snail update
 ```
 
-主程序也可以调用仓库中的安装脚本完成卸载。卸载只删除 `/usr/local/sbin/snail` 程序文件，不会回退通过本工具完成的 SSH、容器服务或用户环境配置：
+安装指定版本（以下以 `v1.2.0` 为例，请替换为需要的 Release 标签）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Snail-one/ServerTool/main/scripts/install.sh | sudo sh -s -- v1.2.0
+```
+
+卸载程序：
 
 ```bash
 sudo snail uninstall
 ```
 
-也可以直接调用本地或远程安装脚本：
+**卸载仅删除程序文件，不会回退通过本工具完成的 SSH、容器服务、用户环境或 UPS 配置。** 需要清理本工具写入的配置时，可先使用菜单中的“清理配置”。
 
-```bash
-sudo sh scripts/install.sh --uninstall
-curl -fsSL https://raw.githubusercontent.com/Snail-one/ServerTool/main/scripts/install.sh | sudo sh -s -- --uninstall
-```
+更多安装方式、环境变量和退出状态见 [CLI 参数说明](docs/CLI.md)。
 
-更新时会比较当前版本并使用 Release 的 SHA-256 校验本地程序；版本和文件校验均一致时直接退出，文件损坏或内容不一致时会自动重新下载修复。GitHub Releases API 不可用时，安装脚本会通过最新 Release 的 `checksums.txt` 中的版本化二进制文件名解析目标版本，作为更新兜底。
+## 使用说明
 
-ServerTool 发起的文件下载会显示实时进度、已接收大小和速度；服务器未返回文件总大小时，则显示已接收大小和速度。系统包管理器与 Docker Compose 的下载沿用其自身的实时进度输出。
+- **一键配置**：没有已有 SSH 公钥时，必须成功添加一把公钥才会继续安全加固。
+- **容器运行时**：Docker 和 Podman 同时存在时优先使用 Docker。资源清理逐次确认；完全卸载运行时并删除数据需要强确认。
+- **Go 环境**：各版本保存在 `/opt/go/goX.Y.Z`，由 `/opt/go/current` 指向当前版本，旧版本会保留。安装或切换后需重新登录或执行 `source ~/.bashrc`；命令软链接可在 Go 菜单中手动创建。
+- **状态检测**：启动检测仅执行一次，首页状态使用启动时结果。“系统工具 → 查看本次启动信息”可查看检测结果与耗时；工具安装页面提供独立的安装状态刷新。
 
-Release 文件名会在末尾包含版本号，例如：
+Go 迁移、PATH、软链接、工具安装状态及无色输出等细节见 [使用指南](docs/USAGE.md)。
 
-```text
-snailtool_linux_amd64_v1.2.0
-snailtool_linux_arm64_v1.2.0
-checksums.txt
-```
+## 文档导航
 
-## Go 环境管理
+| 文档 | 内容 |
+| --- | --- |
+| [使用指南](docs/USAGE.md) | 功能细节、菜单交互、启动检测、Go 环境与下载行为 |
+| [CLI 参数说明](docs/CLI.md) | 命令、安装脚本参数、环境变量、权限和退出状态 |
+| [安装更新规范](docs/INSTALL_UPDATE_STANDARD.md) | 安装更新流程、命名、安全要求和验收清单 |
+| [CI/CD 规范](docs/CICD_STANDARD.md) | Job 依赖、版本注入、构建矩阵、发布权限和失败恢复 |
 
-从主菜单进入“开发环境管理 → Go 语言”后，可以安装任意官方稳定版本、更新到最新稳定版、切换当前版本、卸载指定版本、重新下载安装当前版本并修复 PATH，或清理异常中断遗留的下载、解压、修复和备份文件。Go 归档在安装、更新和修复时都会显示实时下载进度。安装版本列表每页显示 10 个，可翻页选择；当前支持 Linux amd64 和 arm64。
+## 开发与构建
 
-各版本保存在 `/opt/go/goX.Y.Z`，`/opt/go/current` 指向当前版本。旧版本会保留，卸载当前版本后会自动切换到剩余版本中版本号最高的一个。除下述经用户确认的迁移外，工具只管理 `/opt/go` 下的版本。
+源码构建需要 Go 1.22 或更高版本。
 
-Go 菜单的“创建 Go 命令软链接”可手动将 `/usr/local/bin/go` 和 `/usr/local/bin/gofmt` 链接到 `/opt/go/current/bin` 中的对应命令，让 PATH 包含 `/usr/local/bin` 的终端或非交互式命令直接使用 Go。安装、更新和修复不会自动创建这些链接；已有同名文件或其他来源的链接不会被覆盖。链接会随当前版本切换，卸载最后一个工具管理的 Go 版本时会清理仍指向本工具的命令链接。
-
-如果检测到 `/usr/local/go/bin/go`，或目标用户 `~/.bashrc` 中存在引用 `/usr/local/go` 的 `PATH`、`GOROOT` 赋值，安装或更新时会提示迁移。只有用户确认且 `/opt/go` 安装成功后，才会删除 `/usr/local/go` 及这些环境变量行；也可以从卸载列表直接选择“官方位置 Go”单独清理。注释和其他 Bash 配置保持不变，系统包管理器安装的 Go 不会被自动卸载。
-
-PATH 配置写入 sudo 发起用户的 `~/.bashrc`。安装或切换后请重新登录，或者执行：
-
-```bash
-source ~/.bashrc
-```
-
-## 构建
+### 本地构建
 
 ```bash
 go build -o snail_tool ./cmd/snail_tool
+sudo ./snail_tool
 ```
 
-### 一键编译
+源码构建产物 `./snail_tool` 与安装后的 `snail` 使用相同参数。
 
-Windows：
-
-```powershell
-.\scripts\build_windows.ps1
-```
-
-默认会交叉编译出 Linux 二进制，输出为 `dist/snailtool_linux_amd64_<版本>`。
+### 构建脚本
 
 Linux：
 
@@ -117,56 +116,55 @@ Linux：
 bash ./scripts/build_linux.sh
 ```
 
-默认输出到 `dist/` 目录。
+Windows（PowerShell）：
 
-## 自动发布
+```powershell
+.\scripts\build_windows.ps1
+```
 
-完整的 CI/CD Job 依赖、版本注入、构建矩阵、发布权限、失败恢复和验收规范见 [`docs/CICD_STANDARD.md`](docs/CICD_STANDARD.md)。
+两个脚本均输出 Linux 二进制到 `dist/`，文件名为 `snailtool_linux_<架构>_<版本>`。Linux 脚本使用当前 Go 环境的架构，Windows 脚本默认使用 amd64，可通过 `-GoArch arm64` 切换。
 
-在 GitHub 上推送 `v*` 标签后，Actions 会自动交叉编译 Linux 版本并发布到仓库 Release。发布流程先通过 `git log` 将相邻版本间直接推送的提交整理成 Markdown 列表，再由 GitHub 原生 Automatically generated release notes 补充合并的 PR、贡献者及完整变更链接，适用于个人直接维护和 PR 两种工作方式。
+### 验证
 
-示例：
+```bash
+go test ./...
+```
+
+### 自动发布
+
+推送 `v*` 标签后，GitHub Actions 会先运行测试，再构建 Linux amd64/arm64 二进制并发布到 GitHub Releases，同时提供 `checksums.txt`。
 
 ```bash
 git tag v1.0.0
 git push origin v1.0.0
 ```
 
-也可以在 GitHub Actions 页面手动触发，并填写 `tag_name` 后发布。
+也可在 GitHub Actions 页面手动触发，填写 `tag_name` 发布。发布说明将直接推送的提交整理为 Markdown 列表，并结合 GitHub 自动生成的 PR、贡献者与完整变更链接。完整流程见 [CI/CD 规范](docs/CICD_STANDARD.md)。
 
-## 运行
-
-完整 CLI 参数说明见 [`docs/CLI.md`](docs/CLI.md)。
-
-```bash
-sudo ./snail_tool
-```
-
-工具仅在启动时检测一次，逐项显示用户信息、SSH、UPS、容器运行时、Go、Vim、Bash 和代理配置的检测进度。Docker 检测会分别显示版本检查和服务检查；等待期间每秒更新当前步骤的耗时，便于定位启动缓慢的位置。交互终端中检测完成后会自动清屏，只显示主菜单；重定向输出或使用 `TERM=dumb` 时保留检测记录。返回主菜单时不再重复启动检测，首页状态徽标使用启动时的结果。
-
-从“系统工具 → 查看本次启动信息”可查看启动时间、工具版本、运行平台、目标用户、启动总耗时、各检测步骤耗时及启动时检测结果，并标出最耗时的步骤。记录保存在本次运行的内存中，查看时不会重新检测，重新启动工具后生成新记录。“检测结束”表示该步骤已返回，配置和服务是否正常以检测结果为准。
-
-查看版本不需要 root：
-
-```bash
-./snail_tool --version
-```
-
-## 结构
+### 项目结构
 
 ```text
-cmd/snail_tool      程序入口
-internal/app        交互菜单和流程编排
-internal/container  容器管理：容器列表与操作、Compose 项目、Docker 服务配置、清理容器资源、安装运行时
-internal/ssh        SSH 管理：公钥、安全配置、生效安全配置查看
-internal/common     通用配置：Vim、Bash、HTTP/HTTPS 代理
-internal/environment 开发环境管理：Go 官方多版本安装、更新、切换、卸载及用户 PATH 管理
-internal/cleanup    清理本工具配置：按项或全部清理本工具写入的配置
-internal/toolbox    系统工具菜单：UPS（NUT）、常用命令行工具安装
-internal/status     菜单状态检测汇总
-internal/shared     跨菜单复用的小型辅助能力
-internal/system     系统命令、用户、端口、文件辅助能力
-internal/ui         输入、确认、暂停等交互封装
-internal/log        彩色日志输出
-scripts             安装、更新及跨平台构建脚本
+cmd/snail_tool/       程序入口
+internal/app/         交互菜单与流程编排
+internal/quicksetup/  一键配置
+internal/ssh/         SSH 公钥与安全配置
+internal/common/      Vim、Bash、代理及 UPS 配置
+internal/container/   容器与 Compose 管理
+internal/environment/ Go 环境管理
+internal/toolbox/     系统工具与启动信息
+internal/cleanup/     清理本工具配置
+internal/status/      菜单状态检测
+internal/startup/     本次启动信息记录
+internal/selfupdate/  程序更新与卸载入口
+internal/shared/      跨模块辅助能力
+internal/system/      系统命令、用户、端口与文件操作
+internal/ui/          菜单、输入、确认与进度显示
+internal/log/         日志输出
+internal/version/     版本与构建信息
+scripts/              安装、更新、构建与发布说明脚本
+docs/                 使用说明与开发规范
 ```
+
+### 开发计划
+
+[首页“常用”与服务器体检方案](docs/SERVER_HEALTH_DEVELOPMENT.md)为待开发设计，不代表当前已实现的功能。
