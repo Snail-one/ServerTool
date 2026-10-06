@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	commoncompletion "snail_tool/internal/common/completion"
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
@@ -45,11 +44,10 @@ var commonTools = []commandLineTool{
 }
 
 var (
-	commandExists       = system.CommandExists
-	commandRun          = system.Run
-	commandOutput       = system.Output
-	completionInstalled = commoncompletion.IsInstalled
-	isRoot              = system.IsRoot
+	commandExists = system.CommandExists
+	commandRun    = system.Run
+	commandOutput = packageQueryOutput
+	isRoot        = system.IsRoot
 )
 
 type packageManager struct {
@@ -60,18 +58,26 @@ type packageManager struct {
 
 // Run displays common command-line tools and installs selected missing tools.
 func Run(view *ui.UI) error {
+	return NewInventory().Run(view)
+}
+
+func (inventory *Inventory) Run(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("系统工具", "常用命令行工具")
+		if inventory.err != nil {
+			log.Warn("检测失败：", inventory.err)
+		}
 		for index, tool := range commonTools {
 			ui.MenuOptionStatusHint(
 				fmt.Sprintf("%d", index+1),
 				tool.name,
-				ui.InstallationBadge(tool.installed()),
+				inventory.badge(tool),
 				tool.commandLabel()+" · "+tool.description,
 			)
 		}
 		ui.MenuOptionHint("a", "安装全部缺失工具", "使用系统包管理器")
+		ui.MenuOption("r", "刷新安装状态")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -85,9 +91,13 @@ func Run(view *ui.UI) error {
 		if shared.IsReturnChoice(choice) {
 			return shared.ErrReturnToMenu
 		}
+		if choice == "r" {
+			_ = inventory.Refresh()
+			continue
+		}
 		if choice == "a" {
 			shared.RunAction(view, "安装常用命令行工具失败，已返回工具菜单", func() error {
-				return installMissing(view)
+				return inventory.installMissing(view)
 			})
 			continue
 		}
@@ -106,24 +116,23 @@ func Run(view *ui.UI) error {
 		}
 		tool := commonTools[selected]
 		shared.RunAction(view, "安装 "+tool.name+" 失败，已返回工具菜单", func() error {
-			return installSelected(view, tool)
+			return inventory.installSelected(view, tool)
 		})
 	}
 }
 
-// InstalledCount returns the number of available common tools and the total.
-func InstalledCount() (int, int) {
-	installed := 0
-	for _, tool := range commonTools {
-		if tool.installed() {
-			installed++
-		}
+func (inventory *Inventory) badge(tool commandLineTool) string {
+	if inventory.err != nil {
+		return ui.SoftwareBadge("检测失败", false)
 	}
-	return installed, len(commonTools)
+	return ui.InstallationBadge(inventory.toolInstalled(tool))
 }
 
-func installSelected(view *ui.UI, tool commandLineTool) error {
-	if tool.installed() {
+func (inventory *Inventory) installSelected(view *ui.UI, tool commandLineTool) error {
+	if inventory.err != nil {
+		return fmt.Errorf("检测失败，请刷新安装状态后重试: %w", inventory.err)
+	}
+	if inventory.toolInstalled(tool) {
 		label := "命令"
 		if tool.command == "" {
 			label = "软件包"
@@ -134,13 +143,16 @@ func installSelected(view *ui.UI, tool commandLineTool) error {
 		)
 		return nil
 	}
-	return confirmAndInstall(view, []commandLineTool{tool})
+	return inventory.confirmAndInstall(view, []commandLineTool{tool})
 }
 
-func installMissing(view *ui.UI) error {
+func (inventory *Inventory) installMissing(view *ui.UI) error {
+	if inventory.err != nil {
+		return fmt.Errorf("检测失败，请刷新安装状态后重试: %w", inventory.err)
+	}
 	missing := make([]commandLineTool, 0, len(commonTools))
 	for _, tool := range commonTools {
-		if !tool.installed() {
+		if !inventory.toolInstalled(tool) {
 			missing = append(missing, tool)
 		}
 	}
@@ -148,14 +160,11 @@ func installMissing(view *ui.UI) error {
 		log.Info("常用命令行工具均已安装")
 		return nil
 	}
-	return confirmAndInstall(view, missing)
+	return inventory.confirmAndInstall(view, missing)
 }
 
-func confirmAndInstall(view *ui.UI, tools []commandLineTool) error {
-	manager, err := detectPackageManager()
-	if err != nil {
-		return err
-	}
+func (inventory *Inventory) confirmAndInstall(view *ui.UI, tools []commandLineTool) error {
+	manager := inventory.manager
 	if !isRoot() {
 		return fmt.Errorf("安装系统软件包需要 root 权限，请使用 sudo 运行本工具")
 	}
@@ -178,12 +187,17 @@ func confirmAndInstall(view *ui.UI, tools []commandLineTool) error {
 		return nil
 	}
 
-	if err := installPackages(manager, tools); err != nil {
-		return err
+	installErr := installPackages(manager, tools)
+	queryErr := inventory.Refresh()
+	if installErr != nil {
+		return installErr
+	}
+	if queryErr != nil {
+		return fmt.Errorf("安装完成，但检测失败: %w", queryErr)
 	}
 	missing := make([]string, 0)
 	for _, tool := range tools {
-		if !tool.installed() {
+		if !inventory.toolInstalled(tool) {
 			missing = append(missing, tool.name)
 		}
 	}
@@ -226,11 +240,7 @@ func installPackages(manager packageManager, tools []commandLineTool) error {
 	packages := make([]string, 0, len(tools))
 	seen := make(map[string]bool)
 	for _, tool := range tools {
-		packageNames := tool.packagesByManager[manager.name]
-		if len(packageNames) == 0 {
-			packageNames = []string{tool.packageName}
-		}
-		for _, name := range packageNames {
+		for _, name := range tool.packageNames(manager) {
 			if !seen[name] {
 				packages = append(packages, name)
 				seen[name] = true
@@ -252,21 +262,9 @@ func (tool commandLineTool) commandLabel() string {
 	return strings.Join(append([]string{tool.command}, tool.extraCommands...), " / ")
 }
 
-func (tool commandLineTool) installed() bool {
-	if tool.packageName == "bash-completion" {
-		return completionInstalled()
+func (tool commandLineTool) packageNames(manager packageManager) []string {
+	if names := tool.packagesByManager[manager.name]; len(names) > 0 {
+		return names
 	}
-	for _, command := range append([]string{tool.command}, tool.extraCommands...) {
-		if !commandExists(command) {
-			return false
-		}
-	}
-	// Debian's meta-package also provides development headers and packaging
-	// tools, so compiler commands alone do not prove it is installed.
-	if tool.packageName == "build-essential" &&
-		(commandExists("apt-get") || commandExists("apt")) && commandExists("dpkg-query") {
-		output, err := commandOutput("dpkg-query", "-W", "-f=${Status}", tool.packageName)
-		return err == nil && strings.TrimSpace(output) == "install ok installed"
-	}
-	return true
+	return []string{tool.packageName}
 }
