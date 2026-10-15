@@ -1,8 +1,10 @@
 package runtime
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"os/user"
 	"sort"
 	"strings"
 
@@ -50,6 +52,7 @@ type dockerUninstallPlan struct {
 	repoFiles    []string
 	removeData   bool
 	dataPaths    []string
+	removeGroup  bool
 }
 
 type dockerUninstaller struct {
@@ -63,6 +66,7 @@ type dockerUninstaller struct {
 	pathExists    func(string) bool
 	removeFile    func(string) error
 	removeTree    func(string) error
+	groupExists   func() (bool, error)
 	confirm       func(dockerUninstallPlan) (bool, error)
 }
 
@@ -90,7 +94,7 @@ func selectDockerUninstallMode(view dockerUninstallPrompter) (bool, bool, error)
 	for {
 		ui.MenuSection("请选择 Docker 卸载方式")
 		ui.MenuOptionHint("1", "卸载运行时", "保留容器、镜像和卷数据")
-		ui.MenuOptionHint("2", "完全卸载", "永久删除容器、镜像和卷数据")
+		ui.MenuOptionHint("2", "完全卸载", "永久删除容器、镜像、卷数据及 docker 用户组")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 		choice, err := view.Ask("请选择：")
@@ -127,10 +131,11 @@ func newDockerUninstaller(view *ui.UI, removeData bool) *dockerUninstaller {
 			_, err := os.Lstat(path)
 			return err == nil
 		},
-		removeFile: shared.RemoveRegularFile,
-		removeTree: shared.RemovePathTree,
-		confirm:    func(plan dockerUninstallPlan) (bool, error) { return confirmDockerUninstall(view, plan) },
-		removeData: removeData,
+		removeFile:  shared.RemoveRegularFile,
+		removeTree:  shared.RemovePathTree,
+		groupExists: dockerGroupExists,
+		confirm:     func(plan dockerUninstallPlan) (bool, error) { return confirmDockerUninstall(view, plan) },
+		removeData:  removeData,
 	}
 }
 
@@ -154,6 +159,7 @@ func confirmDockerUninstall(view dockerUninstallPrompter, plan dockerUninstallPl
 			ui.CardField{Label: "容器数据", Value: "/var/lib/docker（镜像、容器、卷）"},
 			ui.CardField{Label: "运行时数据", Value: "/var/lib/containerd"},
 			ui.CardField{Label: "自定义配置", Value: "/etc/docker 与 Docker systemd 配置"},
+			ui.CardField{Label: "用户组", Value: "保留 docker 组及成员关系"},
 		)
 		fmt.Println()
 		return view.Confirm("确认卸载 Docker 运行时并保留数据？请输入 y 确认，默认取消 (y/N)：")
@@ -162,6 +168,9 @@ func confirmDockerUninstall(view dockerUninstallPrompter, plan dockerUninstallPl
 	fields = append(fields, ui.CardField{Label: "影响", Value: "镜像、容器和卷无法恢复"})
 	for _, path := range plan.dataPaths {
 		fields = append(fields, ui.CardField{Label: "永久删除", Value: path})
+	}
+	if plan.removeGroup {
+		fields = append(fields, ui.CardField{Label: "用户组", Value: "删除 docker 组及成员关系，保留用户账号"})
 	}
 	ui.PrintDangerCard("Docker 数据将被永久删除", fields...)
 	fmt.Println()
@@ -177,7 +186,7 @@ func (uninstaller *dockerUninstaller) uninstall() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if len(plan.packages) == 0 && len(plan.repoFiles) == 0 && len(plan.dataPaths) == 0 {
+	if len(plan.packages) == 0 && len(plan.repoFiles) == 0 && len(plan.dataPaths) == 0 && !plan.removeGroup {
 		return false, fmt.Errorf("未检测到可由软件包管理器卸载的 Docker 或 Docker 官方仓库配置")
 	}
 
@@ -231,6 +240,19 @@ func (uninstaller *dockerUninstaller) uninstall() (bool, error) {
 			return false, fmt.Errorf("Docker 卸载在 systemd 状态清理阶段失败: %w", err)
 		}
 	}
+	if plan.removeGroup {
+		// Package removal may have already deleted the group.
+		exists, err := uninstaller.groupExists()
+		if err != nil {
+			return false, fmt.Errorf("Docker 卸载在用户组清理阶段失败: %w", err)
+		}
+		if exists {
+			log.Info("[Docker 卸载/用户组清理] groupdel docker")
+			if err := uninstaller.run("groupdel", "docker"); err != nil {
+				return false, fmt.Errorf("Docker 卸载在用户组清理阶段失败: %w；docker 组未删除，请检查是否有用户将其作为主组", err)
+			}
+		}
+	}
 
 	if uninstaller.commandExists("docker") {
 		version, versionErr := uninstaller.output("docker", "--version")
@@ -245,11 +267,13 @@ func (uninstaller *dockerUninstaller) uninstall() (bool, error) {
 			ui.CardField{Label: "软件包与仓库", Value: ui.Badge("已清理", true)},
 			ui.CardField{Label: "镜像、容器和卷", Value: ui.Badge("已清理", true)},
 			ui.CardField{Label: "自定义配置", Value: ui.Badge("已清理", true)},
+			ui.CardField{Label: "docker 用户组", Value: "已清理或不存在（用户账号保留）"},
 		)
 	} else {
 		ui.PrintSuccessCard("Docker 运行时卸载完成",
 			ui.CardField{Label: "镜像、容器和卷", Value: ui.Badge("已保留", true)},
 			ui.CardField{Label: "自定义配置", Value: ui.Badge("已保留", true)},
+			ui.CardField{Label: "docker 用户组", Value: "保留组及成员关系"},
 		)
 	}
 	return true, nil
@@ -271,6 +295,16 @@ func (uninstaller *dockerUninstaller) plan() (dockerUninstallPlan, error) {
 	if err != nil {
 		return dockerUninstallPlan{}, fmt.Errorf("Docker 卸载在软件包检测阶段失败: %w", err)
 	}
+	var removeGroup bool
+	if uninstaller.removeData {
+		removeGroup, err = uninstaller.groupExists()
+		if err != nil {
+			return dockerUninstallPlan{}, fmt.Errorf("Docker 卸载在用户组检测阶段失败: %w", err)
+		}
+		if removeGroup && !uninstaller.commandExists("groupdel") {
+			return dockerUninstallPlan{}, fmt.Errorf("未找到 groupdel，无法完全卸载 docker 用户组，请先安装系统用户组管理工具")
+		}
+	}
 	return dockerUninstallPlan{
 		distribution: distribution,
 		manager:      manager,
@@ -278,7 +312,20 @@ func (uninstaller *dockerUninstaller) plan() (dockerUninstallPlan, error) {
 		repoFiles:    uninstaller.existingRepositoryFiles(distribution),
 		removeData:   uninstaller.removeData,
 		dataPaths:    uninstaller.existingDataPaths(),
+		removeGroup:  removeGroup,
 	}, nil
+}
+
+func dockerGroupExists() (bool, error) {
+	_, err := user.LookupGroup("docker")
+	if err == nil {
+		return true, nil
+	}
+	var unknown user.UnknownGroupError
+	if errors.As(err, &unknown) {
+		return false, nil
+	}
+	return false, fmt.Errorf("查询 docker 用户组失败: %w", err)
 }
 
 func (uninstaller *dockerUninstaller) installedPackages(distribution dockerDistribution) ([]string, error) {

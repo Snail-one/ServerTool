@@ -198,6 +198,123 @@ func TestCompleteDockerUninstallDeletesDataAndRefreshesSystemd(t *testing.T) {
 	}
 }
 
+func TestDockerUninstallGroupCleanup(t *testing.T) {
+	for _, tt := range []struct {
+		name          string
+		complete      bool
+		groupPresent  bool
+		cancel        bool
+		packageClears bool
+	}{
+		{name: "runtime keeps group", groupPresent: true},
+		{name: "complete removes group", complete: true, groupPresent: true},
+		{name: "complete skips absent group", complete: true},
+		{name: "cancel keeps group", complete: true, groupPresent: true, cancel: true},
+		{name: "package already removed group", complete: true, groupPresent: true, packageClears: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			uninstaller, calls, _ := fakeDockerUninstaller()
+			uninstaller.removeData = tt.complete
+			groupPresent := tt.groupPresent
+			uninstaller.groupExists = func() (bool, error) {
+				if !tt.complete {
+					t.Fatal("runtime-only uninstall should not inspect the group")
+				}
+				return groupPresent, nil
+			}
+			commandExists := uninstaller.commandExists
+			uninstaller.commandExists = func(name string) bool {
+				return name == "groupdel" || commandExists(name)
+			}
+			uninstaller.confirm = func(plan dockerUninstallPlan) (bool, error) {
+				if want := tt.complete && tt.groupPresent; plan.removeGroup != want {
+					t.Fatalf("confirmation removeGroup=%v, want %v", plan.removeGroup, want)
+				}
+				return !tt.cancel, nil
+			}
+			run := uninstaller.run
+			uninstaller.run = func(name string, args ...string) error {
+				if name == "apt-get" && tt.packageClears {
+					groupPresent = false
+				}
+				return run(name, args...)
+			}
+
+			done, err := uninstaller.uninstall()
+			if err != nil || done == tt.cancel {
+				t.Fatalf("done=%v error=%v", done, err)
+			}
+			var deletions int
+			for _, call := range *calls {
+				if call == "groupdel docker" {
+					deletions++
+				}
+			}
+			wantDeletions := 0
+			if tt.complete && tt.groupPresent && !tt.cancel && !tt.packageClears {
+				wantDeletions = 1
+			}
+			if deletions != wantDeletions {
+				t.Fatalf("group deletions=%d, want %d: %v", deletions, wantDeletions, *calls)
+			}
+			if deletions > 0 && (*calls)[len(*calls)-1] != "groupdel docker" {
+				t.Fatalf("group removed before other cleanup completed: %v", *calls)
+			}
+			if tt.cancel && len(*calls) != 0 {
+				t.Fatalf("cancel changed system: %v", *calls)
+			}
+		})
+	}
+}
+
+func TestCompleteDockerUninstallGroupPreflightFailureChangesNothing(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		queryErr error
+		wantErr  string
+	}{
+		{name: "missing groupdel", wantErr: "未找到 groupdel"},
+		{name: "lookup failed", queryErr: errors.New("lookup failed"), wantErr: "用户组检测阶段"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			uninstaller, calls, removed := fakeDockerUninstaller()
+			uninstaller.removeData = true
+			uninstaller.groupExists = func() (bool, error) { return true, tt.queryErr }
+			uninstaller.confirm = func(dockerUninstallPlan) (bool, error) {
+				t.Fatal("invalid plan should not reach confirmation")
+				return false, nil
+			}
+			done, err := uninstaller.uninstall()
+			if done || err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("done=%v error=%v", done, err)
+			}
+			if len(*calls) != 0 || len(*removed) != 0 {
+				t.Fatalf("preflight failure changed system: calls=%v removed=%v", *calls, *removed)
+			}
+		})
+	}
+}
+
+func TestCompleteDockerUninstallGroupDeletionFailure(t *testing.T) {
+	uninstaller, _, _ := fakeDockerUninstaller()
+	uninstaller.removeData = true
+	uninstaller.groupExists = func() (bool, error) { return true, nil }
+	commandExists := uninstaller.commandExists
+	uninstaller.commandExists = func(name string) bool {
+		return name == "groupdel" || commandExists(name)
+	}
+	run := uninstaller.run
+	uninstaller.run = func(name string, args ...string) error {
+		if name == "groupdel" {
+			return errors.New("group is a primary group")
+		}
+		return run(name, args...)
+	}
+	if done, err := uninstaller.uninstall(); done || err == nil || !strings.Contains(err.Error(), "用户组清理阶段") {
+		t.Fatalf("done=%v error=%v", done, err)
+	}
+}
+
 type fakeDockerUninstallPrompt struct {
 	answers []string
 	confirm bool
@@ -247,8 +364,9 @@ func fakeDockerUninstaller() (*dockerUninstaller, *[]string, *[]string) {
 			removed = append(removed, path)
 			return nil
 		},
-		removeTree: func(string) error { return nil },
-		confirm:    func(dockerUninstallPlan) (bool, error) { return true, nil },
+		removeTree:  func(string) error { return nil },
+		groupExists: func() (bool, error) { return false, nil },
+		confirm:     func(dockerUninstallPlan) (bool, error) { return true, nil },
 	}
 	return uninstaller, &calls, &removed
 }
