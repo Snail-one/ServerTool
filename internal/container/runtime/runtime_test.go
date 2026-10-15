@@ -276,7 +276,7 @@ func dockerFakeOutput(fingerprint string) func(string, ...string) (string, error
 	return func(name string, args ...string) (string, error) {
 		switch name {
 		case "gpg":
-			return "fpr:::::::::" + fingerprint + ":\n", nil
+			return "pub:-:4096:1:KEY::::::\nfpr:::::::::" + fingerprint + ":\n", nil
 		case "dpkg":
 			return "amd64\n", nil
 		case "docker":

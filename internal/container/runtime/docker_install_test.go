@@ -33,6 +33,12 @@ func TestDockerSupportedPlatformPolicy(t *testing.T) {
 		{name: "rhel 10", id: "rhel", version: "10", arch: "aarch64"},
 		{name: "rhel 9", id: "rhel", version: "9", arch: "x86_64"},
 		{name: "rhel 8", id: "rhel", version: "8", arch: "s390x"},
+		{name: "rhel 8.10", id: "rhel", version: "8.10", arch: "s390x"},
+		{name: "rhel 9.6", id: "rhel", version: "9.6", arch: "x86_64"},
+		{name: "rhel 10.0", id: "rhel", version: "10.0", arch: "aarch64"},
+		{name: "old rhel minor", id: "rhel", version: "7.9", arch: "x86_64", wantErr: true},
+		{name: "future rhel minor", id: "rhel", version: "11.0", arch: "x86_64", wantErr: true},
+		{name: "ubuntu requires full version", id: "ubuntu", version: "24", arch: "x86_64", wantErr: true},
 		{name: "old ubuntu", id: "ubuntu", version: "20.04", arch: "x86_64", wantErr: true},
 		{name: "unknown debian", id: "debian", version: "14", arch: "x86_64", wantErr: true},
 		{name: "centos not stream", id: "centos", version: "9", pretty: "CentOS Linux 9", arch: "x86_64", wantErr: true},
@@ -60,6 +66,9 @@ func TestDockerSupportedPlatformPolicy(t *testing.T) {
 			err := installer.validatePlatform(&dist)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("validatePlatform() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if dist.Version != tt.version {
+				t.Fatalf("display version changed from %q to %q", tt.version, dist.Version)
 			}
 		})
 	}
@@ -92,8 +101,8 @@ func TestDockerConflictPackagesByDistribution(t *testing.T) {
 		contains []string
 		excludes []string
 	}{
-		{id: "debian", contains: []string{"docker.io", "podman-docker", "runc"}, excludes: []string{"docker-compose-v2"}},
-		{id: "ubuntu", contains: []string{"docker.io", "docker-compose-v2", "runc"}},
+		{id: "debian", contains: []string{"docker.io", "docker-buildx", "podman-docker", "runc"}, excludes: []string{"docker-compose-v2"}},
+		{id: "ubuntu", contains: []string{"docker.io", "docker-buildx", "docker-compose-v2", "runc"}},
 		{id: "fedora", contains: []string{"docker-selinux", "docker-engine-selinux"}, excludes: []string{"podman", "runc"}},
 		{id: "centos", contains: []string{"docker-engine"}, excludes: []string{"podman", "runc", "docker-selinux"}},
 		{id: "rhel", contains: []string{"docker-engine", "podman", "runc"}},
@@ -221,8 +230,8 @@ func TestDockerInstallStageOrder(t *testing.T) {
 	installer, calls := fakeDockerInstaller(t)
 	baseOutput := dockerFakeOutput(dockerDebFingerprint)
 	installer.output = func(name string, args ...string) (string, error) {
-		if name == "dpkg-query" && args[len(args)-1] == "docker.io" {
-			return "ii docker.io", nil
+		if name == "dpkg-query" && (args[len(args)-1] == "docker.io" || args[len(args)-1] == "docker-buildx") {
+			return "ii " + args[len(args)-1], nil
 		}
 		return baseOutput(name, args...)
 	}
@@ -235,7 +244,7 @@ func TestDockerInstallStageOrder(t *testing.T) {
 		"write /etc/apt/keyrings/docker.asc",
 		"write /etc/apt/sources.list.d/docker.sources",
 		"apt-get update",
-		"apt-get remove -y docker.io",
+		"apt-get remove -y docker-buildx docker.io",
 		"apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin",
 		"systemctl enable --now docker",
 	}

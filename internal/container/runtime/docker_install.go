@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -43,8 +44,8 @@ var dockerSupportedArchitectures = map[string]map[string]bool{
 }
 
 var dockerConflictPackages = map[string][]string{
-	"debian": {"docker.io", "docker-compose", "docker-doc", "podman-docker", "containerd", "runc"},
-	"ubuntu": {"docker.io", "docker-compose", "docker-compose-v2", "docker-doc", "podman-docker", "containerd", "runc"},
+	"debian": {"docker.io", "docker-compose", "docker-doc", "docker-buildx", "podman-docker", "containerd", "runc"},
+	"ubuntu": {"docker.io", "docker-compose", "docker-compose-v2", "docker-doc", "docker-buildx", "podman-docker", "containerd", "runc"},
 	"fedora": {
 		"docker", "docker-client", "docker-client-latest", "docker-common", "docker-latest",
 		"docker-latest-logrotate", "docker-logrotate", "docker-engine", "docker-selinux", "docker-engine-selinux",
@@ -365,7 +366,11 @@ func (installer *dockerInstaller) detectDistribution() (dockerDistribution, erro
 }
 
 func (installer *dockerInstaller) validatePlatform(distribution *dockerDistribution) error {
-	if !dockerSupportedVersions[distribution.ID][distribution.Version] {
+	version := distribution.Version
+	if distribution.ID == "rhel" {
+		version, _, _ = strings.Cut(version, ".")
+	}
+	if !dockerSupportedVersions[distribution.ID][version] {
 		return fmt.Errorf("Docker 官方 stable 仓库不支持 %s %s；支持版本：%s", distribution.ID, distribution.Version, strings.Join(sortedPolicyKeys(dockerSupportedVersions[distribution.ID]), "、"))
 	}
 	if distribution.ID == "centos" && !strings.Contains(strings.ToLower(distribution.Name), "stream") {
@@ -447,13 +452,33 @@ func (installer *dockerInstaller) keyFingerprint(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("gpg 无法读取下载的公钥: %w（输出：%s）", err, strings.TrimSpace(output))
 	}
+	var fingerprint string
+	var primaryKeys int
+	var awaitingPrimaryFingerprint bool
 	for _, line := range strings.Split(output, "\n") {
 		fields := strings.Split(line, ":")
-		if len(fields) > 9 && fields[0] == "fpr" {
-			return strings.ToUpper(fields[9]), nil
+		switch fields[0] {
+		case "pub":
+			primaryKeys++
+			if primaryKeys > 1 {
+				return "", fmt.Errorf("下载内容包含多个主密钥，已拒绝信任整个公钥文件")
+			}
+			awaitingPrimaryFingerprint = true
+		case "sub":
+			awaitingPrimaryFingerprint = false
+		case "sec", "ssb":
+			return "", fmt.Errorf("下载内容包含私钥，只接受仓库签名公钥")
+		case "fpr":
+			if awaitingPrimaryFingerprint && len(fields) > 9 {
+				fingerprint = strings.ToUpper(fields[9])
+				awaitingPrimaryFingerprint = false
+			}
 		}
 	}
-	return "", fmt.Errorf("下载内容中没有主密钥指纹")
+	if primaryKeys != 1 || fingerprint == "" {
+		return "", fmt.Errorf("下载内容中没有主密钥指纹")
+	}
+	return fingerprint, nil
 }
 
 func formatFingerprint(value string) string {
@@ -633,7 +658,7 @@ func (installer *dockerInstaller) detectFirewall() (dockerFirewallReport, error)
 
 func (installer *dockerInstaller) checkDuplicateRepositories(distribution dockerDistribution) error {
 	if distribution.Family == "apt" {
-		if err := installer.checkRepositoryFile("/etc/apt/sources.list", distribution, ""); err != nil {
+		if err := installer.checkRepositoryFile("/etc/apt/sources.list", distribution); err != nil {
 			return err
 		}
 		return installer.checkRepositoryDirectory("/etc/apt/sources.list.d", "docker.sources", distribution)
@@ -653,14 +678,17 @@ func (installer *dockerInstaller) checkRepositoryDirectory(dir, managed string, 
 		if entry.IsDir() || entry.Name() == managed {
 			continue
 		}
-		if err := installer.checkRepositoryFile(dir+"/"+entry.Name(), distribution, managed); err != nil {
+		if !dockerRepositoryFilename(entry.Name(), distribution.Family) {
+			continue
+		}
+		if err := installer.checkRepositoryFile(filepath.Join(dir, entry.Name()), distribution); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (installer *dockerInstaller) checkRepositoryFile(path string, distribution dockerDistribution, _ string) error {
+func (installer *dockerInstaller) checkRepositoryFile(path string, distribution dockerDistribution) error {
 	data, err := installer.readFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -668,8 +696,7 @@ func (installer *dockerInstaller) checkRepositoryFile(path string, distribution 
 	if err != nil {
 		return err
 	}
-	content := strings.ToLower(string(data))
-	if strings.Contains(content, "download.docker.com/linux/"+distribution.ID) {
+	if enabledDockerRepository(string(data), path, distribution) {
 		return fmt.Errorf("检测到额外 Docker 仓库配置 %s；请先移除或合并重复配置，避免 Signed-By/仓库冲突", path)
 	}
 	return nil
