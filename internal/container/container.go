@@ -46,7 +46,7 @@ func Run(view *ui.UI) error {
 		} else {
 			ui.MenuOptionHint("3", "配置 Docker 服务", "仅 Docker 可用；服务代理与日志轮转")
 		}
-		ui.MenuOptionHint("4", "清理容器资源", "容器、网络、镜像与构建缓存")
+		ui.MenuOptionHint("4", "清理容器资源", "容器、网络、镜像、数据卷与构建缓存")
 		ui.MenuOptionHint("5", fmt.Sprintf("卸载 %s", uninstallName), "可选择保留或永久删除数据")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
