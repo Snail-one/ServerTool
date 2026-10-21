@@ -53,6 +53,9 @@ func runRuleManager(view *ui.UI) error {
 			})
 		case "2":
 			shared.RunAction(view, "编辑规则失败，已返回规则管理", func() error {
+				ui.ClearScreen()
+				ui.MenuTitle("防火墙管理", "选择编辑规则")
+				printAllowRules(rules)
 				id, err := chooseRuleID(view, rules)
 				if err != nil {
 					return err
@@ -228,6 +231,12 @@ func askAllowRule(view *ui.UI, current allowRule) (allowRule, error) {
 }
 
 func changeAllowRule(view *ui.UI, version configVersion, rules []allowRule, id string) error {
+	ui.ClearScreen()
+	if id == "" {
+		ui.MenuTitle("防火墙管理", "添加放行规则")
+	} else {
+		ui.MenuTitle("防火墙管理", "编辑放行规则")
+	}
 	current := allowRule{ID: id}
 	if id == "" {
 		var err error
@@ -292,6 +301,8 @@ func changeAllowRule(view *ui.UI, version configVersion, rules []allowRule, id s
 }
 
 func queryRulesByPort(view *ui.UI, rules []allowRule) ([]allowRule, error) {
+	ui.ClearScreen()
+	ui.MenuTitle("防火墙管理", "查询放行规则")
 	ports, err := askRulePorts(view, "")
 	if err != nil {
 		return nil, err
@@ -313,6 +324,8 @@ func queryRulesByPort(view *ui.UI, rules []allowRule) ([]allowRule, error) {
 }
 
 func deleteAllowRule(view *ui.UI, version configVersion, rules []allowRule) error {
+	ui.ClearScreen()
+	ui.MenuTitle("防火墙管理", "删除放行规则")
 	ui.MenuOption("1", "按规则 ID 删除")
 	ui.MenuOption("2", "按端口查询后选择规则删除")
 	ui.MenuExit("0/q", "返回")

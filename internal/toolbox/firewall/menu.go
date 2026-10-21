@@ -9,7 +9,7 @@ import (
 
 func showMenu(autostart autostartStatus) {
 	fmt.Println()
-	ui.MenuOptionHint("1", "查看生效端口", "公网 / 内网 · TCP / UDP")
+	ui.MenuOptionHint("1", "查看端口策略", "公网 / 内网 · TCP / UDP")
 	ui.MenuOptionHint("2", "查看全部规则", "当前已加载的完整规则")
 	ui.MenuOptionHint("3", "放行规则管理", "添加 / 查询 / 编辑 / 删除")
 	fmt.Println()

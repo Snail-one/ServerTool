@@ -57,7 +57,7 @@ func Run(view *ui.UI) error {
 		case "":
 			continue
 		case "1":
-			shared.RunAction(view, "读取生效端口失败，已返回防火墙管理", showLoadedPorts)
+			shared.RunAction(view, "读取端口策略失败，已返回防火墙管理", showLoadedPorts)
 		case "2":
 			shared.RunAction(view, "读取已加载规则失败，已返回防火墙管理", showLoadedRules)
 		case "3":
@@ -90,6 +90,8 @@ func Run(view *ui.UI) error {
 }
 
 func showConfigFile() error {
+	ui.ClearScreen()
+	ui.MenuTitle("防火墙管理", "配置文件")
 	data, err := os.ReadFile(configPath)
 	if os.IsNotExist(err) {
 		ui.PrintInfoCard("尚未生成防火墙配置", ui.CardField{Label: "下一步", Value: "选择 6 生成默认配置"})
@@ -98,18 +100,18 @@ func showConfigFile() error {
 	if err != nil {
 		return err
 	}
-	ui.MenuTitle("防火墙管理", "配置文件")
 	ui.PrintField("配置文件", configPath)
 	fmt.Println(string(data))
 	return nil
 }
 
 func showLoadedRules() error {
+	ui.ClearScreen()
+	ui.MenuTitle("防火墙管理", "全部已加载规则")
 	out, err := commandOutput("nft", "list", "ruleset")
 	if err != nil {
 		return fmt.Errorf("读取完整 nftables 规则集失败: %w: %s", err, strings.TrimSpace(out))
 	}
-	ui.MenuTitle("防火墙管理", "全部已加载规则")
 	if strings.TrimSpace(out) == "" {
 		ui.PrintInfoCard("当前没有已加载的 nftables 规则")
 	} else {
@@ -122,6 +124,8 @@ func loadConfig(view *ui.UI) error {
 	if !isRoot() {
 		return fmt.Errorf("加载防火墙配置需要 root 权限，请使用 sudo 运行本工具")
 	}
+	ui.ClearScreen()
+	ui.MenuTitle("防火墙管理", "校验加载配置")
 	info, err := os.Lstat(configPath)
 	if os.IsNotExist(err) {
 		return fmt.Errorf("未找到 %s，请先生成或编辑配置", configPath)
@@ -162,7 +166,7 @@ func loadConfig(view *ui.UI) error {
 	ui.PrintSuccessCard("防火墙配置已加载",
 		ui.CardField{Label: "配置文件", Value: configPath},
 		ui.CardField{Label: "当前状态", Value: "已立即生效"},
-		ui.CardField{Label: "查看规则", Value: "选择 1 查看生效端口，选择 2 查看全部规则"},
+		ui.CardField{Label: "查看规则", Value: "选择 1 查看端口策略，选择 2 查看全部规则"},
 	)
 	return nil
 }
@@ -182,6 +186,8 @@ func applyConfig(expected []byte) error {
 }
 
 func editConfig(view *ui.UI) error {
+	ui.ClearScreen()
+	ui.MenuTitle("防火墙管理", "编辑配置文件")
 	var editor string
 	for _, name := range []string{"vim", "vi", "nano"} {
 		if commandExists(name) {
@@ -241,6 +247,8 @@ func configure(view *ui.UI) error {
 	if err != nil || !installed {
 		return err
 	}
+	ui.ClearScreen()
+	ui.MenuTitle("防火墙管理", "生成配置")
 	version, err := readConfigVersion()
 	if err != nil {
 		return err
@@ -310,7 +318,7 @@ func configure(view *ui.UI) error {
 		ui.CardField{Label: "配置文件", Value: configPath},
 		ui.CardField{Label: "SSH 端口", Value: portList(ports)},
 		ui.CardField{Label: "当前状态", Value: "配置已校验并立即生效"},
-		ui.CardField{Label: "查看规则", Value: "选择 1 查看生效端口，选择 2 查看全部规则"},
+		ui.CardField{Label: "查看规则", Value: "选择 1 查看端口策略，选择 2 查看全部规则"},
 	)
 	return nil
 }
@@ -382,6 +390,7 @@ func confirmConfig(view *ui.UI, content string, ports []int, publicWeb, privateW
 		case "1":
 			return true, nil
 		case "2":
+			ui.ClearScreen()
 			ui.MenuTitle("防火墙管理", "配置预览")
 			fmt.Println(content)
 			view.PauseWithPrompt("按回车返回配置确认…")
