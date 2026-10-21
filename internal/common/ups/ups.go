@@ -45,6 +45,7 @@ type nutConfigFile struct {
 }
 
 var (
+	backupStore           = shared.BackupStore{Root: shared.DataDir, Module: "ups"}
 	nutModeLine           = regexp.MustCompile(`(?m)^([ \t]*MODE[ \t]*=[ \t]*).*$`)
 	nutStandaloneModeLine = regexp.MustCompile(`(?m)^[ \t]*MODE[ \t]*=[ \t]*standalone[ \t]*(?:#.*)?$`)
 	usbIDLine             = regexp.MustCompile(`(?i)^[0-9a-f]{4}$`)
@@ -602,33 +603,12 @@ func lookupGroupID(name string) (int, error) {
 }
 
 func backupNUTConfigFile(path string) (string, bool, error) {
-	backup := originalNUTBackupPath(path)
-	if system.FileExists(backup) {
-		return backup, false, nil
-	}
-
-	if err := copyNUTBackupFile(path, backup); err != nil {
-		return "", false, err
-	}
-	return backup, true, nil
+	return backupStore.KeepOriginal(path)
 }
 
 func originalNUTBackupPath(path string) string {
-	return path + ".bak"
-}
-
-func copyNUTBackupFile(source, target string) error {
-	input, err := os.ReadFile(source)
-	if err != nil {
-		return err
-	}
-
-	info, err := os.Stat(source)
-	if err != nil {
-		return err
-	}
-
-	return shared.AtomicWriteFile(target, input, shared.AtomicWriteOptions{Mode: info.Mode().Perm()})
+	path, _ = backupStore.OriginalPath(path)
+	return path
 }
 
 func restoreUPSBackup(view *ui.UI) error {
@@ -718,7 +698,7 @@ func existingNUTBackups() []nutConfigFile {
 
 func deleteNUTBackupFile(file nutConfigFile) error {
 	backup := originalNUTBackupPath(file.path)
-	if err := os.Remove(backup); err != nil {
+	if err := backupStore.RemoveOriginal(file.path); err != nil {
 		return err
 	}
 	log.Info("已删除 NUT 配置备份：", backup)
@@ -726,25 +706,15 @@ func deleteNUTBackupFile(file nutConfigFile) error {
 }
 
 func restoreNUTBackupFile(file nutConfigFile) error {
-	backup := originalNUTBackupPath(file.path)
-	data, err := os.ReadFile(backup)
+	backup, err := backupStore.ReadOriginal(file.path)
 	if err != nil {
 		return err
-	}
-
-	info, err := os.Stat(backup)
-	if err != nil {
-		return err
-	}
-	mode := info.Mode().Perm()
-	if mode == 0 {
-		mode = file.mode
 	}
 
 	restoredFile := file
-	restoredFile.mode = mode
+	restoredFile.mode = backup.Mode
 
-	options := shared.AtomicWriteOptions{Mode: restoredFile.mode}
+	options := shared.AtomicWriteOptions{Mode: restoredFile.mode, ForceMode: true, Owner: backup.Owner}
 	if shouldEnforceFileMetadata(restoredFile) {
 		options.ForceMode = true
 		uid, gid, ownerErr := lookupFileOwner(restoredFile.owner)
@@ -753,7 +723,7 @@ func restoreNUTBackupFile(file nutConfigFile) error {
 		}
 		options.Owner = &shared.FileOwner{UID: uid, GID: gid}
 	}
-	if err := shared.AtomicWriteFile(restoredFile.path, data, options); err != nil {
+	if err := shared.AtomicWriteFile(restoredFile.path, backup.Data, options); err != nil {
 		return err
 	}
 	if err := applyManagedFileMetadataIfNeeded(restoredFile); err != nil {

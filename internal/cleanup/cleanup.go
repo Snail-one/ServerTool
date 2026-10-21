@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	cleanupbackups "snail_tool/internal/cleanup/backups"
 	cleanupbash "snail_tool/internal/cleanup/bash"
 	cleanupproxy "snail_tool/internal/cleanup/proxy"
 	cleanupsshd "snail_tool/internal/cleanup/sshd"
@@ -39,6 +40,7 @@ func Run(view *ui.UI) error {
 		ui.MenuOption("4", "清理 Bash 配置")
 		ui.MenuOption("5", "清理 HTTP/HTTPS 代理配置")
 		ui.MenuOption("6", "清理全部本工具配置")
+		ui.MenuOptionHint("7", "清理备份", "按模块 / 全部")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -63,11 +65,16 @@ func Run(view *ui.UI) error {
 		case "5":
 			return runCleanupStepWithConfirm(view, account, steps[4])
 		case "6":
+			plan, err := cleanupbackups.PrepareAll()
+			if err != nil {
+				return err
+			}
 			ui.PrintDangerCard("清理全部配置风险",
 				ui.CardField{Label: "SSH 安全策略", Value: "将移除本工具写入的配置"},
 				ui.CardField{Label: "潜在影响", Value: "可能恢复系统默认 SSH 密码登录"},
+				ui.CardField{Label: "备份清理", Value: plan.Summary(), Detail: "永久删除全部模块备份，包含 UPS 首次备份"},
 			)
-			confirmed, err := view.Confirm("确认清理全部本工具配置？请输入 y 确认，默认取消 (y/N)：")
+			confirmed, err := view.Confirm("确认清理全部本工具配置及备份？请输入 y 确认，默认取消 (y/N)：")
 			if err != nil {
 				return err
 			}
@@ -76,12 +83,22 @@ func Run(view *ui.UI) error {
 				view.Pause()
 				continue
 			}
-			return runCleanupSteps(account, steps)
+			return runAllCleanupSteps(account, steps, plan.Delete)
+		case "7":
+			shared.RunAction(view, "备份清理失败，已返回清理配置", func() error { return cleanupbackups.Run(view) })
 		default:
 			ui.InvalidChoice()
 			view.Pause()
 		}
 	}
+}
+
+func runAllCleanupSteps(account *system.Account, steps []cleanupStep, deleteBackups func() error) error {
+	if err := runCleanupSteps(account, steps); err != nil {
+		log.Warn("配置清理未全部完成，已保留备份")
+		return err
+	}
+	return deleteBackups()
 }
 
 func allCleanupSteps() []cleanupStep {

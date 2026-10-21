@@ -18,6 +18,8 @@ import (
 
 type sshdSettings map[string][]string
 
+var backupStore = shared.BackupStore{Root: shared.DataDir, Module: "ssh"}
+
 type sshdSecurityRow struct {
 	name      string
 	value     string
@@ -460,7 +462,7 @@ func writeSSHDConfig(port int, permitRootLogin string, disableSSHDConfigPorts bo
 	}
 
 	if system.FileExists(customSSHDConfigPath) {
-		backup, err := system.Backup(customSSHDConfigPath)
+		backup, err := backupStore.Snapshot(customSSHDConfigPath)
 		if err != nil {
 			return err
 		}
@@ -512,7 +514,7 @@ func disableSSHDConfigPortsInFiles() error {
 		if info, err := os.Stat(path); err == nil {
 			mode = info.Mode().Perm()
 		}
-		backup, err := system.Backup(path)
+		backup, err := backupStore.Snapshot(path)
 		if err != nil {
 			return err
 		}

@@ -15,8 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"snail_tool/internal/shared"
 )
 
 type Account struct {
@@ -158,19 +156,6 @@ func ChownPath(path string, account *Account, recursive bool) error {
 		})
 	}
 	return os.Chown(path, account.UID, account.GID)
-}
-
-func Backup(path string) (string, error) {
-	backup := fmt.Sprintf("%s.bak.%s", path, time.Now().Format("20060102_150405"))
-	input, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return "", err
-	}
-	return backup, shared.AtomicWriteFile(backup, input, shared.AtomicWriteOptions{Mode: info.Mode().Perm()})
 }
 
 func PortInUse(port int) bool {

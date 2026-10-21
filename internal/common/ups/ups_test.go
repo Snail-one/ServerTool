@@ -6,7 +6,16 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"snail_tool/internal/shared"
 )
+
+func setupBackupStore(t *testing.T) {
+	t.Helper()
+	previous := backupStore
+	backupStore = shared.BackupStore{Root: filepath.Join(t.TempDir(), "snailtool"), Module: "ups"}
+	t.Cleanup(func() { backupStore = previous })
+}
 
 func TestNUTSystemdServicesOrder(t *testing.T) {
 	got := nutSystemdServices()
@@ -274,6 +283,7 @@ func TestFilePermissionMatches(t *testing.T) {
 }
 
 func TestBackupNUTConfigFileKeepsOriginalBackup(t *testing.T) {
+	setupBackupStore(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "nut.conf")
 
@@ -291,8 +301,8 @@ func TestBackupNUTConfigFileKeepsOriginalBackup(t *testing.T) {
 	if backup != originalNUTBackupPath(path) {
 		t.Fatalf("backup path = %q, want %q", backup, originalNUTBackupPath(path))
 	}
-	if got := readTestFile(t, backup); got != "official\n" {
-		t.Fatalf("backup content = %q, want official", got)
+	if got, err := backupStore.ReadOriginal(path); err != nil || string(got.Data) != "official\n" {
+		t.Fatalf("backup content = %q, err=%v, want official", got.Data, err)
 	}
 
 	if err := os.WriteFile(path, []byte("modified\n"), 0640); err != nil {
@@ -305,17 +315,20 @@ func TestBackupNUTConfigFileKeepsOriginalBackup(t *testing.T) {
 	if created {
 		t.Fatal("expected existing original backup to be preserved")
 	}
-	if got := readTestFile(t, backup); got != "official\n" {
-		t.Fatalf("backup was overwritten, got %q", got)
+	if got, err := backupStore.ReadOriginal(path); err != nil || string(got.Data) != "official\n" {
+		t.Fatalf("backup was overwritten, got %q, err=%v", got.Data, err)
 	}
 }
 
 func TestExistingNUTBackupsFindsOriginalBackup(t *testing.T) {
+	setupBackupStore(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "upsmon.conf")
-	backup := originalNUTBackupPath(path)
 
-	if err := os.WriteFile(backup, []byte("official\n"), 0640); err != nil {
+	if err := os.WriteFile(path, []byte("official\n"), 0640); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := backupNUTConfigFile(path); err != nil {
 		t.Fatal(err)
 	}
 
@@ -332,14 +345,20 @@ func TestExistingNUTBackupsFindsOriginalBackup(t *testing.T) {
 }
 
 func TestRestoreNUTBackupFileRestoresOriginalBackup(t *testing.T) {
+	setupBackupStore(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "ups.conf")
-	backup := originalNUTBackupPath(path)
 
+	if err := os.WriteFile(path, []byte("restored\n"), 0640); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := backupNUTConfigFile(path); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(path, []byte("broken\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(backup, []byte("restored\n"), 0640); err != nil {
+	if err := os.Chmod(path, 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -351,9 +370,14 @@ func TestRestoreNUTBackupFileRestoresOriginalBackup(t *testing.T) {
 	if got := readTestFile(t, path); got != "restored\n" {
 		t.Fatalf("restored content = %q, want restored", got)
 	}
+	info, err := os.Stat(path)
+	if err != nil || info.Mode().Perm() != 0640 {
+		t.Fatalf("original file permissions were not restored: %v %v", info, err)
+	}
 }
 
 func TestDeleteNUTBackupFileDeletesBackupOnly(t *testing.T) {
+	setupBackupStore(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "ups.conf")
 	backup := originalNUTBackupPath(path)
@@ -361,7 +385,7 @@ func TestDeleteNUTBackupFileDeletesBackupOnly(t *testing.T) {
 	if err := os.WriteFile(path, []byte("current\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(backup, []byte("backup\n"), 0640); err != nil {
+	if _, _, err := backupNUTConfigFile(path); err != nil {
 		t.Fatal(err)
 	}
 
@@ -374,5 +398,41 @@ func TestDeleteNUTBackupFileDeletesBackupOnly(t *testing.T) {
 	}
 	if got := readTestFile(t, path); got != "current\n" {
 		t.Fatalf("current file changed, got %q", got)
+	}
+}
+
+func TestUPSBackupsDoNotUseLegacyLocations(t *testing.T) {
+	setupBackupStore(t)
+	path := filepath.Join(t.TempDir(), "ups.conf")
+	if err := os.WriteFile(path, []byte("current\n"), 0640); err != nil {
+		t.Fatal(err)
+	}
+	legacy := path + ".bak"
+	if err := os.WriteFile(legacy, []byte("legacy\n"), 0640); err != nil {
+		t.Fatal(err)
+	}
+	previous := nutConfigFiles
+	nutConfigFiles = []nutConfigFile{{path: path, mode: 0640}}
+	t.Cleanup(func() { nutConfigFiles = previous })
+	if got := existingNUTBackups(); len(got) != 0 {
+		t.Fatalf("legacy backup was discovered: %v", got)
+	}
+	if err := restoreNUTBackupFile(nutConfigFiles[0]); !os.IsNotExist(err) {
+		t.Fatalf("restore must only use the new directory: %v", err)
+	}
+	if _, created, err := backupNUTConfigFile(path); err != nil || !created {
+		t.Fatalf("legacy backup prevented creation in the new directory: %v %v", created, err)
+	}
+	if err := restoreNUTBackupFile(nutConfigFiles[0]); err != nil {
+		t.Fatal(err)
+	}
+	if got := readTestFile(t, path); got != "current\n" {
+		t.Fatalf("restored legacy contents: %q", got)
+	}
+	if err := deleteNUTBackupFile(nutConfigFiles[0]); err != nil {
+		t.Fatal(err)
+	}
+	if got := readTestFile(t, legacy); got != "legacy\n" {
+		t.Fatalf("legacy file was modified: %q", got)
 	}
 }

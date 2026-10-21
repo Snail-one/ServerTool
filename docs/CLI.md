@@ -21,7 +21,9 @@ snail <command>
 | `snail help` | `--help`、`-h` | 否 | 显示命令行用法 |
 | `snail version` | `--version`、`-v` | 否 | 显示版本、提交、构建时间、Go 版本和目标平台 |
 | `snail update` | 无 | 是 | 下载仓库安装脚本并安装或更新到最新正式版 |
-| `snail uninstall` | `--uninstall` | 是 | 下载仓库安装脚本并卸载主程序 |
+| `snail uninstall` | `--uninstall` | 是 | 下载仓库安装脚本，默认清理全部备份并卸载主程序 |
+| `snail clean-backups` | 无 | 是 | 显示备份数量与大小，确认后清理全部模块备份 |
+| `snail clean-backups --yes` | 无 | 是 | 直接清理全部模块备份，供卸载流程调用 |
 
 未知命令会显示错误和用法，并以状态码 `2` 退出。
 
@@ -95,7 +97,9 @@ sudo snail uninstall
 sudo snail --uninstall
 ```
 
-卸载只删除安装后的主程序文件，默认位置为 `/usr/local/sbin/snail`。它不会删除通过 ServerTool 配置的 SSH、容器服务、用户环境或 UPS 配置。
+卸载默认先清理 `/var/lib/snailtool/backups/` 中全部模块的备份，再删除主程序文件（默认 `/usr/local/sbin/snail`），不另行确认。备份清理失败时停止卸载并保留程序。通过 ServerTool 配置的 SSH、容器服务、用户环境和 UPS 配置仍保留。
+
+也可单独执行 `sudo snail clean-backups`，确认后清理备份；加 `--yes` 跳过确认。备份清理包含 UPS 首次备份，只操作当前数据目录中的备份文件，不兼容旧备份位置。
 
 ## 2. 安装脚本
 
@@ -220,7 +224,7 @@ sudo HTTPS_PROXY=http://127.0.0.1:7890 sh scripts/install.sh
 | `1` | 权限不足、下载失败、校验失败、安装失败或其他运行错误 |
 | `2` | 主程序收到未知命令 |
 
-`help` 和 `version` 不需要 root；交互菜单、`update`、`uninstall` 以及安装脚本的安装和卸载操作需要 root。
+`help` 和 `version` 不需要 root；交互菜单、`update`、`uninstall`、`clean-backups` 以及安装脚本的安装和卸载操作需要 root。
 
 在自动化脚本中应检查退出状态，例如：
 

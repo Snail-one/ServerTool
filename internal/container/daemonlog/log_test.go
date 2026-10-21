@@ -9,7 +9,15 @@ import (
 	"testing"
 
 	"snail_tool/internal/container/update"
+	"snail_tool/internal/shared"
 )
+
+func setupBackupStore(t *testing.T) {
+	t.Helper()
+	previous := backupStore
+	backupStore = shared.BackupStore{Root: filepath.Join(t.TempDir(), "snailtool"), Module: "docker"}
+	t.Cleanup(func() { backupStore = previous })
+}
 
 func TestWriteDockerDaemonLogConfigCreatesDefault(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "docker", "daemon.json")
@@ -47,6 +55,13 @@ func TestWriteDockerDaemonLogConfigPreservesExistingFields(t *testing.T) {
 	}
 	if _, err := os.Stat(result.backupPath); err != nil {
 		t.Fatalf("backup missing: %v", err)
+	}
+	dir, err := backupStore.Directory(path)
+	if err != nil || filepath.Dir(result.backupPath) != dir || shared.ReadFileString(result.backupPath) != `{"debug":true,"registry-mirrors":["https://mirror.example"]}` {
+		t.Fatalf("original config was not saved in the tool data directory: %s %v", result.backupPath, err)
+	}
+	if matches, _ := filepath.Glob(path + ".bak.*"); len(matches) != 0 {
+		t.Fatalf("backup appeared beside daemon.json: %v", matches)
 	}
 
 	config := readDaemonJSON(t, path)
@@ -153,6 +168,18 @@ func TestWriteDockerDaemonLogConfigRejectsInvalidJSON(t *testing.T) {
 		t.Fatalf("invalid JSON file changed:\n%s", string(data))
 	}
 	assertNoBackups(t, path)
+}
+
+func TestWriteDockerDaemonLogConfigStopsIfBackupFails(t *testing.T) {
+	original := `{"debug":true}`
+	path := writeDaemonJSONFile(t, original)
+	if err := os.WriteFile(backupStore.Root, []byte("not a directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	result, err := writeDockerDaemonLogConfig(path, defaultLogRotationConfig(), failOverwritePrompt(t))
+	if err == nil || result.written || shared.ReadFileString(path) != original {
+		t.Fatalf("backup failure must stop config replacement: %+v %v", result, err)
+	}
 }
 
 func TestDockerLogConfigStatusDetectsDriverOrOpts(t *testing.T) {
@@ -405,6 +432,7 @@ type systemRunCall struct {
 
 func writeDaemonJSONFile(t *testing.T, content string) string {
 	t.Helper()
+	setupBackupStore(t)
 	path := filepath.Join(t.TempDir(), "daemon.json")
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
@@ -458,7 +486,11 @@ func failOverwritePrompt(t *testing.T) func(dockerLogStatus) (bool, error) {
 
 func assertNoBackups(t *testing.T, path string) {
 	t.Helper()
-	matches, err := filepath.Glob(path + ".bak.*")
+	dir, err := backupStore.Directory(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, filepath.Base(path)+".bak.*"))
 	if err != nil {
 		t.Fatal(err)
 	}

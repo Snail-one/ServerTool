@@ -255,7 +255,7 @@ sudo sh scripts/install.sh v1.2.0
 
 指定版本时直接使用对应标签，不查询 latest。
 
-脚本还必须支持卸载参数。卸载只删除脚本管理的程序文件，不回退程序曾经完成的系统或用户配置：
+脚本还必须支持卸载参数。卸载默认先通过已安装程序的 `clean-backups --yes` 清理全部模块备份，再删除脚本管理的程序文件；备份清理失败时停止并保留程序，不回退程序曾经完成的系统或用户配置：
 
 ```bash
 sudo sh scripts/install.sh --uninstall

@@ -25,6 +25,7 @@ const (
 
 var maxSizePattern = regexp.MustCompile(`^[1-9][0-9]*[kKmMgG]$`)
 var maxFilePattern = regexp.MustCompile(`^[0-9]+$`)
+var backupStore = shared.BackupStore{Root: shared.DataDir, Module: "docker"}
 
 type logRotationConfig struct {
 	maxSize string
@@ -258,7 +259,7 @@ func writeDockerDaemonLogConfig(path string, rotation logRotationConfig, confirm
 		return result, err
 	}
 	if exists {
-		backupPath, err := system.Backup(path)
+		backupPath, err := backupStore.Snapshot(path)
 		if err != nil {
 			return result, fmt.Errorf("备份 %s 失败: %w", path, err)
 		}

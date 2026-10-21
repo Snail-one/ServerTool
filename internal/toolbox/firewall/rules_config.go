@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
-	"time"
 	"unicode"
 
 	"snail_tool/internal/shared"
@@ -59,31 +57,12 @@ func backupFirewallConfig() (string, error) {
 	if !version.exists {
 		return "", fmt.Errorf("备份失败：配置文件不存在")
 	}
-	dir := firewallBackupDir()
-	for _, path := range []string{dataDir, filepath.Join(dataDir, "backups"), dir} {
-		if err := shared.EnsurePrivateDir(path); err != nil {
-			return "", err
-		}
-	}
-	pattern := filepath.Base(configPath) + ".bak." + time.Now().Format("20060102_150405") + "-*"
-	file, err := os.CreateTemp(dir, pattern)
-	if err != nil {
-		return "", err
-	}
-	path := file.Name()
-	if err := file.Close(); err != nil {
-		_ = os.Remove(path)
-		return "", err
-	}
-	if err := shared.AtomicWriteFile(path, version.content, shared.AtomicWriteOptions{Mode: 0600, ForceMode: true}); err != nil {
-		_ = os.Remove(path)
-		return "", err
-	}
-	return path, nil
+	return (shared.BackupStore{Root: dataDir, Module: "firewall"}).Snapshot(configPath)
 }
 
 func firewallBackupDir() string {
-	return filepath.Join(dataDir, "backups", "firewall")
+	dir, _ := (shared.BackupStore{Root: dataDir, Module: "firewall"}).Directory(configPath)
+	return dir
 }
 
 type nftToken struct {

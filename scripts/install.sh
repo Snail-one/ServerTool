@@ -68,6 +68,7 @@ print_uninstall_completion_card() {
 	print_card "$GREEN" "卸载完成" \
 		"版本" "$1" \
 		"已删除" "$2" \
+		"备份" "已清理全部模块备份" \
 		"已保留" "系统服务和用户配置"
 }
 
@@ -111,7 +112,7 @@ usage() {
   sudo sh scripts/install.sh uninstall
 
 不指定版本时安装或更新到最新版本；也可以指定发布标签，例如 v1.2.0。
-使用 uninstall 或 --uninstall 删除已安装的程序文件，不清理由本工具配置的系统服务和用户配置。
+使用 uninstall 或 --uninstall 默认清理全部模块备份并删除程序文件，保留系统服务和用户配置。
 
 可选环境变量：
   SERVERTOOL_VERSION       要安装的发布标签，默认为 latest
@@ -189,6 +190,9 @@ if [ "$MODE" = "uninstall" ]; then
 	info "程序路径：${TARGET}"
 
 	printf '\n'
+	step "清理全部模块备份"
+	[ -x "$TARGET" ] || fail "程序无法运行，不能清理备份，已停止卸载：${TARGET}"
+	"$TARGET" clean-backups --yes || fail "备份清理失败，已停止卸载并保留程序"
 	step "卸载程序"
 	rm -f "$TARGET"
 	[ ! -e "$TARGET" ] && [ ! -L "$TARGET" ] || fail "无法删除程序文件：${TARGET}"

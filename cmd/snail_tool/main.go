@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"snail_tool/internal/app"
+	cleanupbackups "snail_tool/internal/cleanup/backups"
 	"snail_tool/internal/log"
 	"snail_tool/internal/selfupdate"
 	"snail_tool/internal/startup"
@@ -73,6 +74,26 @@ func handleArgs(args []string) bool {
 			os.Exit(1)
 		}
 		return true
+	case "clean-backups":
+		if len(args) > 2 || (len(args) == 2 && args[1] != "--yes") {
+			log.Error("用法：snail clean-backups [--yes]")
+			os.Exit(2)
+		}
+		if !system.IsRoot() {
+			log.Error("清理备份需要 root 权限，请使用 sudo snail clean-backups")
+			os.Exit(1)
+		}
+		var err error
+		if len(args) == 2 {
+			err = cleanupbackups.DeleteAll()
+		} else {
+			err = cleanupbackups.ConfirmAll(ui.New())
+		}
+		if err != nil {
+			log.Error(err)
+			os.Exit(1)
+		}
+		return true
 	default:
 		log.Error("未知参数：", args[0])
 		printUsage()
@@ -82,5 +103,5 @@ func handleArgs(args []string) bool {
 }
 
 func printUsage() {
-	fmt.Println("用法：snail [update|uninstall|--version|-v|version]")
+	fmt.Println("用法：snail [update|uninstall|clean-backups [--yes]|--version|-v|version]")
 }
