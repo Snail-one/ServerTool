@@ -50,6 +50,7 @@ func Run(view *ui.UI) error {
 		ui.MenuOptionHint("3", "放行规则管理", "端口 / 来源 IP / 来源 IP + 端口")
 		ui.MenuOptionHint("4", "查看已加载规则", "全部 nftables 表和规则")
 		ui.MenuOptionHint("5", "手动编辑配置", "依次使用 vim / vi / nano")
+		ui.MenuOptionHint("6", "查看生效端口", "公网 / 内网 · TCP / UDP · 来源例外")
 		ui.MenuOption("r", "校验加载配置")
 		ui.MenuExit("0/q", "返回主菜单")
 		fmt.Println()
@@ -79,6 +80,8 @@ func Run(view *ui.UI) error {
 			shared.RunAction(view, "加载防火墙配置失败，已返回防火墙管理", func() error {
 				return loadConfig(view)
 			})
+		case "6":
+			shared.RunAction(view, "读取生效端口失败，已返回防火墙管理", showLoadedPorts)
 		default:
 			ui.InvalidChoice()
 			view.Pause()
