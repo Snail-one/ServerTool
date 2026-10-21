@@ -7,6 +7,7 @@ import (
 	commonbash "snail_tool/internal/common/bash"
 	commoncompletion "snail_tool/internal/common/completion"
 	commonproxy "snail_tool/internal/common/proxy"
+	commontmux "snail_tool/internal/common/tmux"
 	commonvim "snail_tool/internal/common/vim"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
@@ -22,6 +23,7 @@ func Run(view *ui.UI) error {
 		ui.MenuOptionStatus("2", "Bash 配置", ui.ConfiguredBadge(status.bash))
 		ui.MenuOptionStatusHint("3", "Bash 自动补全", ui.InstallationBadge(status.completion), "bash-completion")
 		ui.MenuOptionStatus("4", "HTTP/HTTPS 代理", ui.ConfiguredBadge(status.proxy))
+		ui.MenuOptionStatusHint("5", "tmux 配置", ui.ConfiguredBadge(status.tmux), "~/.tmux.conf")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -51,6 +53,8 @@ func Run(view *ui.UI) error {
 			shared.RunAction(view, "代理配置失败，已返回通用配置", func() error {
 				return commonproxy.Run(view)
 			})
+		case "5":
+			shared.RunAction(view, "tmux 配置失败，已返回通用配置", commontmux.Run)
 		default:
 			ui.InvalidChoice()
 			view.Pause()
@@ -63,6 +67,7 @@ type commonStatus struct {
 	bash       bool
 	completion bool
 	proxy      bool
+	tmux       bool
 }
 
 func currentStatus() commonStatus {
@@ -75,5 +80,6 @@ func currentStatus() commonStatus {
 		bash:       commonbash.IsBashConfigured(account),
 		completion: commoncompletion.IsInstalled(),
 		proxy:      commonproxy.IsProxyConfigured(account),
+		tmux:       commontmux.IsTmuxConfigured(account),
 	}
 }

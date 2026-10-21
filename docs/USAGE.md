@@ -7,7 +7,7 @@
 - 容器管理：检测 Docker/Podman，并在二者并存时明确优先使用 Docker；容器操作以真实子命令显示，支持 `start`、`stop`、`restart`、`pause`/`unpause`、`inspect`、`logs`、`logs -f`、`exec`、Compose `down` 和非强制 `rm`；Compose 项目支持 `up -d`、`stop`、`restart`、不删除卷的 `down`，以及项目扫描、批量更新和重建；Docker 服务配置支持代理和日志轮转；资源清理按影响展示各类 prune 命令并逐次确认；卸载运行时可选择保留数据，完全卸载则经过强确认后永久删除对应数据
 - 一键配置：按顺序完成 SSH 公钥添加、SSH 安全策略、Vim 和 Bash 配置；没有已有公钥时必须成功添加一把公钥才会继续安全加固
 - SSH 管理：管理当前用户 SSH 公钥（查看、添加、删除）、写入 SSH 随机端口与禁用密码登录等安全配置、查看当前 SSH 生效安全配置
-- 通用配置：集中管理 Vim `~/.vimrc`、Bash 和 HTTP/HTTPS 代理环境变量；普通用户的 Bash 提示符使用紫色用户名，root 使用纯橘色 `#FF7F00`，当前目录均为蓝色
+- 通用配置：集中管理 Vim `~/.vimrc`、Bash、tmux `~/.tmux.conf` 和 HTTP/HTTPS 代理环境变量；普通用户的 Bash 提示符使用紫色用户名，root 使用纯橘色 `#FF7F00`，当前目录均为蓝色。选项 `5 tmux 配置` 写入底部状态栏样式，显示会话名称、窗口、主机名及日期时间，当前窗口使用蓝色背景；仅更新托管区块，保留其他配置，重复执行不会重复追加。配置写入目标用户（sudo 发起用户）的家目录；新建 tmux 服务时自动加载，已有会话执行 `tmux source-file ~/.tmux.conf` 生效。tmux 可从“系统工具 → 常用命令行工具”安装
 - 开发环境：从 Go 官方 API 获取全部稳定版本，在 `/opt/go` 安装、更新、切换和卸载 amd64/arm64 Go，并为目标用户配置 PATH
 - 清理配置：支持按项清理 SSH、Vim、Bash、代理配置，或在最后一项清理全部
 - 系统工具：配置和管理 UPS（NUT），常用工具按 curl、wget、bash-completion、tmux、btop、unzip、jq、ripgrep（rg）、tree、build-essential 排列；build-essential 提供 C/C++ 编译环境，并按包管理器选择对应编译工具包；bash-completion 提供 Bash 命令自动补全。所有工具均支持单独安装和批量安装
