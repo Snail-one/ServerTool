@@ -152,6 +152,7 @@ func Run(view *ui.UI) error {
 			ui.MenuOptionHint(item.module.key, "清理 "+item.module.name+" 备份", fmt.Sprintf("%d 个文件", len(item.entries)))
 		}
 		ui.MenuOption("5", "清理全部备份")
+		ui.MenuOptionHint("6", "清理旧备份", "列出旧位置文件，确认后删除")
 		ui.MenuExit("0/q", "返回")
 		choice, err := view.Ask("请选择：")
 		if err != nil {
@@ -159,6 +160,10 @@ func Run(view *ui.UI) error {
 		}
 		if shared.IsReturnChoice(choice) {
 			return shared.ErrReturnToMenu
+		}
+		if choice == "6" {
+			shared.RunAction(view, "旧备份清理失败，已返回备份管理", func() error { return cleanLegacy(view) })
+			continue
 		}
 		var selected []module
 		if choice == "5" {
