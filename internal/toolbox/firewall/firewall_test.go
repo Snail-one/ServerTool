@@ -96,24 +96,21 @@ func TestDetectSSHPortsFailsInsteadOfAssumingPort22(t *testing.T) {
 }
 
 func TestBuildConfigKeepsPublicAndPrivatePortsSeparate(t *testing.T) {
-	for _, choices := range []struct{ tcp, udp bool }{{false, false}, {true, false}, {false, true}, {true, true}} {
-		content, err := buildConfig([]int{2222, 22000}, choices.tcp, choices.udp)
+	for _, choices := range []struct{ public, private bool }{{false, false}, {true, false}, {false, true}, {true, true}} {
+		content, err := buildConfig([]int{2222, 22000}, choices.public, choices.private)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, family := range []string{"ipv4", "ipv6"} {
-			for protocol, web := range map[string]bool{"tcp": choices.tcp, "udp": choices.udp} {
-				if !strings.Contains(content, "define snail_public_"+family+"_"+protocol+"_ports = { $snail_ssh_port, $snail_ssh_port_2 }") {
-					t.Fatalf("public %s ports missing or include private web ports:\n%s", protocol, content)
-				}
-				private := "$snail_ssh_port, $snail_ssh_port_2"
-				if web {
-					private += ", 80, 443"
-				}
-				if !strings.Contains(content, "define snail_private_"+family+"_"+protocol+"_ports = { "+private+" }") {
-					t.Fatalf("private %s ports do not reflect independent choice: web=%v", protocol, web)
-				}
-				for _, scope := range []string{"public", "private"} {
+			for _, protocol := range []string{"tcp", "udp"} {
+				for scope, web := range map[string]bool{"public": choices.public, "private": choices.private} {
+					ports := "$snail_ssh_port, $snail_ssh_port_2"
+					if web {
+						ports += ", 80, 443"
+					}
+					if !strings.Contains(content, "define snail_"+scope+"_"+family+"_"+protocol+"_ports = { "+ports+" }") {
+						t.Fatalf("%s %s %s ports do not reflect scope choice: web=%v", scope, family, protocol, web)
+					}
 					if !strings.Contains(content, "meta nfproto "+family+" "+protocol+" dport $snail_"+scope+"_"+family+"_"+protocol+"_ports counter accept") {
 						t.Fatalf("missing independent %s %s %s rule", scope, family, protocol)
 					}
@@ -284,7 +281,7 @@ func TestRunConfirmsInstallAndWritesThenApplies(t *testing.T) {
 		t.Fatalf("unexpected command: %s %v", name, args)
 		return "", nil
 	}
-	if err := Run(inputUI(t, "y\n1\nn\n\n1\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := Run(inputUI(t, "y\n1\ny\n\n1\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if want := []string{"apt-get update", "apt-get install -y nftables"}; !reflect.DeepEqual(commands, want) {
@@ -295,9 +292,20 @@ func TestRunConfirmsInstallAndWritesThenApplies(t *testing.T) {
 	}
 	content := shared.ReadFileString(configPath)
 	if !strings.Contains(content, "define snail_ssh_port = 2200") ||
+		!strings.Contains(content, "define snail_public_ipv4_tcp_ports = { $snail_ssh_port, 80, 443 }") ||
+		!strings.Contains(content, "define snail_public_ipv4_udp_ports = { $snail_ssh_port, 80, 443 }") ||
 		!strings.Contains(content, "define snail_private_ipv4_tcp_ports = { $snail_ssh_port }") ||
-		!strings.Contains(content, "define snail_private_ipv4_udp_ports = { $snail_ssh_port, 80, 443 }") {
-		t.Fatal("configuration did not preserve SSH and independent TCP/UDP choices")
+		!strings.Contains(content, "define snail_private_ipv4_udp_ports = { $snail_ssh_port }") {
+		t.Fatal("configuration did not preserve SSH, public consent and private default-off")
+	}
+}
+
+func TestAskWebDefaultsClosedForPublicAndPrivate(t *testing.T) {
+	for _, scope := range []string{"公网", "局域网"} {
+		open, err := askWeb(inputUI(t, "\n"), scope)
+		if err != nil || open {
+			t.Fatalf("%s Web ports must stay closed on Enter: open=%v err=%v", scope, open, err)
+		}
 	}
 }
 
