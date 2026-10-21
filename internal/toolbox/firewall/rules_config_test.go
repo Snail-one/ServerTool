@@ -124,7 +124,7 @@ func TestSaveManagedRulesValidatesBeforeWriteAndGuardsConcurrentChanges(t *testi
 			if (err == nil) != (scenario == "success") {
 				t.Fatalf("err=%v for %s", err, scenario)
 			}
-			backups, _ := filepath.Glob(configPath + ".bak.*")
+			backups, _ := filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))
 			if scenario == "success" || scenario == "load failure" {
 				if !reflect.DeepEqual(calls, []string{"check", "load"}) || len(backups) != 1 || shared.ReadFileString(backups[0]) != string(version.content) {
 					t.Fatalf("missing validation, load or exact backup: %v %v", calls, backups)
@@ -184,5 +184,63 @@ func TestFirewallBackupsNeverOverwriteAnEarlierSnapshot(t *testing.T) {
 	}
 	if first == second || shared.ReadFileString(first) != string(version.content) || shared.ReadFileString(second) != "# second version\n" {
 		t.Fatal("consecutive edits must preserve distinct complete backups")
+	}
+}
+
+func TestFirewallBackupUsesPrivateDataDirectory(t *testing.T) {
+	setupTest(t)
+	const original = "# readable system configuration\n"
+	if err := os.WriteFile(configPath, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Older backups beside the configuration remain untouched.
+	legacy := configPath + ".bak.20261021_120000-old"
+	if err := os.WriteFile(legacy, []byte("# historical backup\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	backup, err := backupFirewallConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(backup) != firewallBackupDir() || shared.ReadFileString(backup) != original {
+		t.Fatalf("backup is not in the tool data directory: %s", backup)
+	}
+	info, err := os.Stat(backup)
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatalf("backup permissions should be 600: %v %v", info, err)
+	}
+	for _, path := range []string{dataDir, filepath.Join(dataDir, "backups"), firewallBackupDir()} {
+		info, err := os.Stat(path)
+		if err != nil || info.Mode().Perm() != 0700 {
+			t.Fatalf("backup directory should be private: %s %v %v", path, info, err)
+		}
+	}
+	oldBackups, err := filepath.Glob(configPath + ".bak.*")
+	if err != nil || !reflect.DeepEqual(oldBackups, []string{legacy}) || shared.ReadFileString(legacy) != "# historical backup\n" {
+		t.Fatalf("old backups changed or new backup appeared beside configuration: %v %v", oldBackups, err)
+	}
+	info, err = os.Stat(configPath)
+	if err != nil || info.Mode().Perm() != 0644 || shared.ReadFileString(configPath) != original {
+		t.Fatalf("system configuration changed during backup: %v %v", info, err)
+	}
+}
+
+func TestWriteConfigStopsWhenBackupDirectoryIsInvalid(t *testing.T) {
+	setupTest(t)
+	version := ruleTestConfig(t, nil)
+	if err := os.WriteFile(dataDir, []byte("not a directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	commandOutput = func(name string, args ...string) (string, error) {
+		if name != "nft" || len(args) != 3 || args[0] != "-c" || args[1] != "-f" {
+			t.Fatalf("must only validate, never load: %s %v", name, args)
+		}
+		return "", nil
+	}
+	if err := writeConfig("# new configuration\n", version); err == nil {
+		t.Fatal("backup directory failure should stop writing")
+	}
+	if shared.ReadFileString(configPath) != string(version.content) {
+		t.Fatal("original configuration changed despite failed backup")
 	}
 }

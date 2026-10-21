@@ -59,12 +59,14 @@ func backupFirewallConfig() (string, error) {
 	if !version.exists {
 		return "", fmt.Errorf("备份失败：配置文件不存在")
 	}
-	info, err := os.Stat(configPath)
-	if err != nil {
-		return "", err
+	dir := firewallBackupDir()
+	for _, path := range []string{dataDir, filepath.Join(dataDir, "backups"), dir} {
+		if err := shared.EnsurePrivateDir(path); err != nil {
+			return "", err
+		}
 	}
 	pattern := filepath.Base(configPath) + ".bak." + time.Now().Format("20060102_150405") + "-*"
-	file, err := os.CreateTemp(filepath.Dir(configPath), pattern)
+	file, err := os.CreateTemp(dir, pattern)
 	if err != nil {
 		return "", err
 	}
@@ -73,11 +75,15 @@ func backupFirewallConfig() (string, error) {
 		_ = os.Remove(path)
 		return "", err
 	}
-	if err := shared.AtomicWriteFile(path, version.content, shared.AtomicWriteOptions{Mode: info.Mode().Perm(), ForceMode: true}); err != nil {
+	if err := shared.AtomicWriteFile(path, version.content, shared.AtomicWriteOptions{Mode: 0600, ForceMode: true}); err != nil {
 		_ = os.Remove(path)
 		return "", err
 	}
 	return path, nil
+}
+
+func firewallBackupDir() string {
+	return filepath.Join(dataDir, "backups", "firewall")
 }
 
 type nftToken struct {

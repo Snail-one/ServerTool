@@ -33,6 +33,7 @@ sudo snail
 - 交互菜单、安装、更新和卸载需要 root 权限；帮助和版本查询无需 root。
 - 通过 `sudo` 启动时，写入用户目录的功能以 `SUDO_USER` 为目标用户。
 - 菜单使用 `0/q` 返回或退出，同时兼容 `exit`。
+- 工具持久数据统一使用 `/var/lib/snailtool/`，按需创建。目前防火墙备份保存到 `backups/firewall/`；其他模块的现有备份位置暂未迁移。系统服务配置仍保留在各自原位置。
 
 ```bash
 snail --help

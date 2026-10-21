@@ -15,11 +15,14 @@ import (
 func setupTest(t *testing.T) {
 	t.Helper()
 	previousExists, previousRun, previousOutput, previousRoot, previousPath := commandExists, commandRun, commandOutput, isRoot, configPath
+	previousDataDir := dataDir
 	t.Cleanup(func() {
 		commandExists, commandRun, commandOutput, isRoot, configPath = previousExists, previousRun, previousOutput, previousRoot, previousPath
+		dataDir = previousDataDir
 	})
 	t.Setenv("SSH_CONNECTION", "")
 	configPath = filepath.Join(t.TempDir(), "nftables.conf")
+	dataDir = filepath.Join(t.TempDir(), "snailtool")
 	isRoot = func() bool { return true }
 	commandExists = func(name string) bool { return name == "nft" }
 	commandRun = func(name string, args ...string) error {
@@ -180,7 +183,7 @@ func TestWriteConfigValidatesBeforeBackupAndWrite(t *testing.T) {
 				return "", nil
 			}
 			err := writeConfig(content)
-			backups, _ := filepath.Glob(configPath + ".bak.*")
+			backups, _ := filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))
 			if !valid {
 				if err == nil || shared.ReadFileString(configPath) != original || len(backups) != 0 {
 					t.Fatalf("failed validation modified config or made backup: err=%v backups=%v", err, backups)
@@ -345,7 +348,7 @@ func TestEditConfigUsesFirstAvailableEditorAndBacksUp(t *testing.T) {
 				return "", nil
 			}
 			err := editConfig()
-			backups, _ := filepath.Glob(configPath + ".bak.*")
+			backups, _ := filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))
 			if len(available) == 0 {
 				if err == nil || !strings.Contains(err.Error(), "未找到 vim、vi、nano") || launched != "" || validations != 0 || len(backups) != 0 || shared.ReadFileString(configPath) != original {
 					t.Fatalf("missing editors must report error without modifications: err=%v editor=%s", err, launched)

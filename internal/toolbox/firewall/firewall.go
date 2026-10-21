@@ -20,6 +20,7 @@ var configTemplate string
 
 var (
 	configPath    = "/etc/nftables.conf"
+	dataDir       = shared.DataDir
 	commandExists = system.CommandExists
 	commandRun    = system.Run
 	commandOutput = system.Output
