@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 
 	cleanupbackups "snail_tool/internal/cleanup/backups"
 	cleanupbash "snail_tool/internal/cleanup/bash"
@@ -24,6 +23,7 @@ import (
 
 type cleanupStep struct {
 	name   string
+	label  string
 	run    func(*system.Account) error
 	detail string
 }
@@ -35,21 +35,19 @@ func Run(view *ui.UI) error {
 	}
 
 	steps := allCleanupSteps()
+	backupChoice := strconv.Itoa(len(steps) + 1)
+	allChoice := strconv.Itoa(len(steps) + 2)
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("清理本工具配置")
 		ui.PrintInfoCard("清理目标", ui.CardField{Label: "当前配置用户", Value: account.Name})
 		fmt.Println()
-		ui.MenuOption("1", "清理 SSH 公钥配置")
-		ui.MenuOption("2", "清理 SSH 安全策略配置")
-		ui.MenuOption("3", "清理 Vim 配置")
-		ui.MenuOption("4", "清理 Bash 配置")
-		ui.MenuOption("5", "清理 HTTP/HTTPS 代理配置")
-		ui.MenuOption("6", "清理全部本工具配置")
-		ui.MenuOptionHint("7", "清理备份", "按模块 / 全部")
-		for index := 5; index < len(steps); index++ {
-			ui.MenuOption(strconv.Itoa(index+3), "清理 "+steps[index].name+"配置")
+		for index, step := range steps {
+			ui.MenuOption(strconv.Itoa(index+1), "清理 "+step.label)
 		}
+		fmt.Println()
+		ui.MenuOptionHint(backupChoice, "清理备份", "按模块 / 全部")
+		ui.MenuOption(allChoice, "清理全部本工具配置")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -62,18 +60,11 @@ func Run(view *ui.UI) error {
 		if shared.IsReturnChoice(choice) {
 			return shared.ErrReturnToMenu
 		}
-		switch strings.ToLower(choice) {
-		case "1":
-			return runCleanupStepWithConfirm(view, account, steps[0])
-		case "2":
-			return runCleanupStepWithConfirm(view, account, steps[1])
-		case "3":
-			return runCleanupStepWithConfirm(view, account, steps[2])
-		case "4":
-			return runCleanupStepWithConfirm(view, account, steps[3])
-		case "5":
-			return runCleanupStepWithConfirm(view, account, steps[4])
-		case "6":
+		if key, err := strconv.Atoi(choice); err == nil && key >= 1 && key <= len(steps) {
+			return runCleanupStepWithConfirm(view, account, steps[key-1])
+		}
+		switch choice {
+		case allChoice:
 			plan, err := cleanupbackups.PrepareAll()
 			if err != nil {
 				return err
@@ -99,11 +90,8 @@ func Run(view *ui.UI) error {
 				continue
 			}
 			return runAllCleanupSteps(account, steps, plan.Delete)
-		case "7":
+		case backupChoice:
 			shared.RunAction(view, "备份清理失败，已返回清理配置", func() error { return cleanupbackups.Run(view) })
-		case "8", "9", "10", "11", "12":
-			key, _ := strconv.Atoi(choice)
-			return runCleanupStepWithConfirm(view, account, steps[key-3])
 		default:
 			ui.InvalidChoice()
 			view.Pause()
@@ -121,24 +109,24 @@ func runAllCleanupSteps(account *system.Account, steps []cleanupStep, deleteBack
 
 func allCleanupSteps() []cleanupStep {
 	return []cleanupStep{
-		{name: "SSH 公钥", run: cleanupsshkeys.Run},
-		{name: "SSH 安全策略", run: cleanupsshd.Run},
-		{name: "Vim", run: cleanupvim.Run},
-		{name: "Bash", run: cleanupbash.Run},
-		{name: "代理", run: cleanupproxy.Run},
-		{name: "tmux", run: commontmux.Cleanup, detail: "移除托管配置块；已有 tmux 会话保持当前设置"},
-		{name: "防火墙", run: firewall.Cleanup, detail: "移除托管配置和 inet snail 表，该表的入站限制将解除"},
-		{name: "UPS", run: commonups.Cleanup, detail: "停用相关 NUT 服务，恢复首次备份或移除可识别的工具配置"},
-		{name: "Docker", run: cleanupDocker, detail: "移除日志轮转和服务代理，可能重启 Docker 并影响容器"},
-		{name: "Go 环境", run: goenvironment.CleanupEnvironment, detail: "移除托管 PATH 和命令链接，保留已安装 Go 版本"},
+		{name: "SSH 公钥", label: "SSH 公钥配置", run: cleanupsshkeys.Run},
+		{name: "SSH 安全策略", label: "SSH 安全策略配置", run: cleanupsshd.Run},
+		{name: "Vim", label: "Vim 配置", run: cleanupvim.Run},
+		{name: "Bash", label: "Bash 配置", run: cleanupbash.Run},
+		{name: "tmux", label: "tmux 配置", run: commontmux.Cleanup, detail: "移除托管配置块；已有 tmux 会话保持当前设置"},
+		{name: "代理", label: "HTTP/HTTPS 代理配置", run: cleanupproxy.Run},
+		{name: "UPS", label: "UPS 配置", run: commonups.Cleanup, detail: "停用相关 NUT 服务，恢复首次备份或移除可识别的工具配置"},
+		{name: "Docker", label: "Docker 配置", run: cleanupDocker, detail: "移除日志轮转和服务代理，可能重启 Docker 并影响容器"},
+		{name: "Go 环境", label: "Go 环境配置", run: goenvironment.CleanupEnvironment, detail: "移除托管 PATH 和命令链接，保留已安装 Go 版本"},
+		{name: "防火墙", label: "防火墙配置", run: firewall.Cleanup, detail: "移除托管配置和 inet snail 表，该表的入站限制将解除"},
 	}
 }
 
 func runCleanupStepWithConfirm(view *ui.UI, account *system.Account, step cleanupStep) error {
 	if step.detail != "" {
-		ui.PrintDangerCard("清理 "+step.name+"配置", ui.CardField{Label: "操作范围", Value: step.detail})
+		ui.PrintDangerCard("清理 "+step.label, ui.CardField{Label: "操作范围", Value: step.detail})
 	}
-	confirmed, err := view.Confirm(fmt.Sprintf("确认清理 %s 配置？(y/N)：", step.name))
+	confirmed, err := view.Confirm(fmt.Sprintf("确认清理 %s？(y/N)：", step.label))
 	if err != nil {
 		return err
 	}
