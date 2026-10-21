@@ -27,24 +27,8 @@ func configSyncField(content []byte, fileErr error, installed bool, live liveRul
 	case !installed || live.err != nil:
 		field.Value, field.Detail = "检测失败", "无法读取当前内核规则"
 		return field
-	case !commandExists("unshare"):
-		field.Value, field.Detail = "无法比较", "缺少 unshare，请安装 util-linux"
-		return field
 	}
-	expected, err := commandOutput("unshare", "--net", "--", "sh", "-c", renderConfigScript, "snail-nft-compare", configPath)
-	if err != nil {
-		field.Value = "无法比较"
-		field.Detail = fmt.Sprintf("隔离解析配置失败: %v: %s", err, strings.Join(strings.Fields(expected), " "))
-		return field
-	}
-	// A concurrent edit invalidates the comparison just as it invalidates a
-	// load confirmation. Do not attach a synchronized state to a different file.
-	latest, err := os.ReadFile(configPath)
-	if err != nil || !bytes.Equal(content, latest) {
-		field.Value, field.Detail = "无法比较", "比较期间配置文件已变化，请刷新后重试"
-		return field
-	}
-	equal, err := equivalentRules(expected, live.json)
+	equal, err := compareConfigRules(content, live)
 	if err != nil {
 		field.Value, field.Detail = "无法比较", err.Error()
 		return field
@@ -57,6 +41,25 @@ func configSyncField(content []byte, fileErr error, installed bool, live liveRul
 		field.Detail += "；输入 r 校验加载配置"
 	}
 	return field
+}
+
+func compareConfigRules(content []byte, live liveRules) (bool, error) {
+	if live.err != nil {
+		return false, fmt.Errorf("无法读取当前内核规则: %w", live.err)
+	}
+	if !commandExists("unshare") {
+		return false, fmt.Errorf("缺少 unshare，请安装 util-linux")
+	}
+	expected, err := commandOutput("unshare", "--net", "--", "sh", "-c", renderConfigScript, "snail-nft-compare", configPath)
+	if err != nil {
+		return false, fmt.Errorf("隔离解析配置失败: %w: %s", err, strings.Join(strings.Fields(expected), " "))
+	}
+	// A comparison is valid only for the same file snapshot used by the caller.
+	latest, err := os.ReadFile(configPath)
+	if err != nil || !bytes.Equal(content, latest) {
+		return false, fmt.Errorf("比较期间配置文件已变化，请刷新后重试")
+	}
+	return equivalentRules(expected, live.json)
 }
 
 // equivalentRules compares each table produced by the configuration. Other

@@ -147,11 +147,36 @@ func loadConfig(view *ui.UI) error {
 	if out, err := commandOutput("nft", "-c", "-f", configPath); err != nil {
 		return fmt.Errorf("nftables 配置校验失败，未加载规则: %w: %s", err, strings.TrimSpace(out))
 	}
-	ui.PrintInfoCard("准备加载防火墙配置",
-		ui.CardField{Label: "配置文件", Value: configPath},
-		ui.CardField{Label: "校验结果", Value: "通过"},
+	equal := false
+	var compareErr error
+	if commandExists("unshare") {
+		equal, compareErr = compareConfigRules(content, inspectLiveRules())
+	} else {
+		compareErr = fmt.Errorf("缺少 unshare，无法对比配置与内核规则")
+	}
+	if err := checkConfigVersion(configVersion{content: content, exists: true}); err != nil {
+		return err
+	}
+	if compareErr == nil && equal {
+		ui.PrintSuccessCard("配置已同步，无需加载",
+			ui.CardField{Label: "校验结果", Value: "通过"},
+			ui.CardField{Label: "配置对比", Value: "当前文件与内核规则一致"},
+		)
+		return nil
+	}
+	fields := []ui.CardField{
+		{Label: "配置文件", Value: configPath},
+		{Label: "校验结果", Value: "通过"},
+	}
+	if compareErr != nil {
+		fields = append(fields, ui.CardField{Label: "配置对比", Value: "无法比较", Detail: compareErr.Error()})
+	} else {
+		fields = append(fields, ui.CardField{Label: "配置对比", Value: "存在差异，需要加载才能同步"})
+	}
+	fields = append(fields,
 		ui.CardField{Label: "生效范围", Value: "立即执行文件中的规则，影响新建网络连接"},
 	)
+	ui.PrintInfoCard("准备加载防火墙配置", fields...)
 	confirmed, err := view.Confirm("是否立即加载此防火墙配置？(y/N)：")
 	if err != nil {
 		return err
@@ -198,20 +223,27 @@ func editConfig(view *ui.UI) error {
 	if editor == "" {
 		return fmt.Errorf("未找到 vim、vi、nano 中的任意工具，请先安装其中一个编辑器")
 	}
-	if info, err := os.Lstat(configPath); err == nil {
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("拒绝编辑非普通文件或软链接: %s", configPath)
-		}
+	before, err := readConfigVersion()
+	if err != nil {
+		return err
+	}
+	if before.exists {
 		backup, err := backupFirewallConfig()
 		if err != nil {
 			return err
 		}
 		log.Info("已备份原防火墙配置：", backup)
-	} else if !os.IsNotExist(err) {
-		return err
 	}
 	if err := commandRun(editor, configPath); err != nil {
 		return fmt.Errorf("%s 编辑失败: %w", editor, err)
+	}
+	after, err := readConfigVersion()
+	if err != nil {
+		return err
+	}
+	if before.exists == after.exists && bytes.Equal(before.content, after.content) {
+		log.Info("配置内容未修改，无需加载")
+		return nil
 	}
 	if err := loadConfig(view); err != nil {
 		return fmt.Errorf("编辑内容已保留，请根据错误修正或重新加载: %w", err)
