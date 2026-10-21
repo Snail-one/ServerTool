@@ -146,8 +146,39 @@ func TestCurrentConfigFieldsShowsOnlyFirewallStatus(t *testing.T) {
 			} else if fieldValue(fields, "防火墙") != "未开启（本工具）" || !strings.Contains(fieldValue(fields, "nftables"), "v1.1.3") {
 				t.Fatal("saved config must not imply loaded rules; installed version should be shown")
 			}
-			if scenario != "query failure" && len(fields) != 4 {
-				t.Fatalf("unloaded status card should have four fields, got %d", len(fields))
+			if scenario != "query failure" && len(fields) != 5 {
+				t.Fatalf("unloaded status card should have five fields, got %d", len(fields))
+			}
+			if scenario == "managed" && fieldValue(fields, "工具接管") != "已接管" {
+				t.Fatal("owned config should show managed even when not active")
+			}
+		})
+	}
+}
+
+func TestToolOwnershipDistinguishesOwnedPartialUnmarkedAndDamagedConfig(t *testing.T) {
+	managed, _ := buildConfig([]int{2222}, false, false)
+	for _, scenario := range []struct {
+		name, content, want string
+		fileErr             error
+	}{
+		{"managed", managed, "已接管", nil},
+		{"unmarked", "table inet snail {}\n", "未接管", nil},
+		{"missing", "", "未接管（配置不存在）", os.ErrNotExist},
+		{"unreadable", "", "无法判断", os.ErrPermission},
+		{"foreign config outside", managed + "\ntable inet other {}\n", "部分接管", nil},
+		{"comments outside", managed + "\n# a note\n", "已接管", nil},
+		{"rules block only", rulesBegin + "\n" + rulesEnd, "部分接管", nil},
+		{"SSH block only", sshPortsBegin + "\n" + sshPortsEnd, "部分接管", nil},
+		{"missing end", strings.Replace(managed, configEnd, "", 1), "标记异常", nil},
+		{"repeated begin", managed + configBegin, "标记异常", nil},
+		{"reversed", configEnd + "\n" + configBegin, "标记异常", nil},
+		{"damaged nested block", strings.Replace(managed, rulesEnd, "", 1), "标记异常", nil},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			field := toolOwnershipField([]byte(scenario.content), scenario.fileErr)
+			if field.Value != scenario.want {
+				t.Fatalf("ownership=%+v want=%s", field, scenario.want)
 			}
 		})
 	}

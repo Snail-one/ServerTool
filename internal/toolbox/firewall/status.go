@@ -133,8 +133,10 @@ func currentConfigFields(autostart autostartStatus) []ui.CardField {
 	if live.version != "" {
 		software += " v" + strings.TrimPrefix(live.version, "v")
 	}
+	data, fileErr := os.ReadFile(configPath)
 	fields := []ui.CardField{
 		firewallStateField(installed, live),
+		toolOwnershipField(data, fileErr),
 		{Label: "开机自启", Value: autostart.label},
 	}
 	if installed && live.err == nil {
@@ -148,13 +150,50 @@ func currentConfigFields(autostart autostartStatus) []ui.CardField {
 			fields = append(fields, ui.CardField{Label: "其他入站链", Value: fmt.Sprintf("%d 条，选择 2 查看全部规则", live.otherInputChains)})
 		}
 	}
-	data, fileErr := os.ReadFile(configPath)
 	sync := configSyncField(data, fileErr, installed, live)
 	state, _, _ := strings.Cut(sync.Value, " · ")
 	if state == "已同步" || state == "未同步" {
 		sync.Value, sync.Detail = state, ""
 	}
 	return append(fields, sync, ui.CardField{Label: "nftables", Value: software})
+}
+
+// Ownership is configuration metadata, independent of kernel activation and
+// synchronization. A matching table name alone does not establish ownership.
+func toolOwnershipField(data []byte, fileErr error) ui.CardField {
+	field := ui.CardField{Label: "工具接管", Value: "未接管"}
+	if os.IsNotExist(fileErr) {
+		field.Value = "未接管（配置不存在）"
+		return field
+	}
+	if fileErr != nil {
+		field.Value, field.Detail = "无法判断", fileErr.Error()
+		return field
+	}
+	content := string(data)
+	mainStart, mainEnd := -1, -1
+	for _, markers := range [][2]string{{configBegin, configEnd}, {rulesBegin, rulesEnd}, {sshPortsBegin, sshPortsEnd}} {
+		begins, ends := strings.Count(content, markers[0]), strings.Count(content, markers[1])
+		if begins == 0 && ends == 0 {
+			continue
+		}
+		begin, end := strings.Index(content, markers[0]), strings.Index(content, markers[1])
+		if begins != 1 || ends != 1 || end < begin {
+			field.Value = "标记异常"
+			return field
+		}
+		field.Value = "部分接管"
+		if markers[0] == configBegin {
+			mainStart, mainEnd = begin, end+len(configEnd)
+		}
+	}
+	if mainStart >= 0 {
+		outside, err := configTokens(content[:mainStart] + content[mainEnd:])
+		if err == nil && len(outside) == 0 {
+			field.Value = "已接管"
+		}
+	}
+	return field
 }
 
 func firewallStateField(installed bool, live liveRules) ui.CardField {

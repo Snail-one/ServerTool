@@ -354,10 +354,8 @@ func confirmConfig(view *ui.UI, content string, ports []int, publicWeb, privateW
 			return false, err
 		}
 		ui.PrintInfoCard("即将写入的配置",
-			ui.CardField{Label: "公网 TCP", Value: publicPorts, Detail: "IPv4 / IPv6 同时应用"},
-			ui.CardField{Label: "公网 UDP", Value: publicPorts, Detail: "与 TCP 同时选择，列表独立保留"},
-			ui.CardField{Label: "局域网 TCP", Value: privatePorts, Detail: "IPv4 私有地址；IPv6 ULA 和链路本地地址"},
-			ui.CardField{Label: "局域网 UDP", Value: privatePorts, Detail: "与 TCP 同时选择，列表独立保留"},
+			ui.CardField{Label: "公网 TCP+UDP", Value: publicPorts, Detail: "IPv4 / IPv6 同时应用"},
+			ui.CardField{Label: "局域网 TCP+UDP", Value: privatePorts, Detail: "IPv4 / IPv6 同时应用；端口列表仍独立维护"},
 			ui.CardField{Label: "附加放行规则", Value: fmt.Sprintf("保留 %d 条，可额外放行来源和端口", len(extraRules))},
 			ui.CardField{Label: "手动修改", Value: "端口列表、来源例外等将由新模板覆盖"},
 			ui.CardField{Label: "内核规则", Value: "重建 inet snail 表，保留其他表"},

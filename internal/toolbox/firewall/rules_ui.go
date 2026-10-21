@@ -150,12 +150,15 @@ func askRuleSource(view *ui.UI, current string) (string, error) {
 			log.Warn(err)
 			continue
 		}
-		ui.PrintInfoCard("实际来源匹配范围",
-			ui.CardField{Label: "输入地址", Value: value},
-			ui.CardField{Label: "规范化地址", Value: source},
-			ui.CardField{Label: "覆盖范围", Value: sourceRange(source)},
-			ui.CardField{Label: "方向", Value: "该来源访问本服务器的入站流量"},
-		)
+		fields := []ui.CardField{{Label: "来源地址", Value: source}}
+		if value != source {
+			fields = []ui.CardField{{Label: "输入地址", Value: value}, {Label: "规范化地址", Value: source}}
+		}
+		if prefix := sourcePrefix(source); prefix.Bits() < prefix.Addr().BitLen() {
+			fields = append(fields, ui.CardField{Label: "覆盖范围", Value: sourceRange(source)})
+		}
+		fields = append(fields, ui.CardField{Label: "方向", Value: "该来源访问本服务器的入站流量"})
+		ui.PrintInfoCard("实际来源匹配范围", fields...)
 		return source, nil
 	}
 }
@@ -259,11 +262,7 @@ func changeAllowRule(view *ui.UI, version configVersion, rules []allowRule, id s
 	if err != nil {
 		return err
 	}
-	ui.PrintInfoCard("即将保存的入站放行规则",
-		ui.CardField{Label: "规则 ID", Value: draft.ID},
-		ui.CardField{Label: "放行内容", Value: draft.description()},
-		ui.CardField{Label: "实际来源范围", Value: sourceRange(draft.Source)},
-	)
+	ui.PrintInfoCard("即将保存的入站放行规则", rulePreviewFields(draft)...)
 	if len(warnings) > 0 {
 		ui.PrintWarningCard("发现覆盖或重叠",
 			ui.CardField{Label: "相关规则", Value: strings.Join(warnings, "\n")},
@@ -289,6 +288,14 @@ func changeAllowRule(view *ui.UI, version configVersion, rules []allowRule, id s
 	}
 	ui.PrintSuccessCard("放行规则已保存并加载", ui.CardField{Label: draft.ID, Value: draft.description()})
 	return nil
+}
+
+func rulePreviewFields(rule allowRule) []ui.CardField {
+	fields := []ui.CardField{{Label: "规则 ID", Value: rule.ID}, {Label: "放行内容", Value: rule.description()}}
+	if prefix := sourcePrefix(rule.Source); prefix.IsValid() && prefix.Bits() < prefix.Addr().BitLen() {
+		fields = append(fields, ui.CardField{Label: "实际来源范围", Value: sourceRange(rule.Source)})
+	}
+	return fields
 }
 
 func queryRulesByPort(view *ui.UI, rules []allowRule) ([]allowRule, error) {
@@ -342,12 +349,8 @@ func deleteAllowRule(view *ui.UI, version configVersion, rules []allowRule) erro
 			updated = append(updated, rule)
 		}
 	}
-	ui.PrintWarningCard("即将删除一条放行规则",
-		ui.CardField{Label: "规则 ID", Value: target.ID},
-		ui.CardField{Label: "放行内容", Value: target.description()},
-		ui.CardField{Label: "实际来源范围", Value: sourceRange(target.Source)},
-		ui.CardField{Label: "删除范围", Value: "仅删除此 ID；其他放行规则及基础端口保持，仍可能允许相同流量"},
-	)
+	fields := append(rulePreviewFields(target), ui.CardField{Label: "删除范围", Value: "仅删除此 ID；其他放行规则及基础端口保持，仍可能允许相同流量"})
+	ui.PrintWarningCard("即将删除一条放行规则", fields...)
 	for _, rule := range updated {
 		if target.overlaps(rule) {
 			ui.PrintField("仍保留的重叠规则 "+rule.ID, rule.description())

@@ -29,56 +29,89 @@ func showLoadedPorts() error {
 		policy = "默认放行（accept）"
 	}
 	fields := []ui.CardField{
-		{Label: "数据来源", Value: "当前内核已加载规则"},
-		{Label: "汇总范围", Value: "inet snail 的 input 分流规则；新入站 TCP / UDP 业务流量"},
+		{Label: "规则范围", Value: "本工具当前已加载的入站规则"},
 		{Label: "默认策略", Value: policy},
 	}
 	if len(summary.otherInput) > 0 {
 		fields = append(fields, ui.CardField{Label: "其他入站链", Value: strings.Join(summary.otherInput, "；"), Detail: "这些链仍可能进一步限制访问"})
 	}
-	ui.PrintInfoCard("已加载端口策略", fields...)
 	if summary.problem != "" {
-		ui.PrintInfoCard("无法完整汇总端口",
+		fields = append(fields,
 			ui.CardField{Label: "原因", Value: summary.problem},
 			ui.CardField{Label: "查看详情", Value: "返回后选择 2 查看全部已加载规则"},
 		)
+		ui.PrintWarningCard("无法完整汇总端口", fields...)
 		return nil
 	}
-	var ports []ui.CardField
-	for scope, label := range []string{"公网", "内网"} {
-		for family, version := range []string{"IPv4", "IPv6"} {
-			for protocol, name := range []string{"TCP", "UDP"} {
-				value := summary.ports[scope][family][protocol].String()
-				if scope == 1 && len(summary.private[family]) == 0 {
-					value = "没有匹配的内网来源"
-				}
-				ports = append(ports, ui.CardField{Label: label + " " + version + " " + name, Value: value})
-			}
-		}
-	}
-	ui.PrintInfoCard("普通来源放行端口", ports...)
-	ui.PrintInfoCard("来源划分",
+	fields = append(fields, compactPortFields(summary)...)
+	fields = append(fields,
 		ui.CardField{Label: "内网 IPv4", Value: strings.Join(summary.private[0], ", ")},
 		ui.CardField{Label: "内网 IPv6", Value: strings.Join(summary.private[1], ", ")},
-		ui.CardField{Label: "公网", Value: "上述内网来源之外的地址"},
 	)
-	var exceptions, system []ui.CardField
+	var portRuleIDs []string
 	for _, rule := range mergePortExceptions(summary.exceptions) {
-		if rule.families == 2 && rule.protocols == 2 && rule.sources == nil && rule.hasPorts && rule.hasSourcePorts && rule.ports.String() == "546" && rule.sourcePorts.String() == "547" {
-			system = append(system, ui.CardField{Label: "DHCPv6 客户端", Value: rule.description()})
-		} else {
-			exceptions = append(exceptions, ui.CardField{Label: "放行", Value: rule.description()})
+		switch {
+		case rule.sources == nil && !rule.hasSourcePorts && rule.hasProtocol:
+			// These global accepts have already been unioned into the port
+			// rows. Retain a reference to their IDs without repeating ports.
+			if rule.id != "" && rule.id != "<nil>" {
+				portRuleIDs = appendUnique(portRuleIDs, rule.id)
+			}
+		case rule.families == 2 && rule.protocols == 2 && rule.sources == nil && rule.hasPorts && rule.hasSourcePorts && rule.ports.String() == "546" && rule.sourcePorts.String() == "547":
+			fields = append(fields, ui.CardField{Label: "DHCPv6 客户端", Value: "IPv6 UDP 目标 546（仅限源端口 547）"})
+		default:
+			label := "条件放行"
+			if rule.sources == nil && !rule.hasSourcePorts {
+				label = "全协议放行"
+			}
+			fields = append(fields, ui.CardField{Label: label, Value: rule.description()})
 		}
 	}
-	if len(exceptions) > 0 {
-		ui.PrintInfoCard("附加放行（来源规则可绕过普通端口列表）", exceptions...)
+	if len(portRuleIDs) > 0 {
+		fields = append(fields, ui.CardField{Label: "附加端口规则 ID/句柄", Value: strings.Join(portRuleIDs, ", ") + "（端口已汇总）"})
 	}
 	if len(summary.system) > 0 {
-		system = append(system, ui.CardField{Label: "其他系统流量", Value: strings.Join(summary.system, "、"), Detail: "具体条件见完整已加载规则"})
+		fields = append(fields, ui.CardField{Label: "系统流量", Value: strings.Join(summary.system, "、")})
 	}
-	if len(system) > 0 {
-		ui.PrintInfoCard("系统流量例外", system...)
-	}
-	fmt.Println("以上是本工具入站规则的放行范围；服务监听、其他规则及云安全组也会影响实际连通性。")
+	ui.PrintInfoCard("当前生效端口", fields...)
+	fmt.Println("公网指内网范围外的来源；实际连通性还受服务监听、其他规则和云安全组影响。")
 	return nil
+}
+
+// Merge equal rows only when they form a complete family/protocol rectangle.
+// In particular, an equal L-shaped subset must never imply a fourth row.
+func compactPortFields(summary loadedPortSummary) []ui.CardField {
+	var fields []ui.CardField
+	groups := [][]int{{0, 1, 2, 3}, {0, 2}, {1, 3}, {0, 1}, {2, 3}, {0}, {1}, {2}, {3}}
+	for scope, label := range []string{"公网", "内网"} {
+		var values [4]string
+		for i := range values {
+			values[i] = summary.ports[scope][i/2][i%2].String()
+			if scope == 1 && len(summary.private[i/2]) == 0 {
+				values[i] = "没有匹配的内网来源"
+			}
+		}
+		var used [4]bool
+		for _, group := range groups {
+			matches := true
+			for _, i := range group {
+				if used[i] || values[i] != values[group[0]] {
+					matches = false
+				}
+			}
+			if !matches {
+				continue
+			}
+			families, protocols := 0, 0
+			for _, i := range group {
+				used[i] = true
+				families |= 1 << (i / 2)
+				protocols |= 1 << (i % 2)
+			}
+			family := map[int]string{1: "IPv4", 2: "IPv6", 3: "IPv4 / IPv6"}[families]
+			protocol := map[int]string{1: "TCP", 2: "UDP", 3: "TCP+UDP"}[protocols]
+			fields = append(fields, ui.CardField{Label: label + " " + family + " " + protocol, Value: values[group[0]]})
+		}
+	}
+	return fields
 }
