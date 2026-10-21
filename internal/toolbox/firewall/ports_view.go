@@ -60,9 +60,12 @@ func showLoadedPorts() error {
 		case rule.families == 2 && rule.protocols == 2 && rule.sources == nil && rule.hasPorts && rule.hasSourcePorts && rule.ports.String() == "546" && rule.sourcePorts.String() == "547":
 			fields = append(fields, ui.CardField{Label: "DHCPv6 客户端", Value: "IPv6 UDP 目标 546（仅限源端口 547）"})
 		default:
-			label := "条件放行"
-			if rule.sources == nil && !rule.hasSourcePorts {
-				label = "全协议放行"
+			label := "来源额外放行"
+			if rule.sources == nil {
+				label = "条件额外放行"
+				if !rule.hasSourcePorts {
+					label = "全协议放行"
+				}
 			}
 			fields = append(fields, ui.CardField{Label: label, Value: rule.description()})
 		}
