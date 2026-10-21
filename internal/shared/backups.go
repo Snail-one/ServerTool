@@ -94,7 +94,19 @@ func (store BackupStore) Snapshot(source string) (string, error) {
 		return "", err
 	}
 	pattern := filepath.Base(source) + ".bak." + time.Now().Format("20060102_150405") + "-*"
-	return writeNewBackup(dir, pattern, backup.Data)
+	unlock, err := lockBackupDirectory(dir)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+	path, err := writeNewBackup(dir, pattern, backup.Data)
+	if err != nil {
+		return path, err
+	}
+	if err := store.pruneSnapshots(source, path); err != nil {
+		return path, fmt.Errorf("新备份已保存，但清理超额备份失败: %w", err)
+	}
+	return path, nil
 }
 
 func writeNewBackup(dir, pattern string, data []byte) (path string, resultErr error) {

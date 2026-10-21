@@ -147,7 +147,10 @@ func Run(view *ui.UI) error {
 		if err != nil {
 			return err
 		}
-		ui.PrintInfoCard("备份概况", ui.CardField{Label: "备份合计", Value: plan.Summary()})
+		ui.PrintInfoCard("备份概况",
+			ui.CardField{Label: "备份合计", Value: plan.Summary()},
+			ui.CardField{Label: "保留上限", Value: fmt.Sprintf("每个配置文件最近 %d 份；UPS 首次备份单独保留", shared.MaxBackupSnapshots)},
+		)
 		for _, item := range plan.items {
 			ui.MenuOptionHint(item.module.key, "清理 "+item.module.name+" 备份", fmt.Sprintf("%d 个文件", len(item.entries)))
 		}
