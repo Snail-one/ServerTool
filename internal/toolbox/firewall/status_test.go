@@ -65,7 +65,7 @@ func TestCurrentConfigFieldsShowsOnlyFirewallStatus(t *testing.T) {
 				}
 				return `{"nftables":[{"metainfo":{"version":"1.1.3"}}]}`, nil
 			}
-			fields := currentConfigFields()
+			fields := currentConfigFields(inspectAutostart())
 			for _, label := range []string{"配置文件", "文件状态", "最后修改", "本工具表", "生成配置", "手动编辑"} {
 				if fieldValue(fields, label) != "" {
 					t.Fatalf("status card must not include %s", label)

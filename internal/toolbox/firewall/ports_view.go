@@ -40,7 +40,7 @@ func showLoadedPorts() error {
 	if summary.problem != "" {
 		ui.PrintInfoCard("无法完整汇总端口",
 			ui.CardField{Label: "原因", Value: summary.problem},
-			ui.CardField{Label: "查看详情", Value: "返回后选择 4 查看全部已加载规则"},
+			ui.CardField{Label: "查看详情", Value: "返回后选择 2 查看全部已加载规则"},
 		)
 		return nil
 	}

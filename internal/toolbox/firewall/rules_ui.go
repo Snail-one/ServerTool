@@ -19,7 +19,7 @@ func runRuleManager(view *ui.UI) error {
 			return err
 		}
 		if !version.exists {
-			return fmt.Errorf("请先选择 1 生成防火墙配置，再管理放行规则")
+			return fmt.Errorf("请先选择 6 生成防火墙配置，再管理放行规则")
 		}
 		rules, err := managedRules(string(version.content))
 		if err != nil {

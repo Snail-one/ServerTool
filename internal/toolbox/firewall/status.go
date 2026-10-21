@@ -94,7 +94,7 @@ func parseLiveRules(output string) liveRules {
 	return result
 }
 
-func currentConfigFields() []ui.CardField {
+func currentConfigFields(autostart autostartStatus) []ui.CardField {
 	installed := commandExists("nft")
 	live := liveRules{}
 	if installed {
@@ -106,7 +106,7 @@ func currentConfigFields() []ui.CardField {
 	}
 	fields := []ui.CardField{{Label: "nftables", Value: software}}
 	if installed {
-		fields = append(fields, ui.CardField{Label: "开机自启", Value: inspectAutostart().label})
+		fields = append(fields, ui.CardField{Label: "开机自启", Value: autostart.label})
 	}
 	switch {
 	case !installed:

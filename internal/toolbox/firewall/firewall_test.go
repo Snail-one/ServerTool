@@ -284,7 +284,7 @@ func TestRunConfirmsInstallAndWritesThenApplies(t *testing.T) {
 		t.Fatalf("unexpected command: %s %v", name, args)
 		return "", nil
 	}
-	if err := Run(inputUI(t, "y\n1\ny\n\n1\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := Run(inputUI(t, "y\n6\ny\n\n1\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if want := []string{"apt-get update", "apt-get install -y nftables"}; !reflect.DeepEqual(commands, want) {
@@ -347,7 +347,7 @@ func TestEditConfigUsesFirstAvailableEditorAndBacksUp(t *testing.T) {
 				validations++
 				return "", nil
 			}
-			err := editConfig()
+			err := editConfig(inputUI(t, "n\n"))
 			backups, _ := filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))
 			if len(available) == 0 {
 				if err == nil || !strings.Contains(err.Error(), "未找到 vim、vi、nano") || launched != "" || validations != 0 || len(backups) != 0 || shared.ReadFileString(configPath) != original {
@@ -377,7 +377,7 @@ func TestEditConfigValidationFailurePreservesEditsAndReportsDetails(t *testing.T
 		}
 		return "nftables.conf:1: syntax error", errors.New("exit status 1")
 	}
-	err := editConfig()
+	err := editConfig(inputUI(t, "n\n"))
 	if err == nil || !strings.Contains(err.Error(), "配置校验失败") || !strings.Contains(err.Error(), "syntax error") {
 		t.Fatalf("missing validation error details: %v", err)
 	}
@@ -402,7 +402,7 @@ func TestRunViewsFilesAndLoadedRulesWithoutSSHDetectionOrWrites(t *testing.T) {
 		queries++
 		return "table inet snail {}", nil
 	}
-	if err := Run(inputUI(t, "2\n\n4\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := Run(inputUI(t, "4\n\n2\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if queries != 1 || shared.ReadFileString(configPath) != "# existing rules\n" {

@@ -43,46 +43,41 @@ func Run(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理")
-		ui.PrintInfoCard("防火墙状态", currentConfigFields()...)
-		fmt.Println()
-		ui.MenuOptionHint("1", "生成 / 更新配置", "替换配置，备份后自动加载")
-		ui.MenuOptionHint("2", "查看配置文件", configPath)
-		ui.MenuOptionHint("3", "放行规则管理", "端口 / 来源 IP / 来源 IP + 端口")
-		ui.MenuOptionHint("4", "查看已加载规则", "全部 nftables 表和规则")
-		ui.MenuOptionHint("5", "手动编辑配置", "依次使用 vim / vi / nano")
-		ui.MenuOptionHint("6", "查看生效端口", "公网 / 内网 · TCP / UDP · 来源例外")
-		ui.MenuOptionHint("7", "开机自启开关", "开启 / 关闭，当前规则保持生效")
-		ui.MenuOption("r", "校验加载配置")
-		ui.MenuExit("0/q", "返回主菜单")
-		fmt.Println()
-		choice, err := view.Ask("请选择：")
+		autostart := inspectAutostart()
+		ui.PrintInfoCard("防火墙状态", currentConfigFields(autostart)...)
+		showMenu(autostart)
+		choice, err := view.Ask("请选择（回车刷新状态）：")
 		if err != nil {
 			return err
 		}
 		if shared.IsReturnChoice(choice) {
 			return shared.ErrReturnToMenu
 		}
-		switch choice {
+		switch strings.ToLower(choice) {
+		case "":
+			continue
 		case "1":
-			shared.RunAction(view, "防火墙配置失败，已返回防火墙管理", func() error {
-				return configure(view)
-			})
+			shared.RunAction(view, "读取生效端口失败，已返回防火墙管理", showLoadedPorts)
 		case "2":
-			shared.RunAction(view, "读取配置文件失败，已返回防火墙管理", showConfigFile)
+			shared.RunAction(view, "读取已加载规则失败，已返回防火墙管理", showLoadedRules)
 		case "3":
 			shared.RunAction(view, "规则管理失败，已返回防火墙管理", func() error {
 				return runRuleManager(view)
 			})
 		case "4":
-			shared.RunAction(view, "读取已加载规则失败，已返回防火墙管理", showLoadedRules)
+			shared.RunAction(view, "读取配置文件失败，已返回防火墙管理", showConfigFile)
 		case "5":
-			shared.RunAction(view, "编辑或校验配置失败，已返回防火墙管理", editConfig)
+			shared.RunAction(view, "编辑或加载配置失败，已返回防火墙管理", func() error {
+				return editConfig(view)
+			})
 		case "r":
 			shared.RunAction(view, "加载防火墙配置失败，已返回防火墙管理", func() error {
 				return loadConfig(view)
 			})
 		case "6":
-			shared.RunAction(view, "读取生效端口失败，已返回防火墙管理", showLoadedPorts)
+			shared.RunAction(view, "生成防火墙配置失败，已返回防火墙管理", func() error {
+				return configure(view)
+			})
 		case "7":
 			shared.RunAction(view, "修改开机自启失败，已返回防火墙管理", func() error {
 				return toggleAutostart(view)
@@ -97,7 +92,7 @@ func Run(view *ui.UI) error {
 func showConfigFile() error {
 	data, err := os.ReadFile(configPath)
 	if os.IsNotExist(err) {
-		ui.PrintInfoCard("尚未生成防火墙配置", ui.CardField{Label: "下一步", Value: "选择 1 生成 / 更新配置"})
+		ui.PrintInfoCard("尚未生成防火墙配置", ui.CardField{Label: "下一步", Value: "选择 6 生成默认配置"})
 		return nil
 	}
 	if err != nil {
@@ -158,7 +153,7 @@ func loadConfig(view *ui.UI) error {
 		return err
 	}
 	if !confirmed {
-		log.Info("已取消加载防火墙配置")
+		log.Info("配置文件已保留，未加载；可稍后输入 r 校验加载配置")
 		return nil
 	}
 	if err := applyConfig(content); err != nil {
@@ -167,7 +162,7 @@ func loadConfig(view *ui.UI) error {
 	ui.PrintSuccessCard("防火墙配置已加载",
 		ui.CardField{Label: "配置文件", Value: configPath},
 		ui.CardField{Label: "当前状态", Value: "已立即生效"},
-		ui.CardField{Label: "查看规则", Value: "返回防火墙管理，选择 4 查看已加载规则"},
+		ui.CardField{Label: "查看规则", Value: "选择 1 查看生效端口，选择 2 查看全部规则"},
 	)
 	return nil
 }
@@ -186,7 +181,7 @@ func applyConfig(expected []byte) error {
 	return nil
 }
 
-func editConfig() error {
+func editConfig(view *ui.UI) error {
 	var editor string
 	for _, name := range []string{"vim", "vi", "nano"} {
 		if commandExists(name) {
@@ -212,14 +207,9 @@ func editConfig() error {
 	if err := commandRun(editor, configPath); err != nil {
 		return fmt.Errorf("%s 编辑失败: %w", editor, err)
 	}
-	log.Info("正在校验防火墙配置：", configPath)
-	if out, err := commandOutput("nft", "-c", "-f", configPath); err != nil {
-		return fmt.Errorf("nftables 配置校验失败，编辑内容已保留，请修正后重新校验: %w: %s", err, strings.TrimSpace(out))
+	if err := loadConfig(view); err != nil {
+		return fmt.Errorf("编辑内容已保留，请根据错误修正或重新加载: %w", err)
 	}
-	ui.PrintSuccessCard("防火墙配置校验通过",
-		ui.CardField{Label: "配置文件", Value: configPath},
-		ui.CardField{Label: "加载配置", Value: "返回防火墙管理，输入 r 校验加载配置"},
-	)
 	return nil
 }
 
@@ -320,7 +310,7 @@ func configure(view *ui.UI) error {
 		ui.CardField{Label: "配置文件", Value: configPath},
 		ui.CardField{Label: "SSH 端口", Value: portList(ports)},
 		ui.CardField{Label: "当前状态", Value: "配置已校验并立即生效"},
-		ui.CardField{Label: "查看规则", Value: "返回防火墙管理，选择 4 查看已加载规则"},
+		ui.CardField{Label: "查看规则", Value: "选择 1 查看生效端口，选择 2 查看全部规则"},
 	)
 	return nil
 }
