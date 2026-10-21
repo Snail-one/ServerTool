@@ -15,7 +15,6 @@ func showMenu(autostart autostartStatus) {
 	fmt.Println()
 	ui.MenuOptionHint("4", "查看配置文件", configPath)
 	ui.MenuOptionHint("5", "编辑配置文件", "保存后校验，可立即加载")
-	ui.MenuOptionHint("r", "校验加载配置", "使当前配置文件立即生效")
 	fmt.Println()
 	if _, err := os.Lstat(configPath); os.IsNotExist(err) {
 		ui.MenuOptionHint("6", "生成默认配置", "检测 SSH 端口，生成后自动加载")
@@ -30,6 +29,8 @@ func showMenu(autostart autostartStatus) {
 	default:
 		ui.MenuOptionHint("7", "开启开机自启", "下次开机自动加载配置")
 	}
+	fmt.Println()
+	ui.MenuShortcutHint("r", "校验加载配置", "使当前配置文件立即生效")
 	ui.MenuExit("0/q", "返回主菜单")
 	fmt.Println()
 }

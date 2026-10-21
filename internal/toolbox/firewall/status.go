@@ -11,14 +11,19 @@ import (
 )
 
 type liveRules struct {
-	version     string
-	tables      int
-	chains      int
-	rules       int
-	snailLoaded bool
-	inputPolicy string
-	err         error
-	json        string
+	version          string
+	tables           int
+	chains           int
+	rules            int
+	snailLoaded      bool
+	snailDormant     bool
+	snailChains      int
+	snailRules       int
+	inputActive      bool
+	otherInputChains int
+	inputPolicy      string
+	err              error
+	json             string
 }
 
 type nftObject struct {
@@ -26,17 +31,22 @@ type nftObject struct {
 		Version string `json:"version"`
 	} `json:"metainfo"`
 	Table *struct {
-		Family string `json:"family"`
-		Name   string `json:"name"`
+		Family string   `json:"family"`
+		Name   string   `json:"name"`
+		Flags  []string `json:"flags"`
 	} `json:"table"`
 	Chain *struct {
 		Family string `json:"family"`
 		Table  string `json:"table"`
 		Name   string `json:"name"`
+		Type   string `json:"type"`
 		Hook   string `json:"hook"`
 		Policy string `json:"policy"`
 	} `json:"chain"`
-	Rule json.RawMessage `json:"rule"`
+	Rule *struct {
+		Family string `json:"family"`
+		Table  string `json:"table"`
+	} `json:"rule"`
 }
 
 func inspectLiveRules() liveRules {
@@ -67,12 +77,25 @@ func parseLiveRules(output string) liveRules {
 			result.tables++
 			if object.Table.Family == "inet" && object.Table.Name == "snail" {
 				result.snailLoaded = true
+				for _, flag := range object.Table.Flags {
+					if flag == "dormant" {
+						result.snailDormant = true
+					}
+				}
 			}
 		}
 		if object.Chain != nil {
 			result.chains++
 			chain := object.Chain
-			if chain.Family == "inet" && chain.Table == "snail" && chain.Hook == "input" {
+			owned := chain.Family == "inet" && chain.Table == "snail"
+			if owned {
+				result.snailChains++
+			}
+			if chain.Type != "filter" || chain.Hook != "input" {
+				continue
+			}
+			if owned {
+				result.inputActive = true
 				policy := chain.Policy
 				switch policy {
 				case "drop":
@@ -83,12 +106,18 @@ func parseLiveRules(output string) liveRules {
 					policy = "未返回默认策略"
 				}
 				policies = append(policies, chain.Name+"："+policy)
+			} else {
+				result.otherInputChains++
 			}
 		}
-		if len(object.Rule) != 0 && string(object.Rule) != "null" {
+		if object.Rule != nil {
 			result.rules++
+			if object.Rule.Family == "inet" && object.Rule.Table == "snail" {
+				result.snailRules++
+			}
 		}
 	}
+	result.inputActive = result.inputActive && result.snailLoaded && !result.snailDormant
 	sort.Strings(policies)
 	result.inputPolicy = strings.Join(policies, "；")
 	return result
@@ -104,25 +133,20 @@ func currentConfigFields(autostart autostartStatus) []ui.CardField {
 	if live.version != "" {
 		software += " v" + strings.TrimPrefix(live.version, "v")
 	}
-	fields := []ui.CardField{{Label: "nftables", Value: software}}
-	if installed {
-		fields = append(fields, ui.CardField{Label: "开机自启", Value: autostart.label})
+	fields := []ui.CardField{
+		firewallStateField(installed, live),
+		{Label: "开机自启", Value: autostart.label},
 	}
-	switch {
-	case !installed:
-		return append(fields, ui.CardField{Label: "规则状态", Value: "未安装"})
-	case live.err != nil:
-		return append(fields, ui.CardField{Label: "规则状态", Value: "检测失败", Detail: live.err.Error()})
-	default:
-		fields = append(fields, ui.CardField{Label: "已加载规则", Value: fmt.Sprintf("%d 个表 · %d 条链 · %d 条规则", live.tables, live.chains, live.rules)})
-		policy := "未加载本工具规则"
-		if live.snailLoaded {
-			policy = strings.TrimPrefix(live.inputPolicy, "input：")
-			if policy == "" {
-				policy = "未配置本工具入站链"
-			}
+	if installed && live.err == nil {
+		if live.inputActive {
+			fields = append(fields, ui.CardField{Label: "入站策略", Value: strings.TrimPrefix(live.inputPolicy, "input：")})
 		}
-		fields = append(fields, ui.CardField{Label: "入站策略", Value: policy})
+		if live.snailLoaded {
+			fields = append(fields, ui.CardField{Label: "本工具规则", Value: fmt.Sprintf("%d 条链 · %d 条规则", live.snailChains, live.snailRules)})
+		}
+		if !live.inputActive && live.otherInputChains > 0 {
+			fields = append(fields, ui.CardField{Label: "其他入站链", Value: fmt.Sprintf("%d 条，选择 2 查看全部规则", live.otherInputChains)})
+		}
 	}
 	data, fileErr := os.ReadFile(configPath)
 	sync := configSyncField(data, fileErr, installed, live)
@@ -130,5 +154,24 @@ func currentConfigFields(autostart autostartStatus) []ui.CardField {
 	if state == "已同步" || state == "未同步" {
 		sync.Value, sync.Detail = state, ""
 	}
-	return append(fields, sync)
+	return append(fields, sync, ui.CardField{Label: "nftables", Value: software})
+}
+
+func firewallStateField(installed bool, live liveRules) ui.CardField {
+	field := ui.CardField{Label: "防火墙"}
+	switch {
+	case !installed:
+		field.Value = "无法检测（未安装 nftables）"
+	case live.err != nil:
+		field.Value, field.Detail = "检测失败", live.err.Error()
+	case live.inputActive:
+		field.Value = "已开启（本工具入站规则）"
+	case live.snailDormant:
+		field.Value = "未开启（本工具表已停用）"
+	case live.snailLoaded:
+		field.Value = "未开启（入站链未挂接）"
+	default:
+		field.Value = "未开启（本工具）"
+	}
+	return field
 }

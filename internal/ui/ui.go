@@ -112,12 +112,21 @@ func MenuOption(key, label string) {
 // MenuOptionHint renders secondary command or impact text in gray so action
 // names remain easy to scan. The separator is part of the secondary text.
 func MenuOptionHint(key, label, hint string) {
+	menuOptionHint(key, label, hint, bold+blue)
+}
+
+// MenuShortcutHint highlights a shortcut in the primary orange color.
+func MenuShortcutHint(key, label, hint string) {
+	menuOptionHint(key, label, hint, bold+orange)
+}
+
+func menuOptionHint(key, label, hint, style string) {
 	hint = strings.TrimSpace(hint)
 	if hint == "" {
-		MenuOption(key, label)
+		fmt.Printf("  %s %s\n", menuKey(key, style), label)
 		return
 	}
-	fmt.Printf("  %s %s%s\n", menuKey(key, bold+blue), padDisplay(label, 22), paint(gray, "-- "+hint))
+	fmt.Printf("  %s %s%s\n", menuKey(key, style), padDisplay(label, 22), paint(gray, "-- "+hint))
 }
 
 // MenuOptionStatus keeps status badges in a fixed column across menu rows.
