@@ -2,6 +2,7 @@ package security
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -13,12 +14,19 @@ import (
 	"snail_tool/internal/shared"
 	"snail_tool/internal/ssh/keys"
 	"snail_tool/internal/system"
+	"snail_tool/internal/toolbox/firewall"
 	"snail_tool/internal/ui"
 )
 
 type sshdSettings map[string][]string
 
 var backupStore = shared.BackupStore{Root: shared.DataDir, Module: "ssh"}
+
+var (
+	readSettingsForReload = loadSSHDSettings
+	allowFirewallSSHPorts = firewall.EnsureSSHPorts
+	reloadConfiguredSSH   = reloadSSHService
+)
 
 type sshdSecurityRow struct {
 	name      string
@@ -185,11 +193,7 @@ func configureSSHDHardening(view *ui.UI, account *system.Account) error {
 	if err := writeSSHDConfig(port, permitRootLogin, disableSSHDConfigPorts); err != nil {
 		return err
 	}
-	if err := reloadSSHService(); err != nil {
-		return err
-	}
-
-	settings, source, err := loadSSHDSettings()
+	settings, source, err := activateSSHDConfig(port)
 	if err != nil {
 		return err
 	}
@@ -197,12 +201,16 @@ func configureSSHDHardening(view *ui.UI, account *system.Account) error {
 	if effectivePort == "" {
 		effectivePort = strconv.Itoa(port)
 	}
+	effectivePorts := joinedSSHDSetting(settings, "Port")
+	if effectivePorts == "" {
+		effectivePorts = effectivePort
+	}
 
 	fmt.Println()
 	ui.PrintSuccessCard("SSH 服务安全配置完成",
 		ui.CardField{Label: "用户", Value: account.Name},
 		ui.CardField{Label: "生效配置", Value: source},
-		ui.CardField{Label: "SSH 端口", Value: effectivePort},
+		ui.CardField{Label: "SSH 端口", Value: effectivePorts},
 		ui.CardField{Label: "SSH 登录", Value: fmt.Sprintf("ssh -p %s %s@服务器IP", effectivePort, account.Name)},
 	)
 	fmt.Println()
@@ -221,6 +229,38 @@ func configureSSHDHardening(view *ui.UI, account *system.Account) error {
 	fmt.Println()
 	log.Warn("请先新开一个终端测试 SSH 登录成功后，再关闭当前会话。")
 	return nil
+}
+
+// Read all configured ports before reloading, including ListenAddress entries
+// with explicit ports. The firewall must permit them before SSH switches over.
+func activateSSHDConfig(port int) (sshdSettings, string, error) {
+	settings, source, err := readSettingsForReload()
+	if err != nil {
+		return nil, "", fmt.Errorf("SSH 配置已写入，但读取端口失败，未重载 SSH: %w", err)
+	}
+	ports := []int{port}
+	values := append([]string(nil), settings["port"]...)
+	for _, address := range settings["listenaddress"] {
+		_, value, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, "", fmt.Errorf("无法解析 SSH 监听地址 %q，未重载 SSH: %w", address, err)
+		}
+		values = append(values, value)
+	}
+	for _, value := range values {
+		valuePort, err := strconv.Atoi(value)
+		if err != nil || valuePort < 1 || valuePort > 65535 {
+			return nil, "", fmt.Errorf("SSH 配置端口无效 %q，未重载 SSH", value)
+		}
+		ports = append(ports, valuePort)
+	}
+	if _, err := allowFirewallSSHPorts(ports); err != nil {
+		return nil, "", fmt.Errorf("SSH 配置已写入，但防火墙自动放行失败，未重载 SSH: %w", err)
+	}
+	if err := reloadConfiguredSSH(); err != nil {
+		return nil, "", err
+	}
+	return settings, source, nil
 }
 
 func confirmAuthorizedKeysPresent(view *ui.UI, account *system.Account) (bool, error) {

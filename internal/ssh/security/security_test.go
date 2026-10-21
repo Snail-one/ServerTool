@@ -1,12 +1,75 @@
 package security
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestActivateSSHDConfigAllowsAllPortsBeforeReload(t *testing.T) {
+	oldRead, oldAllow, oldReload := readSettingsForReload, allowFirewallSSHPorts, reloadConfiguredSSH
+	t.Cleanup(func() {
+		readSettingsForReload, allowFirewallSSHPorts, reloadConfiguredSSH = oldRead, oldAllow, oldReload
+	})
+	var steps []string
+	readSettingsForReload = func() (sshdSettings, string, error) {
+		steps = append(steps, "read")
+		return parseSSHDSettings("port 2200\nport 3022\nlistenaddress 0.0.0.0:2200\nlistenaddress [::]:4022\n"), "sshd -T", nil
+	}
+	allowFirewallSSHPorts = func(ports []int) (bool, error) {
+		steps = append(steps, "allow")
+		if !reflect.DeepEqual(ports, []int{3022, 2200, 3022, 2200, 4022}) {
+			t.Fatalf("not all new and retained SSH ports included: %v", ports)
+		}
+		return true, nil
+	}
+	reloadConfiguredSSH = func() error {
+		steps = append(steps, "reload")
+		return nil
+	}
+	settings, source, err := activateSSHDConfig(3022)
+	if err != nil || source != "sshd -T" || !reflect.DeepEqual(settings["port"], []string{"2200", "3022"}) {
+		t.Fatalf("settings=%v source=%q err=%v", settings, source, err)
+	}
+	if !reflect.DeepEqual(steps, []string{"read", "allow", "reload"}) {
+		t.Fatalf("unsafe order: %v", steps)
+	}
+}
+
+func TestActivateSSHDConfigDoesNotReloadWhenFirewallFails(t *testing.T) {
+	oldRead, oldAllow, oldReload := readSettingsForReload, allowFirewallSSHPorts, reloadConfiguredSSH
+	t.Cleanup(func() {
+		readSettingsForReload, allowFirewallSSHPorts, reloadConfiguredSSH = oldRead, oldAllow, oldReload
+	})
+	reloadConfiguredSSH = func() error { t.Fatal("must not reload SSH on failure"); return nil }
+	for _, failure := range []string{"settings", "invalid port", "invalid address", "firewall"} {
+		t.Run(failure, func(t *testing.T) {
+			readSettingsForReload = func() (sshdSettings, string, error) {
+				switch failure {
+				case "settings":
+					return nil, "", errors.New("sshd failed")
+				case "invalid port":
+					return parseSSHDSettings("port 65536"), "sshd -T", nil
+				case "invalid address":
+					return parseSSHDSettings("listenaddress [::]:oops"), "sshd -T", nil
+				}
+				return parseSSHDSettings("port 3022"), "sshd -T", nil
+			}
+			allowFirewallSSHPorts = func([]int) (bool, error) {
+				if failure != "firewall" {
+					t.Fatal("must reject bad settings before modifying firewall")
+				}
+				return false, errors.New("nft failed")
+			}
+			if _, _, err := activateSSHDConfig(3022); err == nil {
+				t.Fatal("failure was ignored")
+			}
+		})
+	}
+}
 
 func TestBuildSSHDConfigIncludesManagedMarkers(t *testing.T) {
 	content := buildSSHDConfig(2222, "no")
