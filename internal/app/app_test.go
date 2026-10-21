@@ -32,8 +32,10 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 		"容器管理",
 		"[未安装]",
 		"开发环境",
-		"2   SSH 管理",
-		"3   通用配置",
+		"1   防火墙管理",
+		"2   一键配置",
+		"3   SSH 管理",
+		"4   通用配置",
 		"清理配置",
 		"系统工具",
 		"0/q 退出",
@@ -45,14 +47,14 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 	if strings.Contains(output, "\033[") {
 		t.Fatalf("NO_COLOR 模式不应包含 ANSI 转义序列：%q", output)
 	}
-	if toolbox := strings.Index(output, "4   系统工具"); toolbox < 0 {
-		t.Fatalf("系统工具应在第 4 项：\n%s", output)
-	} else if cleanup := strings.Index(output, "7   清理配置"); cleanup < 0 || cleanup < toolbox {
+	if toolbox := strings.Index(output, "5   系统工具"); toolbox < 0 {
+		t.Fatalf("系统工具应在第 5 项：\n%s", output)
+	} else if cleanup := strings.Index(output, "8   清理配置"); cleanup < 0 || cleanup < toolbox {
 		t.Fatalf("清理配置应在系统工具之后：\n%s", output)
 	}
 	badgeColumn := -1
 	for _, line := range strings.Split(output, "\n") {
-		for _, label := range []string{"3   通用配置", "4   系统工具", "5   开发环境"} {
+		for _, label := range []string{"1   防火墙管理", "4   通用配置", "5   系统工具", "6   开发环境"} {
 			if strings.Contains(line, label) && strings.Contains(line, "[") {
 				t.Fatalf("主菜单 %s 不应显示状态徽标：%q", label, line)
 			}
@@ -74,7 +76,7 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 }
 
 func isMainStatusRow(line string) bool {
-	for _, label := range []string{"1   一键配置", "2   SSH 管理", "6   容器管理"} {
+	for _, label := range []string{"2   一键配置", "3   SSH 管理", "7   容器管理"} {
 		if strings.Contains(line, label) {
 			return true
 		}

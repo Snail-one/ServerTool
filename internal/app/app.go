@@ -17,6 +17,7 @@ import (
 	"snail_tool/internal/status"
 	"snail_tool/internal/system"
 	"snail_tool/internal/toolbox"
+	"snail_tool/internal/toolbox/firewall"
 	"snail_tool/internal/ui"
 	"snail_tool/internal/version"
 )
@@ -59,30 +60,34 @@ func (a *App) Run() error {
 
 		switch strings.ToLower(choice) {
 		case "1":
+			shared.RunAction(a.ui, "防火墙配置失败，已返回菜单", func() error {
+				return firewall.Run(a.ui)
+			})
+		case "2":
 			shared.RunAction(a.ui, "一键配置失败，已返回菜单", func() error {
 				return quicksetup.Run(a.ui)
 			})
-		case "2":
+		case "3":
 			shared.RunAction(a.ui, "SSH 管理失败，已返回菜单", func() error {
 				return ssh.Run(a.ui)
 			})
-		case "3":
+		case "4":
 			shared.RunAction(a.ui, "通用配置失败，已返回菜单", func() error {
 				return common.Run(a.ui)
 			})
-		case "4":
+		case "5":
 			shared.RunAction(a.ui, "系统工具菜单执行失败，已返回菜单", func() error {
 				return toolbox.Run(a.ui, a.startup)
 			})
-		case "5":
+		case "6":
 			shared.RunAction(a.ui, "开发环境管理失败，已返回菜单", func() error {
 				return environment.Run(a.ui)
 			})
-		case "6":
+		case "7":
 			shared.RunAction(a.ui, "容器管理失败，已返回菜单", func() error {
 				return container.Run(a.ui)
 			})
-		case "7":
+		case "8":
 			shared.RunAction(a.ui, "清理配置失败，已返回菜单", func() error {
 				return cleanup.Run(a.ui)
 			})
@@ -117,13 +122,14 @@ func showMenu(status status.Status) {
 	quickConfigured := quickSetupConfigured(status)
 	runtimeConfigured := strings.TrimSpace(status.Runtime) != "" && status.Runtime != "未安装"
 	ui.HomeTitle(version.Version)
-	ui.MenuOptionStatus("1", "一键配置", ui.ConfigurationBadge(fmt.Sprintf("已配置 %d/4", quickConfigured), quickConfigured > 0))
-	ui.MenuOptionStatus("2", "SSH 管理", ui.ConfiguredBadge(status.SSH))
-	ui.MenuOption("3", "通用配置")
-	ui.MenuOption("4", "系统工具")
-	ui.MenuOption("5", "开发环境")
-	ui.MenuOptionStatus("6", "容器管理", ui.SoftwareBadge(defaultStatus(status.Runtime, "未安装"), runtimeConfigured))
-	ui.MenuOption("7", "清理配置")
+	ui.MenuOption("1", "防火墙管理")
+	ui.MenuOptionStatus("2", "一键配置", ui.ConfigurationBadge(fmt.Sprintf("已配置 %d/4", quickConfigured), quickConfigured > 0))
+	ui.MenuOptionStatus("3", "SSH 管理", ui.ConfiguredBadge(status.SSH))
+	ui.MenuOption("4", "通用配置")
+	ui.MenuOption("5", "系统工具")
+	ui.MenuOption("6", "开发环境")
+	ui.MenuOptionStatus("7", "容器管理", ui.SoftwareBadge(defaultStatus(status.Runtime, "未安装"), runtimeConfigured))
+	ui.MenuOption("8", "清理配置")
 	ui.MenuExit("0/q", "退出")
 }
 
