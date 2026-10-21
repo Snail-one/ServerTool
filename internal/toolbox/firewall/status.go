@@ -18,6 +18,7 @@ type liveRules struct {
 	snailLoaded bool
 	inputPolicy string
 	err         error
+	json        string
 }
 
 type nftObject struct {
@@ -56,7 +57,7 @@ func parseLiveRules(output string) liveRules {
 	if document.Objects == nil {
 		return liveRules{err: fmt.Errorf("nftables 状态缺少规则集数据")}
 	}
-	var result liveRules
+	result := liveRules{json: output}
 	var policies []string
 	for _, object := range document.Objects {
 		if object.Meta != nil {
@@ -107,12 +108,12 @@ func currentConfigFields() []ui.CardField {
 		{Label: "nftables", Value: software},
 		{Label: "配置文件", Value: configPath},
 	}
-	data, err := os.ReadFile(configPath)
+	data, fileErr := os.ReadFile(configPath)
 	switch {
-	case os.IsNotExist(err):
+	case os.IsNotExist(fileErr):
 		fields = append(fields, ui.CardField{Label: "文件状态", Value: "尚未生成配置"})
-	case err != nil:
-		fields = append(fields, ui.CardField{Label: "文件状态", Value: "读取失败", Detail: err.Error()})
+	case fileErr != nil:
+		fields = append(fields, ui.CardField{Label: "文件状态", Value: "读取失败", Detail: fileErr.Error()})
 	default:
 		fileStatus := "已保存 · 来源未标记"
 		if strings.TrimSpace(string(data)) == "" {
@@ -136,7 +137,7 @@ func currentConfigFields() []ui.CardField {
 		if live.snailLoaded {
 			tableState = "已加载 inet snail 表"
 		}
-		fields = append(fields, ui.CardField{Label: "本工具表", Value: tableState, Detail: "加载状态不代表文件的最新修改已同步"})
+		fields = append(fields, ui.CardField{Label: "本工具表", Value: tableState})
 		if live.snailLoaded {
 			policy := live.inputPolicy
 			if policy == "" {
@@ -145,6 +146,7 @@ func currentConfigFields() []ui.CardField {
 			fields = append(fields, ui.CardField{Label: "本表入站策略", Value: policy})
 		}
 	}
+	fields = append(fields, configSyncField(data, fileErr, installed, live))
 	return append(fields,
 		ui.CardField{Label: "生成配置", Value: "校验、备份并写入后自动加载"},
 		ui.CardField{Label: "手动编辑", Value: "退出后自动校验；选择 5 加载最新配置"},

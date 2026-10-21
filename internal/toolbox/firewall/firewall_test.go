@@ -96,21 +96,28 @@ func TestDetectSSHPortsFailsInsteadOfAssumingPort22(t *testing.T) {
 }
 
 func TestBuildConfigKeepsPublicAndPrivatePortsSeparate(t *testing.T) {
-	for _, web := range []bool{false, true} {
-		content, err := buildConfig([]int{2222, 22000}, web)
+	for _, choices := range []struct{ tcp, udp bool }{{false, false}, {true, false}, {false, true}, {true, true}} {
+		content, err := buildConfig([]int{2222, 22000}, choices.tcp, choices.udp)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, family := range []string{"ipv4", "ipv6"} {
-			if !strings.Contains(content, "define snail_public_"+family+"_tcp_ports = { $snail_ssh_port, $snail_ssh_port_2 }") {
-				t.Fatalf("public SSH ports missing or include web ports:\n%s", content)
-			}
-			private := "$snail_ssh_port, $snail_ssh_port_2"
-			if web {
-				private += ", 80, 443"
-			}
-			if !strings.Contains(content, "define snail_private_"+family+"_tcp_ports = { "+private+" }") {
-				t.Fatalf("private ports do not reflect choice: web=%v", web)
+			for protocol, web := range map[string]bool{"tcp": choices.tcp, "udp": choices.udp} {
+				if !strings.Contains(content, "define snail_public_"+family+"_"+protocol+"_ports = { $snail_ssh_port, $snail_ssh_port_2 }") {
+					t.Fatalf("public %s ports missing or include private web ports:\n%s", protocol, content)
+				}
+				private := "$snail_ssh_port, $snail_ssh_port_2"
+				if web {
+					private += ", 80, 443"
+				}
+				if !strings.Contains(content, "define snail_private_"+family+"_"+protocol+"_ports = { "+private+" }") {
+					t.Fatalf("private %s ports do not reflect independent choice: web=%v", protocol, web)
+				}
+				for _, scope := range []string{"public", "private"} {
+					if !strings.Contains(content, "meta nfproto "+family+" "+protocol+" dport $snail_"+scope+"_"+family+"_"+protocol+"_ports counter accept") {
+						t.Fatalf("missing independent %s %s %s rule", scope, family, protocol)
+					}
+				}
 			}
 		}
 		for _, required := range []string{
@@ -119,6 +126,7 @@ func TestBuildConfigKeepsPublicAndPrivatePortsSeparate(t *testing.T) {
 			"ct state established,related counter accept", `iifname "lo" counter accept`,
 			"ip saddr $snail_private_ipv4 goto private_ports", "ip6 saddr $snail_private_ipv6 goto private_ports",
 			"udp sport 547 udp dport 546 counter accept", "mld2-listener-report", "nd-router-advert",
+			"chain source_allow {", "jump source_allow",
 		} {
 			if !strings.Contains(content, required) {
 				t.Fatalf("missing required rule %q", required)
@@ -127,9 +135,24 @@ func TestBuildConfigKeepsPublicAndPrivatePortsSeparate(t *testing.T) {
 		if strings.Contains(content, "flush ruleset") || strings.Contains(content, "__") {
 			t.Fatal("configuration contains global flush or unexpanded placeholders")
 		}
+		jump := strings.Index(content, "jump source_allow")
+		privateRoute := strings.Index(content, "ip saddr $snail_private_ipv4 goto private_ports")
+		if jump < 0 || jump > privateRoute {
+			t.Fatal("source exceptions must be evaluated before public/private port restrictions")
+		}
+		source := content[strings.Index(content, "chain source_allow {"):strings.Index(content, "chain input {")]
+		if !strings.Contains(source, "\n        return\n") {
+			t.Fatal("unmatched sources must return to normal port filtering")
+		}
+		for _, line := range strings.Split(source, "\n") {
+			line = strings.TrimSpace(line)
+			if !strings.HasPrefix(line, "#") && strings.Contains(line, "accept") {
+				t.Fatal("source allow examples must remain disabled by default")
+			}
+		}
 	}
 	for _, ports := range [][]int{nil, {0}, {65536}, {-1}} {
-		if _, err := buildConfig(ports, false); err == nil {
+		if _, err := buildConfig(ports, false, false); err == nil {
 			t.Fatalf("invalid SSH ports accepted: %v", ports)
 		}
 	}
@@ -143,7 +166,7 @@ func TestWriteConfigValidatesBeforeBackupAndWrite(t *testing.T) {
 			if err := os.WriteFile(configPath, []byte(original), 0600); err != nil {
 				t.Fatal(err)
 			}
-			content, _ := buildConfig([]int{2222}, true)
+			content, _ := buildConfig([]int{2222}, true, true)
 			commandOutput = func(name string, args ...string) (string, error) {
 				if name != "nft" || len(args) != 3 || args[0] != "-c" || args[1] != "-f" {
 					t.Fatalf("must validate without applying: %s %v", name, args)
@@ -184,7 +207,7 @@ func TestConfigureCancellationAndDetectionFailureDoNotWrite(t *testing.T) {
 	for _, scenario := range []string{"nonroot", "cancel install", "cancel write", "no SSH", "SSH changed"} {
 		t.Run(scenario, func(t *testing.T) {
 			setupTest(t)
-			input := "n\n1\n"
+			input := "n\nn\n1\n"
 			if scenario == "nonroot" {
 				isRoot = func() bool { return false }
 			}
@@ -193,7 +216,7 @@ func TestConfigureCancellationAndDetectionFailureDoNotWrite(t *testing.T) {
 				input = "n\n"
 			}
 			if scenario == "cancel write" {
-				input = "y\nq\n"
+				input = "y\ny\nq\n"
 			}
 			calls := 0
 			commandOutput = func(name string, args ...string) (string, error) {
@@ -261,7 +284,7 @@ func TestRunConfirmsInstallAndWritesThenApplies(t *testing.T) {
 		t.Fatalf("unexpected command: %s %v", name, args)
 		return "", nil
 	}
-	if err := Run(inputUI(t, "y\n1\ny\n1\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := Run(inputUI(t, "y\n1\nn\n\n1\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if want := []string{"apt-get update", "apt-get install -y nftables"}; !reflect.DeepEqual(commands, want) {
@@ -271,8 +294,10 @@ func TestRunConfirmsInstallAndWritesThenApplies(t *testing.T) {
 		t.Fatalf("must validate, write and automatically load exactly once: %v", operations)
 	}
 	content := shared.ReadFileString(configPath)
-	if !strings.Contains(content, "define snail_ssh_port = 2200") || !strings.Contains(content, "$snail_ssh_port, 80, 443") {
-		t.Fatal("configuration omitted SSH or requested private web ports")
+	if !strings.Contains(content, "define snail_ssh_port = 2200") ||
+		!strings.Contains(content, "define snail_private_ipv4_tcp_ports = { $snail_ssh_port }") ||
+		!strings.Contains(content, "define snail_private_ipv4_udp_ports = { $snail_ssh_port, 80, 443 }") {
+		t.Fatal("configuration did not preserve SSH and independent TCP/UDP choices")
 	}
 }
 
@@ -398,7 +423,7 @@ func TestConfigurePreviewsAndReselectsPortsBeforeWriting(t *testing.T) {
 		}
 		return "", nil
 	}
-	if err := configure(inputUI(t, "y\n2\n\n3\ninvalid\nn\n1\n")); err != nil {
+	if err := configure(inputUI(t, "y\ny\n2\n\n3\ninvalid\nn\nn\n1\n")); err != nil {
 		t.Fatal(err)
 	}
 	if validations != 1 || loads != 1 {
@@ -431,7 +456,7 @@ func TestConfigureStopsOnCheckWriteOrLoadFailure(t *testing.T) {
 				t.Fatalf("unexpected command: %s %v", name, args)
 				return "", nil
 			}
-			err := configure(inputUI(t, "n\n1\n"))
+			err := configure(inputUI(t, "n\nn\n1\n"))
 			if err == nil {
 				t.Fatal("expected error")
 			}

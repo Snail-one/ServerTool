@@ -48,6 +48,7 @@ func Run(view *ui.UI) error {
 		ui.MenuOptionHint("3", "查看已加载规则", "全部 nftables 表和规则")
 		ui.MenuOptionHint("4", "手动编辑配置", "依次使用 vim / vi / nano")
 		ui.MenuOptionHint("5", "加载最新配置", "校验并确认后立即生效")
+		ui.MenuOption("r", "刷新状态与配置对比")
 		ui.MenuExit("0/q", "返回主菜单")
 		fmt.Println()
 		choice, err := view.Ask("请选择：")
@@ -58,6 +59,8 @@ func Run(view *ui.UI) error {
 			return shared.ErrReturnToMenu
 		}
 		switch choice {
+		case "r", "R":
+			continue
 		case "1":
 			shared.RunAction(view, "防火墙配置失败，已返回防火墙管理", func() error {
 				return configure(view)
@@ -243,18 +246,23 @@ func configure(view *ui.UI) error {
 	ui.PrintInfoCard("检测到 SSH 监听端口",
 		ui.CardField{Label: "TCP 端口", Value: portList(ports)},
 		ui.CardField{Label: "开放范围", Value: "公网、内网及 IPv4 / IPv6"},
+		ui.CardField{Label: "放行协议", Value: "相同端口号同时放行 TCP / UDP，列表独立维护"},
 	)
 	var content string
 	for {
-		privateWeb, err := askPrivateWeb(view)
+		privateTCP, err := askPrivateWeb(view, "TCP")
 		if err != nil {
 			return err
 		}
-		content, err = buildConfig(ports, privateWeb)
+		privateUDP, err := askPrivateWeb(view, "UDP")
 		if err != nil {
 			return err
 		}
-		write, err := confirmConfig(view, content, ports, privateWeb)
+		content, err = buildConfig(ports, privateTCP, privateUDP)
+		if err != nil {
+			return err
+		}
+		write, err := confirmConfig(view, content, ports, privateTCP, privateUDP)
 		if err != nil {
 			return err
 		}
@@ -286,9 +294,9 @@ func configure(view *ui.UI) error {
 	return nil
 }
 
-func askPrivateWeb(view *ui.UI) (bool, error) {
+func askPrivateWeb(view *ui.UI, protocol string) (bool, error) {
 	for {
-		choice, err := view.Ask("是否开放内网 TCP 80、443（IPv4 / IPv6）？[y/N，0/q 返回]：")
+		choice, err := view.Ask(fmt.Sprintf("是否开放内网 %s 80、443（IPv4 / IPv6）？[Y/n，0/q 返回]：", protocol))
 		if err != nil {
 			return false, err
 		}
@@ -296,9 +304,9 @@ func askPrivateWeb(view *ui.UI) (bool, error) {
 			return false, shared.ErrReturnToMenu
 		}
 		switch strings.ToLower(choice) {
-		case "y", "yes":
+		case "", "y", "yes":
 			return true, nil
-		case "", "n", "no":
+		case "n", "no":
 			return false, nil
 		default:
 			fmt.Println("请输入 y 或 n，或输入 0/q 返回")
@@ -308,17 +316,23 @@ func askPrivateWeb(view *ui.UI) (bool, error) {
 
 // A false result lets the caller return to the private-port choice; cancellation
 // uses ErrReturnToMenu so RunAction returns directly to the firewall menu.
-func confirmConfig(view *ui.UI, content string, ports []int, privateWeb bool) (bool, error) {
+func confirmConfig(view *ui.UI, content string, ports []int, privateTCP, privateUDP bool) (bool, error) {
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理", "确认配置")
-		privatePorts := portList(ports)
-		if privateWeb {
-			privatePorts += ", 80, 443"
+		privateTCPPorts := portList(ports)
+		privateUDPPorts := portList(ports)
+		if privateTCP {
+			privateTCPPorts += ", 80, 443"
+		}
+		if privateUDP {
+			privateUDPPorts += ", 80, 443"
 		}
 		ui.PrintInfoCard("即将写入的配置",
-			ui.CardField{Label: "公网 TCP", Value: portList(ports), Detail: "IPv4 / IPv6 共用，仅开放 SSH"},
-			ui.CardField{Label: "内网 TCP", Value: privatePorts, Detail: "IPv4 私有地址；IPv6 ULA 和链路本地地址"},
+			ui.CardField{Label: "公网 TCP", Value: portList(ports), Detail: "IPv4 / IPv6 分别维护"},
+			ui.CardField{Label: "公网 UDP", Value: portList(ports), Detail: "独立于 TCP 端口列表"},
+			ui.CardField{Label: "内网 TCP", Value: privateTCPPorts, Detail: "IPv4 私有地址；IPv6 ULA 和链路本地地址"},
+			ui.CardField{Label: "内网 UDP", Value: privateUDPPorts, Detail: "独立于 TCP 端口列表"},
 			ui.CardField{Label: "其他入站流量", Value: "丢弃；保留已建立连接、回环、指定 IPv6 控制流量及 DHCPv6"},
 			ui.CardField{Label: "配置文件", Value: configPath, Detail: "整份替换，已有文件先备份；校验成功后写入"},
 			ui.CardField{Label: "生效方式", Value: "写入后自动加载，立即生效"},
@@ -352,7 +366,7 @@ func confirmConfig(view *ui.UI, content string, ports []int, privateWeb bool) (b
 	}
 }
 
-func buildConfig(ports []int, privateWeb bool) (string, error) {
+func buildConfig(ports []int, privateTCP, privateUDP bool) (string, error) {
 	if len(ports) == 0 {
 		return "", fmt.Errorf("SSH 端口不能为空")
 	}
@@ -369,14 +383,23 @@ func buildConfig(ports []int, privateWeb bool) (string, error) {
 		references = append(references, "$"+name)
 	}
 	sshPorts := strings.Join(references, ", ")
-	privatePorts := sshPorts
-	if privateWeb {
-		privatePorts += ", 80, 443"
+	privateTCPPorts, privateUDPPorts := sshPorts, sshPorts
+	privateTCPDescription, privateUDPDescription := "当前仅开放 SSH 端口", "当前仅开放 SSH 端口"
+	if privateTCP {
+		privateTCPPorts += ", 80, 443"
+		privateTCPDescription = "当前开放 SSH 端口及 80、443"
+	}
+	if privateUDP {
+		privateUDPPorts += ", 80, 443"
+		privateUDPDescription = "当前开放 SSH 端口及 80、443"
 	}
 	return strings.NewReplacer(
 		"__SSH_DEFINITIONS__", strings.Join(definitions, "\n"),
 		"__SSH_REFERENCES__", sshPorts,
-		"__PRIVATE_PORTS__", privatePorts,
+		"__PRIVATE_TCP_PORTS__", privateTCPPorts,
+		"__PRIVATE_UDP_PORTS__", privateUDPPorts,
+		"__PRIVATE_TCP_DESCRIPTION__", privateTCPDescription,
+		"__PRIVATE_UDP_DESCRIPTION__", privateUDPDescription,
 	).Replace(configTemplate), nil
 }
 

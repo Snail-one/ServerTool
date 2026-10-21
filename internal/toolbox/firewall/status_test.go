@@ -45,7 +45,7 @@ func TestCurrentConfigFieldsSeparatesSavedFileAndLiveStatus(t *testing.T) {
 	for _, scenario := range []string{"managed", "unmarked", "empty", "missing", "query failure"} {
 		t.Run(scenario, func(t *testing.T) {
 			setupTest(t)
-			content, _ := buildConfig([]int{2222}, false)
+			content, _ := buildConfig([]int{2222}, false, false)
 			if scenario == "unmarked" {
 				content = "table inet filter {}\n"
 			} else if scenario == "empty" {
