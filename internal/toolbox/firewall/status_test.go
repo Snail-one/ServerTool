@@ -41,7 +41,7 @@ func TestParseLiveRulesCountsAllTablesAndScopesPolicyToSnail(t *testing.T) {
 	}
 }
 
-func TestCurrentConfigFieldsSeparatesSavedFileAndLiveStatus(t *testing.T) {
+func TestCurrentConfigFieldsShowsOnlyFirewallStatus(t *testing.T) {
 	for _, scenario := range []string{"managed", "unmarked", "empty", "missing", "query failure"} {
 		t.Run(scenario, func(t *testing.T) {
 			setupTest(t)
@@ -66,22 +66,20 @@ func TestCurrentConfigFieldsSeparatesSavedFileAndLiveStatus(t *testing.T) {
 				return `{"nftables":[{"metainfo":{"version":"1.1.3"}}]}`, nil
 			}
 			fields := currentConfigFields()
-			state := fieldValue(fields, "文件状态")
-			want := map[string]string{
-				"managed": "含本工具标记", "unmarked": "来源未标记", "empty": "空文件", "missing": "尚未生成", "query failure": "含本工具标记",
-			}[scenario]
-			if !strings.Contains(state, want) {
-				t.Fatalf("file state=%q, want %q", state, want)
+			for _, label := range []string{"配置文件", "文件状态", "最后修改", "本工具表", "生成配置", "手动编辑"} {
+				if fieldValue(fields, label) != "" {
+					t.Fatalf("status card must not include %s", label)
+				}
 			}
 			if scenario == "query failure" {
-				if fieldValue(fields, "内核规则") != "检测失败" || fieldValue(fields, "本工具表") != "" {
+				if fieldValue(fields, "规则状态") != "检测失败" || fieldValue(fields, "入站策略") != "" {
 					t.Fatal("query failure must not be reported as unloaded")
 				}
-			} else if fieldValue(fields, "本工具表") != "未加载 inet snail 表" || !strings.Contains(fieldValue(fields, "nftables"), "v1.1.3") {
+			} else if fieldValue(fields, "入站策略") != "未加载本工具规则" || !strings.Contains(fieldValue(fields, "nftables"), "v1.1.3") {
 				t.Fatal("saved config must not imply loaded rules; installed version should be shown")
 			}
-			if fieldValue(fields, "生成配置") != "校验、备份并写入后自动加载" || !strings.Contains(fieldValue(fields, "手动编辑"), "选择 5") {
-				t.Fatal("generation and manual editing must have separate activation descriptions")
+			if scenario != "query failure" && len(fields) != 4 {
+				t.Fatalf("status card should have four fields, got %d", len(fields))
 			}
 		})
 	}

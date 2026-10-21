@@ -48,9 +48,8 @@ func Run(view *ui.UI) error {
 		ui.MenuOptionHint("2", "查看配置文件", configPath)
 		ui.MenuOptionHint("3", "查看已加载规则", "全部 nftables 表和规则")
 		ui.MenuOptionHint("4", "手动编辑配置", "依次使用 vim / vi / nano")
-		ui.MenuOptionHint("5", "加载最新配置", "校验并确认后立即生效")
+		ui.MenuOptionHint("5", "reload", "校验并确认后立即生效")
 		ui.MenuOptionHint("6", "放行规则管理", "端口 / 来源 IP / 来源 IP + 端口")
-		ui.MenuOption("r", "刷新状态与配置对比")
 		ui.MenuExit("0/q", "返回主菜单")
 		fmt.Println()
 		choice, err := view.Ask("请选择：")
@@ -61,8 +60,6 @@ func Run(view *ui.UI) error {
 			return shared.ErrReturnToMenu
 		}
 		switch choice {
-		case "r", "R":
-			continue
 		case "1":
 			shared.RunAction(view, "防火墙配置失败，已返回防火墙管理", func() error {
 				return configure(view)
@@ -172,7 +169,7 @@ func applyConfig(expected []byte) error {
 		return err
 	}
 	if !bytes.Equal(expected, latest) {
-		return fmt.Errorf("配置文件已变化，未加载规则，请重新选择加载最新配置")
+		return fmt.Errorf("配置文件已变化，未加载规则，请重新选择 reload")
 	}
 	if out, err := commandOutput("nft", "-f", configPath); err != nil {
 		return fmt.Errorf("nftables 配置加载失败: %w: %s", err, strings.TrimSpace(out))
@@ -212,7 +209,7 @@ func editConfig() error {
 	}
 	ui.PrintSuccessCard("防火墙配置校验通过",
 		ui.CardField{Label: "配置文件", Value: configPath},
-		ui.CardField{Label: "加载配置", Value: "返回防火墙管理，选择 5 加载最新配置"},
+		ui.CardField{Label: "加载配置", Value: "返回防火墙管理，选择 5 reload"},
 	)
 	return nil
 }

@@ -104,51 +104,28 @@ func currentConfigFields() []ui.CardField {
 	if live.version != "" {
 		software += " v" + strings.TrimPrefix(live.version, "v")
 	}
-	fields := []ui.CardField{
-		{Label: "nftables", Value: software},
-		{Label: "配置文件", Value: configPath},
-	}
-	data, fileErr := os.ReadFile(configPath)
-	switch {
-	case os.IsNotExist(fileErr):
-		fields = append(fields, ui.CardField{Label: "文件状态", Value: "尚未生成配置"})
-	case fileErr != nil:
-		fields = append(fields, ui.CardField{Label: "文件状态", Value: "读取失败", Detail: fileErr.Error()})
-	default:
-		fileStatus := "已保存 · 来源未标记"
-		if strings.TrimSpace(string(data)) == "" {
-			fileStatus = "空文件 · 请先生成或编辑配置"
-		} else if strings.Contains(string(data), "# ===== BEGIN SNAIL NFTABLES CONFIG =====") && strings.Contains(string(data), "# ===== END SNAIL NFTABLES CONFIG =====") {
-			fileStatus = "已保存 · 含本工具标记"
-		}
-		fields = append(fields, ui.CardField{Label: "文件状态", Value: fileStatus})
-		if info, err := os.Stat(configPath); err == nil {
-			fields = append(fields, ui.CardField{Label: "最后修改", Value: info.ModTime().Format("2006-01-02 15:04:05 MST")})
-		}
-	}
+	fields := []ui.CardField{{Label: "nftables", Value: software}}
 	switch {
 	case !installed:
-		fields = append(fields, ui.CardField{Label: "内核规则", Value: "无法查询 · nft 未安装"})
+		return append(fields, ui.CardField{Label: "规则状态", Value: "未安装"})
 	case live.err != nil:
-		fields = append(fields, ui.CardField{Label: "内核规则", Value: "检测失败", Detail: live.err.Error()})
+		return append(fields, ui.CardField{Label: "规则状态", Value: "检测失败", Detail: live.err.Error()})
 	default:
-		fields = append(fields, ui.CardField{Label: "内核规则", Value: fmt.Sprintf("%d 个表 · %d 条链 · %d 条规则", live.tables, live.chains, live.rules)})
-		tableState := "未加载 inet snail 表"
+		fields = append(fields, ui.CardField{Label: "已加载规则", Value: fmt.Sprintf("%d 个表 · %d 条链 · %d 条规则", live.tables, live.chains, live.rules)})
+		policy := "未加载本工具规则"
 		if live.snailLoaded {
-			tableState = "已加载 inet snail 表"
-		}
-		fields = append(fields, ui.CardField{Label: "本工具表", Value: tableState})
-		if live.snailLoaded {
-			policy := live.inputPolicy
+			policy = strings.TrimPrefix(live.inputPolicy, "input：")
 			if policy == "" {
-				policy = "未检测到 input 基础链"
+				policy = "未配置本工具入站链"
 			}
-			fields = append(fields, ui.CardField{Label: "本表入站策略", Value: policy})
 		}
+		fields = append(fields, ui.CardField{Label: "入站策略", Value: policy})
 	}
-	fields = append(fields, configSyncField(data, fileErr, installed, live))
-	return append(fields,
-		ui.CardField{Label: "生成配置", Value: "校验、备份并写入后自动加载"},
-		ui.CardField{Label: "手动编辑", Value: "退出后自动校验；选择 5 加载最新配置"},
-	)
+	data, fileErr := os.ReadFile(configPath)
+	sync := configSyncField(data, fileErr, installed, live)
+	state, _, _ := strings.Cut(sync.Value, " · ")
+	if state == "已同步" || state == "未同步" {
+		sync.Value, sync.Detail = state, ""
+	}
+	return append(fields, sync)
 }

@@ -54,7 +54,7 @@ func configSyncField(content []byte, fileErr error, installed bool, live liveRul
 		field.Value = "已同步 · 当前文件与已加载规则一致"
 	} else {
 		field.Value = "未同步 · 配置与内核规则不同"
-		field.Detail += "；选择 5 加载最新配置"
+		field.Detail += "；选择 5 reload"
 	}
 	return field
 }
