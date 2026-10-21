@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -48,6 +49,7 @@ func Run(view *ui.UI) error {
 		ui.MenuOptionHint("3", "查看已加载规则", "全部 nftables 表和规则")
 		ui.MenuOptionHint("4", "手动编辑配置", "依次使用 vim / vi / nano")
 		ui.MenuOptionHint("5", "加载最新配置", "校验并确认后立即生效")
+		ui.MenuOptionHint("6", "放行规则管理", "端口 / 来源 IP / 来源 IP + 端口")
 		ui.MenuOption("r", "刷新状态与配置对比")
 		ui.MenuExit("0/q", "返回主菜单")
 		fmt.Println()
@@ -74,6 +76,10 @@ func Run(view *ui.UI) error {
 		case "5":
 			shared.RunAction(view, "加载防火墙配置失败，已返回防火墙管理", func() error {
 				return loadConfig(view)
+			})
+		case "6":
+			shared.RunAction(view, "规则管理失败，已返回防火墙管理", func() error {
+				return runRuleManager(view)
 			})
 		default:
 			ui.InvalidChoice()
@@ -189,7 +195,7 @@ func editConfig() error {
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("拒绝编辑非普通文件或软链接: %s", configPath)
 		}
-		backup, err := system.Backup(configPath)
+		backup, err := backupFirewallConfig()
 		if err != nil {
 			return err
 		}
@@ -239,6 +245,17 @@ func configure(view *ui.UI) error {
 	if err != nil || !installed {
 		return err
 	}
+	version, err := readConfigVersion()
+	if err != nil {
+		return err
+	}
+	var preserved []allowRule
+	if strings.Contains(string(version.content), rulesBegin) || strings.Contains(string(version.content), rulesEnd) {
+		preserved, err = managedRules(string(version.content))
+		if err != nil {
+			return err
+		}
+	}
 	ports, err := detectSSHPorts()
 	if err != nil {
 		return err
@@ -247,6 +264,7 @@ func configure(view *ui.UI) error {
 		ui.CardField{Label: "TCP 端口", Value: portList(ports)},
 		ui.CardField{Label: "开放范围", Value: "公网、内网及 IPv4 / IPv6"},
 		ui.CardField{Label: "放行协议", Value: "相同端口号同时放行 TCP / UDP，列表独立维护"},
+		ui.CardField{Label: "附加放行规则", Value: fmt.Sprintf("保留已有 %d 条规则", len(preserved))},
 	)
 	var content string
 	for {
@@ -259,6 +277,10 @@ func configure(view *ui.UI) error {
 			return err
 		}
 		content, err = buildConfig(ports, publicWeb, privateWeb)
+		if err != nil {
+			return err
+		}
+		content, err = replaceManagedRules(content, preserved)
 		if err != nil {
 			return err
 		}
@@ -279,7 +301,7 @@ func configure(view *ui.UI) error {
 	if portList(latest) != portList(ports) {
 		return fmt.Errorf("SSH 监听端口已变化，请重新进入防火墙管理生成配置")
 	}
-	if err := writeConfig(content); err != nil {
+	if err := writeConfig(content, version); err != nil {
 		return err
 	}
 	if err := applyConfig([]byte(content)); err != nil {
@@ -328,12 +350,17 @@ func confirmConfig(view *ui.UI, content string, ports []int, publicWeb, privateW
 		if privateWeb {
 			privatePorts += ", 80, 443"
 		}
+		extraRules, err := managedRules(content)
+		if err != nil {
+			return false, err
+		}
 		ui.PrintInfoCard("即将写入的配置",
 			ui.CardField{Label: "公网 TCP", Value: publicPorts, Detail: "IPv4 / IPv6 同时应用"},
 			ui.CardField{Label: "公网 UDP", Value: publicPorts, Detail: "与 TCP 同时选择，列表独立保留"},
 			ui.CardField{Label: "局域网 TCP", Value: privatePorts, Detail: "IPv4 私有地址；IPv6 ULA 和链路本地地址"},
 			ui.CardField{Label: "局域网 UDP", Value: privatePorts, Detail: "与 TCP 同时选择，列表独立保留"},
-			ui.CardField{Label: "其他入站流量", Value: "丢弃；保留已建立连接、回环、指定 IPv6 控制流量及 DHCPv6"},
+			ui.CardField{Label: "附加放行规则", Value: fmt.Sprintf("保留 %d 条，可额外放行来源和端口", len(extraRules))},
+			ui.CardField{Label: "未匹配入站流量", Value: "丢弃；保留已建立连接、回环、指定 IPv6 控制流量及 DHCPv6"},
 			ui.CardField{Label: "配置文件", Value: configPath, Detail: "整份替换，已有文件先备份；校验成功后写入"},
 			ui.CardField{Label: "生效方式", Value: "写入后自动加载，立即生效"},
 		)
@@ -410,7 +437,7 @@ func portList(ports []int) string {
 	return strings.Join(values, ", ")
 }
 
-func writeConfig(content string) error {
+func writeConfig(content string, versions ...configVersion) error {
 	if info, err := os.Lstat(configPath); err == nil {
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("拒绝覆盖非普通文件或软链接: %s", configPath)
@@ -418,7 +445,7 @@ func writeConfig(content string) error {
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	tmp, err := os.CreateTemp("", "snail-nftables-*.conf")
+	tmp, err := os.CreateTemp(filepath.Dir(configPath), ".snail-nftables-*.conf")
 	if err != nil {
 		return err
 	}
@@ -433,8 +460,13 @@ func writeConfig(content string) error {
 	if out, err := commandOutput("nft", "-c", "-f", tmp.Name()); err != nil {
 		return fmt.Errorf("nftables 配置校验失败，未写入正式配置: %w: %s", err, strings.TrimSpace(out))
 	}
+	if len(versions) > 0 {
+		if err := checkConfigVersion(versions[0]); err != nil {
+			return err
+		}
+	}
 	if _, err := os.Lstat(configPath); err == nil {
-		backup, err := system.Backup(configPath)
+		backup, err := backupFirewallConfig()
 		if err != nil {
 			return err
 		}
