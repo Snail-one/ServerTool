@@ -554,7 +554,7 @@ sudo <COMMAND> update
 
 - 流水线：`.github/workflows/release.yml`
 - Release Notes：`scripts/generate_release_notes.sh`
-- 本地构建：`scripts/build_linux.sh`、`scripts/build_windows.ps1`
+- 本地构建：`scripts/build_linux.sh`，固定输出 `dist/snail`
 - 安装更新：`scripts/install.sh`
 - 程序自更新：`internal/selfupdate/update.go`
 - 版本信息：`internal/version/version.go`

@@ -40,7 +40,6 @@
 scripts/
 ├── install.sh                 # 首次安装、更新和修复
 ├── build_linux.sh             # Linux 本地构建
-├── build_windows.ps1          # Windows 交叉构建
 └── generate_release_notes.sh  # Release Notes 生成
 ```
 
@@ -516,7 +515,7 @@ checksums.txt
 - 安装与更新：`scripts/install.sh`
 - CLI 自更新：`internal/selfupdate/update.go`
 - Linux 构建：`scripts/build_linux.sh`
-- Windows 交叉构建：`scripts/build_windows.ps1`
+- 本地构建固定输出：`dist/snail`
 - 发布说明生成：`scripts/generate_release_notes.sh`
 
 其他项目应复制流程和契约，而不是复制 ServerTool 的项目名、包路径或安装命令。

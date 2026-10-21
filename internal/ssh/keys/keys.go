@@ -27,7 +27,7 @@ const (
 var (
 	runEditor       = system.Run
 	editorAvailable = system.CommandExists
-	pubkeyEditors   = []string{"vim", "nano", "vi"}
+	pubkeyEditors   = []string{"vim", "vi", "nano"}
 )
 
 var authorizedKeyTypes = map[string]struct{}{
@@ -94,7 +94,7 @@ func ensureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 
 		ui.MenuSection("请选择添加方式")
 		ui.MenuOption("1", "粘贴公钥")
-		ui.MenuOptionHint("2", "使用编辑器打开", "vim / nano / vi")
+		ui.MenuOptionHint("2", "使用编辑器打开", "自动选择 vim / vi / nano")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -114,7 +114,7 @@ func ensureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 				return err
 			}
 		case "2":
-			if _, err := openAuthorizedKeysWithChosenEditor(view, account); err != nil {
+			if _, err := openAuthorizedKeysWithPreferredEditor(view, account); err != nil {
 				return err
 			}
 			if !IsConfigured(account) {
@@ -171,7 +171,7 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		ui.MenuSection("请选择公钥操作")
 		ui.MenuOption("1", "添加公钥")
 		ui.MenuOption("2", "选择替换")
-		ui.MenuOptionHint("3", "编辑文件", "vim / nano / vi")
+		ui.MenuOptionHint("3", "编辑文件", "自动选择 vim / vi / nano")
 		ui.MenuOption("4", "删除公钥")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
@@ -195,7 +195,7 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 				return err
 			}
 		case "3":
-			if _, err := openAuthorizedKeysWithChosenEditor(view, account); err != nil {
+			if _, err := openAuthorizedKeysWithPreferredEditor(view, account); err != nil {
 				return err
 			}
 		case "4":
@@ -416,71 +416,14 @@ func printAuthorizedKeys(account *system.Account) error {
 	return nil
 }
 
-func openAuthorizedKeysWithChosenEditor(view *ui.UI, account *system.Account) (bool, error) {
-	editor, err := chooseAuthorizedKeyEditor(view)
-	if err != nil || editor == "" {
-		return false, err
+func openAuthorizedKeysWithPreferredEditor(view *ui.UI, account *system.Account) (bool, error) {
+	for _, editor := range pubkeyEditors {
+		if editorAvailable(editor) {
+			return true, openAuthorizedKeysWithEditor(view, account, editor)
+		}
 	}
-	return true, openAuthorizedKeysWithEditor(view, account, editor)
-}
-
-func chooseAuthorizedKeyEditor(view *ui.UI) (string, error) {
-	for {
-		ui.MenuSection("请选择编辑器")
-		for index, editor := range pubkeyEditors {
-			ui.MenuOptionHint(strconv.Itoa(index+1), editor, editorChoiceHint(editor, index == 0))
-		}
-		ui.MenuExit("0/q", "返回")
-		fmt.Println()
-
-		raw, err := view.Ask("请选择（直接回车默认 1）：")
-		if err != nil {
-			return "", err
-		}
-		fmt.Println()
-		if shared.IsReturnChoice(raw) {
-			return "", nil
-		}
-
-		editor, ok := editorFromChoice(raw)
-		if !ok {
-			ui.InvalidChoice()
-			fmt.Println()
-			continue
-		}
-		if !editorAvailable(editor) {
-			log.Warn("未找到 ", editor, "，请先安装或改用其他编辑器")
-			fmt.Println()
-			continue
-		}
-		return editor, nil
-	}
-}
-
-func editorFromChoice(raw string) (string, bool) {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "", "1":
-		return "vim", true
-	case "2":
-		return "nano", true
-	case "3":
-		return "vi", true
-	default:
-		return "", false
-	}
-}
-
-func editorChoiceHint(editor string, def bool) string {
-	switch {
-	case def && !editorAvailable(editor):
-		return "默认，未安装"
-	case def:
-		return "默认"
-	case !editorAvailable(editor):
-		return "未安装"
-	default:
-		return ""
-	}
+	log.Warn("未找到 vim、vi、nano 中的任意工具，请先安装其中一个编辑器")
+	return false, nil
 }
 
 func openAuthorizedKeysWithEditor(view *ui.UI, account *system.Account, editor string) error {

@@ -36,7 +36,7 @@ func TestEnsureSSHAuthorizedKeysOpensEditor(t *testing.T) {
 		}
 		return os.WriteFile(args[0], []byte(validKey+"\n"), 0600)
 	})
-	view := newUIWithInput(t, "2\n\n")
+	view := newUIWithInput(t, "2\n")
 
 	if err := ensureSSHAuthorizedKeys(view, account); err != nil {
 		t.Fatalf("使用 vim 添加公钥失败：%v", err)
@@ -97,55 +97,37 @@ func TestOpenAuthorizedKeysWithEditorWarnsInvalidLines(t *testing.T) {
 	}
 }
 
-func TestEditorFromChoice(t *testing.T) {
-	for _, item := range []struct {
-		raw    string
-		editor string
-		ok     bool
-	}{
-		{raw: "", editor: "vim", ok: true},
-		{raw: "1", editor: "vim", ok: true},
-		{raw: "2", editor: "nano", ok: true},
-		{raw: "3", editor: "vi", ok: true},
-		{raw: " 2 ", editor: "nano", ok: true},
-		{raw: "9", ok: false},
-		{raw: "vim", ok: false},
-	} {
-		editor, ok := editorFromChoice(item.raw)
-		if ok != item.ok || editor != item.editor {
-			t.Fatalf("editorFromChoice(%q) = %q %v, want %q %v", item.raw, editor, ok, item.editor, item.ok)
-		}
-	}
-}
-
-func TestChooseAuthorizedKeyEditorDefaultsToVim(t *testing.T) {
-	restoreEditors(t, func(string) bool { return true }, nil)
-	editor, err := chooseAuthorizedKeyEditor(newUIWithInput(t, "\n"))
-	if err != nil || editor != "vim" {
-		t.Fatalf("直接回车应默认 vim，得到：%q %v", editor, err)
-	}
-}
-
-func TestChooseAuthorizedKeyEditorSelectsNano(t *testing.T) {
-	restoreEditors(t, func(string) bool { return true }, nil)
-	editor, err := chooseAuthorizedKeyEditor(newUIWithInput(t, "2\n"))
-	if err != nil || editor != "nano" {
-		t.Fatalf("选择 2 应为 nano，得到：%q %v", editor, err)
-	}
-}
-
-func TestChooseAuthorizedKeyEditorAllowsReturn(t *testing.T) {
-	editor, err := chooseAuthorizedKeyEditor(newUIWithInput(t, "q\n"))
-	if err != nil || editor != "" {
-		t.Fatalf("输入 q 应返回上层，得到：%q %v", editor, err)
-	}
-}
-
-func TestChooseAuthorizedKeyEditorRetriesMissingDefault(t *testing.T) {
-	restoreEditors(t, func(name string) bool { return name == "nano" }, nil)
-	editor, err := chooseAuthorizedKeyEditor(newUIWithInput(t, "\n2\n"))
-	if err != nil || editor != "nano" {
-		t.Fatalf("默认 vim 未安装时应能改选 nano，得到：%q %v", editor, err)
+func TestPreferredEditorOpensWithoutPromptAndFallsBack(t *testing.T) {
+	for _, available := range [][]string{{"vim", "vi", "nano"}, {"vi", "nano"}, {"nano"}, nil} {
+		t.Run(strings.Join(available, "+"), func(t *testing.T) {
+			account := &system.Account{Home: t.TempDir(), UID: os.Getuid(), GID: os.Getgid()}
+			launched := ""
+			restoreEditors(t, func(name string) bool {
+				for _, candidate := range available {
+					if name == candidate {
+						return true
+					}
+				}
+				return false
+			}, func(name string, args ...string) error {
+				launched = name
+				if len(args) != 1 || args[0] != filepath.Join(account.Home, ".ssh", "authorized_keys") {
+					t.Fatalf("unexpected editor arguments: %v", args)
+				}
+				return nil
+			})
+			opened, err := openAuthorizedKeysWithPreferredEditor(newUIWithInput(t, ""), account)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(available) == 0 {
+				if opened || launched != "" || system.DirExists(filepath.Join(account.Home, ".ssh")) {
+					t.Fatal("missing editors must not create or open authorized_keys")
+				}
+			} else if !opened || launched != available[0] {
+				t.Fatalf("launched=%q opened=%v, want %q", launched, opened, available[0])
+			}
+		})
 	}
 }
 

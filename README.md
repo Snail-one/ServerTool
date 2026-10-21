@@ -103,27 +103,20 @@ Go 迁移、PATH、软链接、工具安装状态及无色输出等细节见 [�
 ### 本地构建
 
 ```bash
-go build -o snail_tool ./cmd/snail_tool
-sudo ./snail_tool
+go build -o dist/snail ./cmd/snail_tool
+sudo ./dist/snail
 ```
 
-源码构建产物 `./snail_tool` 与安装后的 `snail` 使用相同参数。
+源码构建产物 `./dist/snail` 与安装后的 `snail` 使用相同参数。
 
 ### 构建脚本
 
-Linux：
-
 ```bash
 bash ./scripts/build_linux.sh
+sudo ./dist/snail
 ```
 
-Windows（PowerShell）：
-
-```powershell
-.\scripts\build_windows.ps1
-```
-
-两个脚本均输出 Linux 二进制到 `dist/`，文件名为 `snailtool_linux_<架构>_<版本>`。Linux 脚本使用当前 Go 环境的架构，Windows 脚本默认使用 amd64，可通过 `-GoArch arm64` 切换。
+脚本使用当前 Go 环境的架构构建 Linux 二进制，固定输出为 `dist/snail`；每次构建更新同一个文件，版本信息可通过 `./dist/snail --version` 查看。
 
 ### 验证
 

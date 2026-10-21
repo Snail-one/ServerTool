@@ -8,10 +8,10 @@ mkdir -p dist
 
 VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
 case "$VERSION" in
-	*[!A-Za-z0-9._-]*) echo "Unsupported version for artifact filename: $VERSION" >&2; exit 1 ;;
+	*[!A-Za-z0-9._-]*) echo "Unsupported version: $VERSION" >&2; exit 1 ;;
 esac
 ARCH="$(go env GOARCH)"
-OUTPUT="dist/snailtool_linux_${ARCH}_${VERSION}"
+OUTPUT="dist/snail"
 COMMIT="${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 LDFLAGS="-s -w -X snail_tool/internal/version.Version=$VERSION -X snail_tool/internal/version.Commit=$COMMIT -X snail_tool/internal/version.BuildDate=$BUILD_DATE"
@@ -19,3 +19,4 @@ LDFLAGS="-s -w -X snail_tool/internal/version.Version=$VERSION -X snail_tool/int
 CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -ldflags="$LDFLAGS" -o "$OUTPUT" ./cmd/snail_tool
 
 echo "Build completed: $OUTPUT"
+echo "Run: sudo ./$OUTPUT"

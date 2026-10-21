@@ -180,11 +180,11 @@ func TestWriteConfigValidatesBeforeBackupAndWrite(t *testing.T) {
 	}
 }
 
-func TestRunCancellationAndDetectionFailureDoNotWrite(t *testing.T) {
+func TestConfigureCancellationAndDetectionFailureDoNotWrite(t *testing.T) {
 	for _, scenario := range []string{"nonroot", "cancel install", "cancel write", "no SSH", "SSH changed"} {
 		t.Run(scenario, func(t *testing.T) {
 			setupTest(t)
-			input := "n\ny\n"
+			input := "n\n1\n"
 			if scenario == "nonroot" {
 				isRoot = func() bool { return false }
 			}
@@ -193,7 +193,7 @@ func TestRunCancellationAndDetectionFailureDoNotWrite(t *testing.T) {
 				input = "n\n"
 			}
 			if scenario == "cancel write" {
-				input = "y\nn\n"
+				input = "y\nq\n"
 			}
 			calls := 0
 			commandOutput = func(name string, args ...string) (string, error) {
@@ -210,7 +210,10 @@ func TestRunCancellationAndDetectionFailureDoNotWrite(t *testing.T) {
 				}
 				return `LISTEN 0 128 *:` + port + ` *:* users:(("sshd",pid=1,fd=3))`, nil
 			}
-			err := Run(inputUI(t, input))
+			err := configure(inputUI(t, input))
+			if errors.Is(err, shared.ErrReturnToMenu) {
+				err = nil
+			}
 			wantErr := scenario == "nonroot" || scenario == "no SSH" || scenario == "SSH changed"
 			if (err != nil) != wantErr {
 				t.Fatalf("err=%v wantErr=%v", err, wantErr)
@@ -244,7 +247,7 @@ func TestRunConfirmsInstallAndWritesWithoutApplying(t *testing.T) {
 		t.Fatalf("unexpected command: %s %v", name, args)
 		return "", nil
 	}
-	if err := Run(inputUI(t, "y\ny\ny\n")); err != nil {
+	if err := Run(inputUI(t, "y\n1\ny\n1\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if want := []string{"apt-get update", "apt-get install -y nftables"}; !reflect.DeepEqual(commands, want) {
@@ -253,5 +256,89 @@ func TestRunConfirmsInstallAndWritesWithoutApplying(t *testing.T) {
 	content := shared.ReadFileString(configPath)
 	if !strings.Contains(content, "define snail_ssh_port = 2200") || !strings.Contains(content, "$snail_ssh_port, 80, 443") {
 		t.Fatal("configuration omitted SSH or requested private web ports")
+	}
+}
+
+func TestEditConfigUsesFirstAvailableEditorAndBacksUp(t *testing.T) {
+	for _, available := range [][]string{{"vim", "vi", "nano"}, {"vi", "nano"}, {"nano"}, nil} {
+		t.Run(strings.Join(available, "+"), func(t *testing.T) {
+			setupTest(t)
+			const original = "# existing firewall\n"
+			if err := os.WriteFile(configPath, []byte(original), 0644); err != nil {
+				t.Fatal(err)
+			}
+			commandExists = func(name string) bool {
+				for _, candidate := range available {
+					if name == candidate {
+						return true
+					}
+				}
+				return false
+			}
+			launched := ""
+			commandRun = func(name string, args ...string) error {
+				launched = name
+				if !reflect.DeepEqual(args, []string{configPath}) {
+					t.Fatalf("unexpected editor arguments: %v", args)
+				}
+				return os.WriteFile(configPath, []byte("# edited\n"), 0644)
+			}
+			err := editConfig()
+			backups, _ := filepath.Glob(configPath + ".bak.*")
+			if len(available) == 0 {
+				if err == nil || !strings.Contains(err.Error(), "未找到 vim、vi、nano") || launched != "" || len(backups) != 0 || shared.ReadFileString(configPath) != original {
+					t.Fatalf("missing editors must report error without modifications: err=%v editor=%s", err, launched)
+				}
+				return
+			}
+			if err != nil || launched != available[0] || len(backups) != 1 || shared.ReadFileString(backups[0]) != original {
+				t.Fatalf("editor or backup incorrect: err=%v editor=%s backups=%v", err, launched, backups)
+			}
+		})
+	}
+}
+
+func TestRunViewsFilesAndLoadedRulesWithoutSSHDetectionOrWrites(t *testing.T) {
+	setupTest(t)
+	if err := os.WriteFile(configPath, []byte("# existing rules\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	queries := 0
+	commandOutput = func(name string, args ...string) (string, error) {
+		if name != "nft" || !reflect.DeepEqual(args, []string{"list", "table", "inet", "snail"}) {
+			t.Fatalf("viewing must not detect SSH or alter rules: %s %v", name, args)
+		}
+		queries++
+		return "table inet snail {}", nil
+	}
+	if err := Run(inputUI(t, "2\n\n3\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+		t.Fatal(err)
+	}
+	if queries != 1 || shared.ReadFileString(configPath) != "# existing rules\n" {
+		t.Fatal("viewing must read rules exactly once and preserve the config")
+	}
+}
+
+func TestConfigurePreviewsAndReselectsPortsBeforeWriting(t *testing.T) {
+	setupTest(t)
+	validations := 0
+	commandOutput = func(name string, args ...string) (string, error) {
+		if name == "ss" {
+			return `LISTEN 0 128 *:2222 *:* users:(("sshd",pid=1,fd=3))`, nil
+		}
+		if name != "nft" || len(args) != 3 || args[0] != "-c" || args[1] != "-f" {
+			t.Fatalf("unexpected command: %s %v", name, args)
+		}
+		validations++
+		if strings.Contains(shared.ReadFileString(args[2]), "$snail_ssh_port, 80, 443") {
+			t.Fatal("reselecting no must remove private web ports from written configuration")
+		}
+		return "", nil
+	}
+	if err := configure(inputUI(t, "y\n2\n\n3\ninvalid\nn\n1\n")); err != nil {
+		t.Fatal(err)
+	}
+	if validations != 1 {
+		t.Fatalf("validation ran %d times, want 1 after final confirmation", validations)
 	}
 }

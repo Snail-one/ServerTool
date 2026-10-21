@@ -25,25 +25,157 @@ var (
 )
 
 func Run(view *ui.UI) error {
+	ui.ClearScreen()
 	ui.MenuTitle("防火墙管理")
 	if !isRoot() {
 		return fmt.Errorf("防火墙配置需要 root 权限，请使用 sudo 运行本工具")
 	}
-	if !commandExists("nft") {
-		confirmed, err := view.Confirm("未检测到 nft，是否安装 nftables？(y/N)：")
+	installed, err := ensureNftables(view)
+	if err != nil {
+		return err
+	}
+	if !installed {
+		return shared.ErrReturnToMenu
+	}
+	for {
+		ui.ClearScreen()
+		ui.MenuTitle("防火墙管理")
+		ui.PrintInfoCard("当前配置",
+			ui.CardField{Label: "nftables", Value: ui.InstallationBadge(true)},
+			ui.CardField{Label: "配置文件", Value: configPath, Detail: configFileStatus()},
+			ui.CardField{Label: "生效方式", Value: "写入后手动加载"},
+		)
+		fmt.Println()
+		ui.MenuOptionHint("1", "生成 / 更新配置", "自动保留 SSH 监听端口")
+		ui.MenuOptionHint("2", "查看配置文件", configPath)
+		ui.MenuOptionHint("3", "查看已加载规则", "inet snail 表")
+		ui.MenuOptionHint("4", "手动编辑配置", "依次使用 vim / vi / nano")
+		ui.MenuExit("0/q", "返回主菜单")
+		fmt.Println()
+		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return err
 		}
-		if !confirmed {
-			log.Info("已取消防火墙配置")
-			return nil
+		if shared.IsReturnChoice(choice) {
+			return shared.ErrReturnToMenu
 		}
-		if err := installNftables(); err != nil {
+		switch choice {
+		case "1":
+			shared.RunAction(view, "防火墙配置失败，已返回防火墙管理", func() error {
+				return configure(view)
+			})
+		case "2":
+			shared.RunAction(view, "读取配置文件失败，已返回防火墙管理", showConfigFile)
+		case "3":
+			shared.RunAction(view, "读取已加载规则失败，已返回防火墙管理", showLoadedRules)
+		case "4":
+			shared.RunAction(view, "编辑配置失败，已返回防火墙管理", editConfig)
+		default:
+			ui.InvalidChoice()
+			view.Pause()
+		}
+	}
+}
+
+func configFileStatus() string {
+	data, err := os.ReadFile(configPath)
+	if os.IsNotExist(err) {
+		return "尚未生成配置"
+	}
+	if err != nil {
+		return "读取失败：" + err.Error()
+	}
+	if strings.Contains(string(data), "# ===== BEGIN SNAIL NFTABLES CONFIG =====") {
+		return "已有本工具配置；加载状态请查看已加载规则"
+	}
+	return "已有其他配置；更新时将备份后替换"
+}
+
+func showConfigFile() error {
+	data, err := os.ReadFile(configPath)
+	if os.IsNotExist(err) {
+		ui.PrintInfoCard("尚未生成防火墙配置", ui.CardField{Label: "下一步", Value: "选择 1 生成 / 更新配置"})
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	ui.MenuTitle("防火墙管理", "配置文件")
+	ui.PrintField("配置文件", configPath)
+	fmt.Println(string(data))
+	return nil
+}
+
+func showLoadedRules() error {
+	out, err := commandOutput("nft", "list", "table", "inet", "snail")
+	if err != nil {
+		return fmt.Errorf("读取 inet snail 表失败（可能尚未加载）: %w: %s", err, strings.TrimSpace(out))
+	}
+	ui.MenuTitle("防火墙管理", "已加载规则")
+	fmt.Println(out)
+	return nil
+}
+
+func editConfig() error {
+	var editor string
+	for _, name := range []string{"vim", "vi", "nano"} {
+		if commandExists(name) {
+			editor = name
+			break
+		}
+	}
+	if editor == "" {
+		return fmt.Errorf("未找到 vim、vi、nano 中的任意工具，请先安装其中一个编辑器")
+	}
+	if info, err := os.Lstat(configPath); err == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("拒绝编辑非普通文件或软链接: %s", configPath)
+		}
+		backup, err := system.Backup(configPath)
+		if err != nil {
 			return err
 		}
-		if !commandExists("nft") {
-			return fmt.Errorf("安装后仍未检测到 nft，请检查 nftables 安装情况")
+		log.Info("已备份原防火墙配置：", backup)
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := commandRun(editor, configPath); err != nil {
+		return fmt.Errorf("%s 编辑失败: %w", editor, err)
+	}
+	ui.PrintInfoCard("配置编辑已结束",
+		ui.CardField{Label: "校验配置", Value: "sudo nft -c -f /etc/nftables.conf"},
+		ui.CardField{Label: "加载配置", Value: "sudo nft -f /etc/nftables.conf"},
+	)
+	return nil
+}
+
+func ensureNftables(view *ui.UI) (bool, error) {
+	if !commandExists("nft") {
+		confirmed, err := view.Confirm("未检测到 nft，是否安装 nftables？(y/N)：")
+		if err != nil {
+			return false, err
 		}
+		if !confirmed {
+			log.Info("已取消防火墙配置")
+			return false, nil
+		}
+		if err := installNftables(); err != nil {
+			return false, err
+		}
+		if !commandExists("nft") {
+			return false, fmt.Errorf("安装后仍未检测到 nft，请检查 nftables 安装情况")
+		}
+	}
+	return true, nil
+}
+
+func configure(view *ui.UI) error {
+	if !isRoot() {
+		return fmt.Errorf("防火墙配置需要 root 权限，请使用 sudo 运行本工具")
+	}
+	installed, err := ensureNftables(view)
+	if err != nil || !installed {
+		return err
 	}
 	ports, err := detectSSHPorts()
 	if err != nil {
@@ -53,22 +185,23 @@ func Run(view *ui.UI) error {
 		ui.CardField{Label: "TCP 端口", Value: portList(ports)},
 		ui.CardField{Label: "开放范围", Value: "公网、内网及 IPv4 / IPv6"},
 	)
-	privateWeb, err := view.Confirm("是否默认开放内网 TCP 80、443 端口（IPv4 / IPv6）？(y/N)：")
-	if err != nil {
-		return err
-	}
-	content, err := buildConfig(ports, privateWeb)
-	if err != nil {
-		return err
-	}
-	fmt.Println(content)
-	confirmed, err := view.Confirm("是否校验并写入以上配置到 /etc/nftables.conf（已有文件会先备份）？(y/N)：")
-	if err != nil {
-		return err
-	}
-	if !confirmed {
-		log.Info("已取消配置写入")
-		return nil
+	var content string
+	for {
+		privateWeb, err := askPrivateWeb(view)
+		if err != nil {
+			return err
+		}
+		content, err = buildConfig(ports, privateWeb)
+		if err != nil {
+			return err
+		}
+		write, err := confirmConfig(view, content, ports, privateWeb)
+		if err != nil {
+			return err
+		}
+		if write {
+			break
+		}
 	}
 	// Detect again after the interaction so a changed SSH listener cannot be
 	// silently omitted from the generated firewall.
@@ -89,6 +222,72 @@ func Run(view *ui.UI) error {
 		ui.CardField{Label: "立即生效", Value: "sudo nft -f /etc/nftables.conf"},
 	)
 	return nil
+}
+
+func askPrivateWeb(view *ui.UI) (bool, error) {
+	for {
+		choice, err := view.Ask("是否开放内网 TCP 80、443（IPv4 / IPv6）？[y/N，0/q 返回]：")
+		if err != nil {
+			return false, err
+		}
+		if shared.IsReturnChoice(choice) {
+			return false, shared.ErrReturnToMenu
+		}
+		switch strings.ToLower(choice) {
+		case "y", "yes":
+			return true, nil
+		case "", "n", "no":
+			return false, nil
+		default:
+			fmt.Println("请输入 y 或 n，或输入 0/q 返回")
+		}
+	}
+}
+
+// A false result lets the caller return to the private-port choice; cancellation
+// uses ErrReturnToMenu so RunAction returns directly to the firewall menu.
+func confirmConfig(view *ui.UI, content string, ports []int, privateWeb bool) (bool, error) {
+	for {
+		ui.ClearScreen()
+		ui.MenuTitle("防火墙管理", "确认配置")
+		privatePorts := portList(ports)
+		if privateWeb {
+			privatePorts += ", 80, 443"
+		}
+		ui.PrintInfoCard("即将写入的配置",
+			ui.CardField{Label: "公网 TCP", Value: portList(ports), Detail: "IPv4 / IPv6 共用，仅开放 SSH"},
+			ui.CardField{Label: "内网 TCP", Value: privatePorts, Detail: "IPv4 私有地址；IPv6 ULA 和链路本地地址"},
+			ui.CardField{Label: "其他入站流量", Value: "丢弃；保留已建立连接、回环、指定 IPv6 控制流量及 DHCPv6"},
+			ui.CardField{Label: "配置文件", Value: configPath, Detail: "整份替换，已有文件先备份；校验成功后写入"},
+			ui.CardField{Label: "生效方式", Value: "写入后手动加载"},
+		)
+		fmt.Println()
+		ui.MenuOption("1", "校验并写入配置")
+		ui.MenuOption("2", "预览完整配置")
+		ui.MenuOption("3", "重新选择内网端口")
+		ui.MenuExit("0/q", "取消并返回")
+		fmt.Println()
+		choice, err := view.Ask("请选择：")
+		if err != nil {
+			return false, err
+		}
+		if shared.IsReturnChoice(choice) {
+			return false, shared.ErrReturnToMenu
+		}
+		switch choice {
+		case "1":
+			return true, nil
+		case "2":
+			ui.MenuTitle("防火墙管理", "配置预览")
+			fmt.Println(content)
+			view.PauseWithPrompt("按回车返回配置确认…")
+		case "3":
+			return false, nil
+		default:
+			ui.InvalidChoice()
+			view.Pause()
+		}
+	}
 }
 
 func buildConfig(ports []int, privateWeb bool) (string, error) {

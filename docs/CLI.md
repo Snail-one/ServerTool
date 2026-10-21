@@ -2,7 +2,7 @@
 
 本文说明 ServerTool 主程序和安装脚本支持的命令、参数、环境变量与退出状态。
 
-安装后的默认命令名是 `snail`；直接运行仓库构建产物时，命令通常是 `./snail_tool`。下文以 `snail` 表示，两者参数相同。如果通过 `SERVERTOOL_BINARY_NAME` 修改了安装名称，请替换示例中的 `snail`。
+安装后的默认命令名是 `snail`；直接运行仓库构建产物时，命令是 `./dist/snail`。下文以 `snail` 表示，两者参数相同。如果通过 `SERVERTOOL_BINARY_NAME` 修改了安装名称，请替换示例中的 `snail`。
 
 ## 1. 主程序
 
