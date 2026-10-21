@@ -25,6 +25,20 @@ type AtomicWriteOptions struct {
 var syncAtomicFile = func(file *os.File) error { return file.Sync() }
 var syncAtomicDir = func(dir *os.File) error { return dir.Sync() }
 
+// ReadRegularFile refuses symlinks in the file and its ancestors. Missing
+// files and missing parent directories are reported as absent.
+func ReadRegularFile(path string) ([]byte, bool, error) {
+	exists, err := validateRemovalTarget(path)
+	if err != nil || !exists {
+		return nil, false, err
+	}
+	if _, _, err := validateAtomicTarget(path); err != nil {
+		return nil, false, err
+	}
+	data, err := os.ReadFile(path)
+	return data, true, err
+}
+
 func AtomicWriteFile(path string, data []byte, options AtomicWriteOptions) error {
 	return AtomicWrite(path, options, func(writer io.Writer) error {
 		_, err := writer.Write(data)

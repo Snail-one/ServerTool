@@ -206,3 +206,21 @@ func cleanupTargetUserPath() error {
 func cleanupManagedPath(bashrc string) (bool, error) {
 	return shared.CleanupManagedBlocks(bashrc, shared.BlockMarker{Begin: pathBegin, End: pathEnd})
 }
+
+// CleanupEnvironment keeps installed Go versions and removes only the managed
+// shell configuration and links that still point at this tool's installation.
+func CleanupEnvironment(account *system.Account) error {
+	return cleanupEnvironment(account, commandBinDir, currentLink)
+}
+
+func cleanupEnvironment(account *system.Account, binDir, current string) error {
+	path := filepath.Join(account.Home, ".bashrc")
+	if _, exists, err := shared.ReadRegularFile(path); err != nil {
+		return err
+	} else if exists {
+		if _, err := cleanupManagedPath(path); err != nil {
+			return err
+		}
+	}
+	return cleanupGoCommandLinks(binDir, current)
+}

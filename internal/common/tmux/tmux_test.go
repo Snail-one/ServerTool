@@ -10,6 +10,27 @@ import (
 	"snail_tool/internal/system"
 )
 
+func TestCleanupRemovesManagedTmuxSettingsAndPreservesManualOnes(t *testing.T) {
+	account := &system.Account{Home: t.TempDir(), UID: os.Getuid(), GID: os.Getgid()}
+	path := filepath.Join(account.Home, ".tmux.conf")
+	const manual = "set -g mouse on\n"
+	if err := os.WriteFile(path, []byte(manual), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := configureTmux(account); err != nil {
+		t.Fatal(err)
+	}
+	if err := Cleanup(account); err != nil {
+		t.Fatal(err)
+	}
+	if content := shared.ReadFileString(path); content != manual || IsTmuxConfigured(account) {
+		t.Fatalf("manual tmux settings changed: %q", content)
+	}
+	if err := Cleanup(account); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestConfigureTmuxPreservesManualConfigAndIsIdempotent(t *testing.T) {
 	manual := "set -g mouse on\nset -g prefix C-a\n"
 	for _, existing := range []string{

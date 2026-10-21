@@ -78,3 +78,12 @@ func configureTmux(account *system.Account) error {
 	block := shared.FormatManagedBlock(tmuxBegin, tmuxContent, tmuxEnd)
 	return shared.AtomicWriteFile(path, []byte(shared.AppendBlock(content, block)), options)
 }
+
+func Cleanup(account *system.Account) error {
+	path := filepath.Join(account.Home, ".tmux.conf")
+	if _, exists, err := shared.ReadRegularFile(path); err != nil || !exists {
+		return err
+	}
+	_, err := shared.CleanupManagedBlocks(path, shared.BlockMarker{Begin: tmuxBegin, End: tmuxEnd})
+	return err
+}
