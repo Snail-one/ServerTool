@@ -317,7 +317,7 @@ func saveManagedRules(version configVersion, rules []allowRule) error {
 		return err
 	}
 	if err := applyConfig([]byte(updated)); err != nil {
-		return fmt.Errorf("规则已写入，但未成功加载；原配置已备份，可修正后选择 5 重试: %w", err)
+		return fmt.Errorf("规则已写入，但未成功加载；原配置已备份，可修正后输入 r 校验加载配置重试: %w", err)
 	}
 	return nil
 }

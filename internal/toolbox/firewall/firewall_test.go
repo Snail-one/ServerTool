@@ -399,7 +399,7 @@ func TestRunViewsFilesAndLoadedRulesWithoutSSHDetectionOrWrites(t *testing.T) {
 		queries++
 		return "table inet snail {}", nil
 	}
-	if err := Run(inputUI(t, "2\n\n3\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := Run(inputUI(t, "2\n\n4\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if queries != 1 || shared.ReadFileString(configPath) != "# existing rules\n" {
@@ -578,7 +578,7 @@ func TestRunLoadMenuAppliesLatestFile(t *testing.T) {
 		calls = append(calls, strings.Join(args, " "))
 		return "", nil
 	}
-	if err := Run(inputUI(t, "5\ny\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := Run(inputUI(t, "r\ny\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if want := []string{"-c -f " + configPath, "-f " + configPath}; !reflect.DeepEqual(calls, want) {

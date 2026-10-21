@@ -46,10 +46,10 @@ func Run(view *ui.UI) error {
 		fmt.Println()
 		ui.MenuOptionHint("1", "生成 / 更新配置", "保留 SSH 端口，写入后自动加载")
 		ui.MenuOptionHint("2", "查看配置文件", configPath)
-		ui.MenuOptionHint("3", "查看已加载规则", "全部 nftables 表和规则")
-		ui.MenuOptionHint("4", "手动编辑配置", "依次使用 vim / vi / nano")
-		ui.MenuOptionHint("5", "reload", "校验并确认后立即生效")
-		ui.MenuOptionHint("6", "放行规则管理", "端口 / 来源 IP / 来源 IP + 端口")
+		ui.MenuOptionHint("3", "放行规则管理", "端口 / 来源 IP / 来源 IP + 端口")
+		ui.MenuOptionHint("4", "查看已加载规则", "全部 nftables 表和规则")
+		ui.MenuOptionHint("5", "手动编辑配置", "依次使用 vim / vi / nano")
+		ui.MenuOption("r", "校验加载配置")
 		ui.MenuExit("0/q", "返回主菜单")
 		fmt.Println()
 		choice, err := view.Ask("请选择：")
@@ -67,16 +67,16 @@ func Run(view *ui.UI) error {
 		case "2":
 			shared.RunAction(view, "读取配置文件失败，已返回防火墙管理", showConfigFile)
 		case "3":
-			shared.RunAction(view, "读取已加载规则失败，已返回防火墙管理", showLoadedRules)
-		case "4":
-			shared.RunAction(view, "编辑或校验配置失败，已返回防火墙管理", editConfig)
-		case "5":
-			shared.RunAction(view, "加载防火墙配置失败，已返回防火墙管理", func() error {
-				return loadConfig(view)
-			})
-		case "6":
 			shared.RunAction(view, "规则管理失败，已返回防火墙管理", func() error {
 				return runRuleManager(view)
+			})
+		case "4":
+			shared.RunAction(view, "读取已加载规则失败，已返回防火墙管理", showLoadedRules)
+		case "5":
+			shared.RunAction(view, "编辑或校验配置失败，已返回防火墙管理", editConfig)
+		case "r":
+			shared.RunAction(view, "加载防火墙配置失败，已返回防火墙管理", func() error {
+				return loadConfig(view)
 			})
 		default:
 			ui.InvalidChoice()
@@ -158,7 +158,7 @@ func loadConfig(view *ui.UI) error {
 	ui.PrintSuccessCard("防火墙配置已加载",
 		ui.CardField{Label: "配置文件", Value: configPath},
 		ui.CardField{Label: "当前状态", Value: "已立即生效"},
-		ui.CardField{Label: "查看规则", Value: "返回防火墙管理，选择 3 查看已加载规则"},
+		ui.CardField{Label: "查看规则", Value: "返回防火墙管理，选择 4 查看已加载规则"},
 	)
 	return nil
 }
@@ -169,7 +169,7 @@ func applyConfig(expected []byte) error {
 		return err
 	}
 	if !bytes.Equal(expected, latest) {
-		return fmt.Errorf("配置文件已变化，未加载规则，请重新选择 reload")
+		return fmt.Errorf("配置文件已变化，未加载规则，请重新选择校验加载配置")
 	}
 	if out, err := commandOutput("nft", "-f", configPath); err != nil {
 		return fmt.Errorf("nftables 配置加载失败: %w: %s", err, strings.TrimSpace(out))
@@ -209,7 +209,7 @@ func editConfig() error {
 	}
 	ui.PrintSuccessCard("防火墙配置校验通过",
 		ui.CardField{Label: "配置文件", Value: configPath},
-		ui.CardField{Label: "加载配置", Value: "返回防火墙管理，选择 5 reload"},
+		ui.CardField{Label: "加载配置", Value: "返回防火墙管理，输入 r 校验加载配置"},
 	)
 	return nil
 }
@@ -308,7 +308,7 @@ func configure(view *ui.UI) error {
 		ui.CardField{Label: "配置文件", Value: configPath},
 		ui.CardField{Label: "SSH 端口", Value: portList(ports)},
 		ui.CardField{Label: "当前状态", Value: "配置已校验并立即生效"},
-		ui.CardField{Label: "查看规则", Value: "返回防火墙管理，选择 3 查看已加载规则"},
+		ui.CardField{Label: "查看规则", Value: "返回防火墙管理，选择 4 查看已加载规则"},
 	)
 	return nil
 }
