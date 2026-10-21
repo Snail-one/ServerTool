@@ -225,11 +225,13 @@ func TestConfigureCancellationAndDetectionFailureDoNotWrite(t *testing.T) {
 	}
 }
 
-func TestRunConfirmsInstallAndWritesWithoutApplying(t *testing.T) {
+func TestRunConfirmsInstallAndWritesThenApplies(t *testing.T) {
 	setupTest(t)
 	installed := false
 	commandExists = func(name string) bool { return name == "apt-get" || name == "nft" && installed }
 	var commands []string
+	var operations []string
+	var validated string
 	commandRun = func(name string, args ...string) error {
 		commands = append(commands, name+" "+strings.Join(args, " "))
 		if name == "apt-get" && len(args) > 0 && args[0] == "install" {
@@ -238,10 +240,22 @@ func TestRunConfirmsInstallAndWritesWithoutApplying(t *testing.T) {
 		return nil
 	}
 	commandOutput = func(name string, args ...string) (string, error) {
+		if name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
+			return `{"nftables":[]}`, nil
+		}
 		if name == "ss" {
 			return `LISTEN 0 128 *:2200 *:* users:(("sshd",pid=1,fd=3))`, nil
 		}
 		if name == "nft" && len(args) == 3 && args[0] == "-c" && args[1] == "-f" {
+			operations = append(operations, "check")
+			validated = shared.ReadFileString(args[2])
+			return "", nil
+		}
+		if name == "nft" && reflect.DeepEqual(args, []string{"-f", configPath}) {
+			operations = append(operations, "load")
+			if validated == "" || shared.ReadFileString(configPath) != validated {
+				t.Fatal("loading must follow validation and writing of the same content")
+			}
 			return "", nil
 		}
 		t.Fatalf("unexpected command: %s %v", name, args)
@@ -251,7 +265,10 @@ func TestRunConfirmsInstallAndWritesWithoutApplying(t *testing.T) {
 		t.Fatal(err)
 	}
 	if want := []string{"apt-get update", "apt-get install -y nftables"}; !reflect.DeepEqual(commands, want) {
-		t.Fatalf("unexpected mutations (must not apply or enable firewall): %v", commands)
+		t.Fatalf("unexpected installation or service commands: %v", commands)
+	}
+	if !reflect.DeepEqual(operations, []string{"check", "load"}) {
+		t.Fatalf("must validate, write and automatically load exactly once: %v", operations)
 	}
 	content := shared.ReadFileString(configPath)
 	if !strings.Contains(content, "define snail_ssh_port = 2200") || !strings.Contains(content, "$snail_ssh_port, 80, 443") {
@@ -276,6 +293,7 @@ func TestEditConfigUsesFirstAvailableEditorAndBacksUp(t *testing.T) {
 				return false
 			}
 			launched := ""
+			validations := 0
 			commandRun = func(name string, args ...string) error {
 				launched = name
 				if !reflect.DeepEqual(args, []string{configPath}) {
@@ -283,18 +301,52 @@ func TestEditConfigUsesFirstAvailableEditorAndBacksUp(t *testing.T) {
 				}
 				return os.WriteFile(configPath, []byte("# edited\n"), 0644)
 			}
+			commandOutput = func(name string, args ...string) (string, error) {
+				if launched == "" || shared.ReadFileString(configPath) != "# edited\n" {
+					t.Fatal("validation must run after the editor saves and exits")
+				}
+				if name != "nft" || !reflect.DeepEqual(args, []string{"-c", "-f", configPath}) {
+					t.Fatalf("must check the saved file without applying: %s %v", name, args)
+				}
+				validations++
+				return "", nil
+			}
 			err := editConfig()
 			backups, _ := filepath.Glob(configPath + ".bak.*")
 			if len(available) == 0 {
-				if err == nil || !strings.Contains(err.Error(), "未找到 vim、vi、nano") || launched != "" || len(backups) != 0 || shared.ReadFileString(configPath) != original {
+				if err == nil || !strings.Contains(err.Error(), "未找到 vim、vi、nano") || launched != "" || validations != 0 || len(backups) != 0 || shared.ReadFileString(configPath) != original {
 					t.Fatalf("missing editors must report error without modifications: err=%v editor=%s", err, launched)
 				}
 				return
 			}
-			if err != nil || launched != available[0] || len(backups) != 1 || shared.ReadFileString(backups[0]) != original {
+			if err != nil || launched != available[0] || validations != 1 || len(backups) != 1 || shared.ReadFileString(backups[0]) != original {
 				t.Fatalf("editor or backup incorrect: err=%v editor=%s backups=%v", err, launched, backups)
 			}
 		})
+	}
+}
+
+func TestEditConfigValidationFailurePreservesEditsAndReportsDetails(t *testing.T) {
+	setupTest(t)
+	commandExists = func(name string) bool { return name == "vim" }
+	commandRun = func(name string, args ...string) error {
+		if name != "vim" || !reflect.DeepEqual(args, []string{configPath}) {
+			t.Fatalf("unexpected mutation: %s %v", name, args)
+		}
+		return os.WriteFile(configPath, []byte("invalid nft config\n"), 0644)
+	}
+	commandOutput = func(name string, args ...string) (string, error) {
+		if name != "nft" || !reflect.DeepEqual(args, []string{"-c", "-f", configPath}) {
+			t.Fatalf("must only check configuration: %s %v", name, args)
+		}
+		return "nftables.conf:1: syntax error", errors.New("exit status 1")
+	}
+	err := editConfig()
+	if err == nil || !strings.Contains(err.Error(), "配置校验失败") || !strings.Contains(err.Error(), "syntax error") {
+		t.Fatalf("missing validation error details: %v", err)
+	}
+	if shared.ReadFileString(configPath) != "invalid nft config\n" {
+		t.Fatal("failed validation must retain edits for correction")
 	}
 }
 
@@ -305,7 +357,10 @@ func TestRunViewsFilesAndLoadedRulesWithoutSSHDetectionOrWrites(t *testing.T) {
 	}
 	queries := 0
 	commandOutput = func(name string, args ...string) (string, error) {
-		if name != "nft" || !reflect.DeepEqual(args, []string{"list", "table", "inet", "snail"}) {
+		if name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
+			return `{"nftables":[]}`, nil
+		}
+		if name != "nft" || !reflect.DeepEqual(args, []string{"list", "ruleset"}) {
 			t.Fatalf("viewing must not detect SSH or alter rules: %s %v", name, args)
 		}
 		queries++
@@ -322,9 +377,17 @@ func TestRunViewsFilesAndLoadedRulesWithoutSSHDetectionOrWrites(t *testing.T) {
 func TestConfigurePreviewsAndReselectsPortsBeforeWriting(t *testing.T) {
 	setupTest(t)
 	validations := 0
+	loads := 0
 	commandOutput = func(name string, args ...string) (string, error) {
 		if name == "ss" {
 			return `LISTEN 0 128 *:2222 *:* users:(("sshd",pid=1,fd=3))`, nil
+		}
+		if name == "nft" && reflect.DeepEqual(args, []string{"-f", configPath}) {
+			loads++
+			if validations != 1 || strings.Contains(shared.ReadFileString(configPath), "$snail_ssh_port, 80, 443") {
+				t.Fatal("must load the validated configuration reflecting the final selection")
+			}
+			return "", nil
 		}
 		if name != "nft" || len(args) != 3 || args[0] != "-c" || args[1] != "-f" {
 			t.Fatalf("unexpected command: %s %v", name, args)
@@ -338,7 +401,154 @@ func TestConfigurePreviewsAndReselectsPortsBeforeWriting(t *testing.T) {
 	if err := configure(inputUI(t, "y\n2\n\n3\ninvalid\nn\n1\n")); err != nil {
 		t.Fatal(err)
 	}
-	if validations != 1 {
-		t.Fatalf("validation ran %d times, want 1 after final confirmation", validations)
+	if validations != 1 || loads != 1 {
+		t.Fatalf("validation=%d loads=%d, want one of each after final confirmation", validations, loads)
+	}
+}
+
+func TestConfigureStopsOnCheckWriteOrLoadFailure(t *testing.T) {
+	for _, scenario := range []string{"check", "write", "load"} {
+		t.Run(scenario, func(t *testing.T) {
+			setupTest(t)
+			if scenario == "write" {
+				configPath = filepath.Join(t.TempDir(), "missing-directory", "nftables.conf")
+			}
+			loads := 0
+			commandOutput = func(name string, args ...string) (string, error) {
+				if name == "ss" {
+					return `LISTEN 0 128 *:2222 *:* users:(("sshd",pid=1,fd=3))`, nil
+				}
+				if name == "nft" && len(args) == 3 && args[0] == "-c" && args[1] == "-f" {
+					if scenario == "check" {
+						return "syntax error", errors.New("invalid config")
+					}
+					return "", nil
+				}
+				if name == "nft" && reflect.DeepEqual(args, []string{"-f", configPath}) {
+					loads++
+					return "netlink failure", errors.New("load failed")
+				}
+				t.Fatalf("unexpected command: %s %v", name, args)
+				return "", nil
+			}
+			err := configure(inputUI(t, "n\n1\n"))
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if scenario == "load" {
+				if loads != 1 || !strings.Contains(err.Error(), "已写入") || !strings.Contains(err.Error(), "未成功加载") || !strings.Contains(err.Error(), "netlink failure") {
+					t.Fatalf("load failure must report saved config and detailed cause: loads=%d err=%v", loads, err)
+				}
+				if !strings.Contains(shared.ReadFileString(configPath), "define snail_ssh_port = 2222") {
+					t.Fatal("load failure must preserve the generated configuration for retry")
+				}
+			} else if loads != 0 {
+				t.Fatal("check or write failure must not load firewall rules")
+			}
+		})
+	}
+}
+
+func TestLoadConfigChecksAndConfirmsBeforeApplying(t *testing.T) {
+	for _, scenario := range []string{"missing", "empty", "invalid", "cancel", "changed", "success", "load failure", "nonroot"} {
+		t.Run(scenario, func(t *testing.T) {
+			setupTest(t)
+			const content = "table inet snail {}\n"
+			if scenario != "missing" {
+				initial := content
+				if scenario == "empty" {
+					initial = " \n"
+				}
+				if err := os.WriteFile(configPath, []byte(initial), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if scenario == "nonroot" {
+				isRoot = func() bool { return false }
+			}
+			var commands []string
+			commandOutput = func(name string, args ...string) (string, error) {
+				if name != "nft" {
+					t.Fatalf("unexpected command: %s %v", name, args)
+				}
+				switch {
+				case reflect.DeepEqual(args, []string{"-c", "-f", configPath}):
+					commands = append(commands, "check")
+					if scenario == "invalid" {
+						return "syntax error", errors.New("exit status 1")
+					}
+					if scenario == "changed" {
+						if err := os.WriteFile(configPath, []byte("# changed\n"), 0644); err != nil {
+							t.Fatal(err)
+						}
+					}
+					return "", nil
+				case reflect.DeepEqual(args, []string{"-f", configPath}):
+					commands = append(commands, "load")
+					if scenario == "load failure" {
+						return "netlink: permission denied", errors.New("exit status 1")
+					}
+					return "", nil
+				default:
+					t.Fatalf("unexpected nft arguments: %v", args)
+					return "", nil
+				}
+			}
+			input := "y\n"
+			if scenario == "cancel" {
+				input = "n\n"
+			}
+			err := loadConfig(inputUI(t, input))
+			wantErr := scenario != "success" && scenario != "cancel"
+			if (err != nil) != wantErr {
+				t.Fatalf("err=%v, wantErr=%v", err, wantErr)
+			}
+			var want []string
+			switch scenario {
+			case "missing", "empty", "nonroot":
+			case "success", "load failure":
+				want = []string{"check", "load"}
+			default:
+				want = []string{"check"}
+			}
+			if !reflect.DeepEqual(commands, want) {
+				t.Fatalf("commands=%v, want %v", commands, want)
+			}
+			if scenario == "invalid" && !strings.Contains(err.Error(), "syntax error") {
+				t.Fatalf("validation details missing: %v", err)
+			}
+			if scenario == "load failure" && !strings.Contains(err.Error(), "netlink: permission denied") {
+				t.Fatalf("load error details missing: %v", err)
+			}
+			if scenario == "success" || scenario == "cancel" || scenario == "invalid" || scenario == "load failure" {
+				if shared.ReadFileString(configPath) != content {
+					t.Fatal("loading must preserve the saved configuration")
+				}
+			}
+		})
+	}
+}
+
+func TestRunLoadMenuAppliesLatestFile(t *testing.T) {
+	setupTest(t)
+	if err := os.WriteFile(configPath, []byte("# latest saved configuration\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var calls []string
+	commandOutput = func(name string, args ...string) (string, error) {
+		if name != "nft" {
+			t.Fatalf("unexpected command: %s %v", name, args)
+		}
+		if reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
+			return `{"nftables":[]}`, nil
+		}
+		calls = append(calls, strings.Join(args, " "))
+		return "", nil
+	}
+	if err := Run(inputUI(t, "5\ny\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+		t.Fatal(err)
+	}
+	if want := []string{"-c -f " + configPath, "-f " + configPath}; !reflect.DeepEqual(calls, want) {
+		t.Fatalf("menu commands=%v, want %v", calls, want)
 	}
 }

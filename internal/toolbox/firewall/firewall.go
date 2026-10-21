@@ -1,6 +1,7 @@
 package firewall
 
 import (
+	"bytes"
 	_ "embed"
 	"fmt"
 	"os"
@@ -40,16 +41,13 @@ func Run(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理")
-		ui.PrintInfoCard("当前配置",
-			ui.CardField{Label: "nftables", Value: ui.InstallationBadge(true)},
-			ui.CardField{Label: "配置文件", Value: configPath, Detail: configFileStatus()},
-			ui.CardField{Label: "生效方式", Value: "写入后手动加载"},
-		)
+		ui.PrintInfoCard("防火墙状态", currentConfigFields()...)
 		fmt.Println()
-		ui.MenuOptionHint("1", "生成 / 更新配置", "自动保留 SSH 监听端口")
+		ui.MenuOptionHint("1", "生成 / 更新配置", "保留 SSH 端口，写入后自动加载")
 		ui.MenuOptionHint("2", "查看配置文件", configPath)
-		ui.MenuOptionHint("3", "查看已加载规则", "inet snail 表")
+		ui.MenuOptionHint("3", "查看已加载规则", "全部 nftables 表和规则")
 		ui.MenuOptionHint("4", "手动编辑配置", "依次使用 vim / vi / nano")
+		ui.MenuOptionHint("5", "加载最新配置", "校验并确认后立即生效")
 		ui.MenuExit("0/q", "返回主菜单")
 		fmt.Println()
 		choice, err := view.Ask("请选择：")
@@ -69,26 +67,16 @@ func Run(view *ui.UI) error {
 		case "3":
 			shared.RunAction(view, "读取已加载规则失败，已返回防火墙管理", showLoadedRules)
 		case "4":
-			shared.RunAction(view, "编辑配置失败，已返回防火墙管理", editConfig)
+			shared.RunAction(view, "编辑或校验配置失败，已返回防火墙管理", editConfig)
+		case "5":
+			shared.RunAction(view, "加载防火墙配置失败，已返回防火墙管理", func() error {
+				return loadConfig(view)
+			})
 		default:
 			ui.InvalidChoice()
 			view.Pause()
 		}
 	}
-}
-
-func configFileStatus() string {
-	data, err := os.ReadFile(configPath)
-	if os.IsNotExist(err) {
-		return "尚未生成配置"
-	}
-	if err != nil {
-		return "读取失败：" + err.Error()
-	}
-	if strings.Contains(string(data), "# ===== BEGIN SNAIL NFTABLES CONFIG =====") {
-		return "已有本工具配置；加载状态请查看已加载规则"
-	}
-	return "已有其他配置；更新时将备份后替换"
 }
 
 func showConfigFile() error {
@@ -107,12 +95,79 @@ func showConfigFile() error {
 }
 
 func showLoadedRules() error {
-	out, err := commandOutput("nft", "list", "table", "inet", "snail")
+	out, err := commandOutput("nft", "list", "ruleset")
 	if err != nil {
-		return fmt.Errorf("读取 inet snail 表失败（可能尚未加载）: %w: %s", err, strings.TrimSpace(out))
+		return fmt.Errorf("读取完整 nftables 规则集失败: %w: %s", err, strings.TrimSpace(out))
 	}
-	ui.MenuTitle("防火墙管理", "已加载规则")
-	fmt.Println(out)
+	ui.MenuTitle("防火墙管理", "全部已加载规则")
+	if strings.TrimSpace(out) == "" {
+		ui.PrintInfoCard("当前没有已加载的 nftables 规则")
+	} else {
+		fmt.Println(out)
+	}
+	return nil
+}
+
+func loadConfig(view *ui.UI) error {
+	if !isRoot() {
+		return fmt.Errorf("加载防火墙配置需要 root 权限，请使用 sudo 运行本工具")
+	}
+	info, err := os.Lstat(configPath)
+	if os.IsNotExist(err) {
+		return fmt.Errorf("未找到 %s，请先生成或编辑配置", configPath)
+	}
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("拒绝加载非普通文件或软链接: %s", configPath)
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
+	if len(bytes.TrimSpace(content)) == 0 {
+		return fmt.Errorf("防火墙配置文件为空，请先生成或编辑配置")
+	}
+	log.Info("正在校验最新防火墙配置：", configPath)
+	if out, err := commandOutput("nft", "-c", "-f", configPath); err != nil {
+		return fmt.Errorf("nftables 配置校验失败，未加载规则: %w: %s", err, strings.TrimSpace(out))
+	}
+	ui.PrintInfoCard("准备加载防火墙配置",
+		ui.CardField{Label: "配置文件", Value: configPath},
+		ui.CardField{Label: "校验结果", Value: "通过"},
+		ui.CardField{Label: "生效范围", Value: "立即执行文件中的规则，影响新建网络连接"},
+	)
+	confirmed, err := view.Confirm("是否立即加载此防火墙配置？(y/N)：")
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		log.Info("已取消加载防火墙配置")
+		return nil
+	}
+	if err := applyConfig(content); err != nil {
+		return err
+	}
+	ui.PrintSuccessCard("防火墙配置已加载",
+		ui.CardField{Label: "配置文件", Value: configPath},
+		ui.CardField{Label: "当前状态", Value: "已立即生效"},
+		ui.CardField{Label: "查看规则", Value: "返回防火墙管理，选择 3 查看已加载规则"},
+	)
+	return nil
+}
+
+func applyConfig(expected []byte) error {
+	latest, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(expected, latest) {
+		return fmt.Errorf("配置文件已变化，未加载规则，请重新选择加载最新配置")
+	}
+	if out, err := commandOutput("nft", "-f", configPath); err != nil {
+		return fmt.Errorf("nftables 配置加载失败: %w: %s", err, strings.TrimSpace(out))
+	}
 	return nil
 }
 
@@ -142,9 +197,13 @@ func editConfig() error {
 	if err := commandRun(editor, configPath); err != nil {
 		return fmt.Errorf("%s 编辑失败: %w", editor, err)
 	}
-	ui.PrintInfoCard("配置编辑已结束",
-		ui.CardField{Label: "校验配置", Value: "sudo nft -c -f /etc/nftables.conf"},
-		ui.CardField{Label: "加载配置", Value: "sudo nft -f /etc/nftables.conf"},
+	log.Info("正在校验防火墙配置：", configPath)
+	if out, err := commandOutput("nft", "-c", "-f", configPath); err != nil {
+		return fmt.Errorf("nftables 配置校验失败，编辑内容已保留，请修正后重新校验: %w: %s", err, strings.TrimSpace(out))
+	}
+	ui.PrintSuccessCard("防火墙配置校验通过",
+		ui.CardField{Label: "配置文件", Value: configPath},
+		ui.CardField{Label: "加载配置", Value: "返回防火墙管理，选择 5 加载最新配置"},
 	)
 	return nil
 }
@@ -215,11 +274,14 @@ func configure(view *ui.UI) error {
 	if err := writeConfig(content); err != nil {
 		return err
 	}
-	ui.PrintSuccessCard("nftables 配置已写入",
+	if err := applyConfig([]byte(content)); err != nil {
+		return fmt.Errorf("配置已写入 %s，但未成功加载: %w", configPath, err)
+	}
+	ui.PrintSuccessCard("nftables 配置已写入并加载",
 		ui.CardField{Label: "配置文件", Value: configPath},
 		ui.CardField{Label: "SSH 端口", Value: portList(ports)},
-		ui.CardField{Label: "当前状态", Value: "配置已校验，等待手动加载"},
-		ui.CardField{Label: "立即生效", Value: "sudo nft -f /etc/nftables.conf"},
+		ui.CardField{Label: "当前状态", Value: "配置已校验并立即生效"},
+		ui.CardField{Label: "查看规则", Value: "返回防火墙管理，选择 3 查看已加载规则"},
 	)
 	return nil
 }
@@ -259,10 +321,10 @@ func confirmConfig(view *ui.UI, content string, ports []int, privateWeb bool) (b
 			ui.CardField{Label: "内网 TCP", Value: privatePorts, Detail: "IPv4 私有地址；IPv6 ULA 和链路本地地址"},
 			ui.CardField{Label: "其他入站流量", Value: "丢弃；保留已建立连接、回环、指定 IPv6 控制流量及 DHCPv6"},
 			ui.CardField{Label: "配置文件", Value: configPath, Detail: "整份替换，已有文件先备份；校验成功后写入"},
-			ui.CardField{Label: "生效方式", Value: "写入后手动加载"},
+			ui.CardField{Label: "生效方式", Value: "写入后自动加载，立即生效"},
 		)
 		fmt.Println()
-		ui.MenuOption("1", "校验并写入配置")
+		ui.MenuOption("1", "校验、写入并立即加载")
 		ui.MenuOption("2", "预览完整配置")
 		ui.MenuOption("3", "重新选择内网端口")
 		ui.MenuExit("0/q", "取消并返回")
