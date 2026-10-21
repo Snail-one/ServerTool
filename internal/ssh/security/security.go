@@ -170,7 +170,7 @@ func configureSSHDHardening(view *ui.UI, account *system.Account) error {
 	}
 
 	fmt.Println()
-	rawPort, err := view.Ask("请输入 SSH 端口（直接回车随机生成）：")
+	rawPort, err := view.Ask("请输入一个 SSH 端口（直接回车随机生成）：")
 	if err != nil {
 		return err
 	}
@@ -254,7 +254,23 @@ func activateSSHDConfig(port int) (sshdSettings, string, error) {
 		}
 		ports = append(ports, valuePort)
 	}
-	if _, err := allowFirewallSSHPorts(ports); err != nil {
+	seen := make(map[int]bool)
+	unique := make([]int, 0, len(ports))
+	for _, value := range ports {
+		if !seen[value] {
+			seen[value] = true
+			unique = append(unique, value)
+		}
+	}
+	sort.Ints(unique)
+	if len(unique) > 1 {
+		labels := make([]string, len(unique))
+		for i, value := range unique {
+			labels[i] = strconv.Itoa(value)
+		}
+		log.Warn("SSH 配置涉及多个端口：", strings.Join(labels, "、"), "。通常建议仅保留一个 SSH 监听端口，请检查旧 Port 和带端口的 ListenAddress 配置。")
+	}
+	if _, err := allowFirewallSSHPorts(unique); err != nil {
 		return nil, "", fmt.Errorf("SSH 配置已写入，但防火墙自动放行失败，未重载 SSH: %w", err)
 	}
 	if err := reloadConfiguredSSH(); err != nil {
@@ -322,7 +338,12 @@ func confirmDisableSSHDConfigPorts(view *ui.UI, port int) (bool, error) {
 		fmt.Printf("- %s 第 %d 行：%s\n", directive.path, directive.line, strings.TrimSpace(directive.text))
 	}
 	fmt.Printf("新端口将写入 %s：Port %d\n", customSSHDConfigPath, port)
-	return confirmDefaultYes(view, "是否注释这些 Port 配置，关闭旧端口？(Y/n)：")
+	log.Info("通常建议只使用一个 SSH 端口，直接回车将注释旧 Port 配置，保留新端口。")
+	disable, err := confirmDefaultYes(view, "是否注释这些 Port 配置，关闭旧端口？[Y/n，推荐 Y]：")
+	if err == nil && !disable {
+		log.Warn("已选择保留旧 Port 配置，SSH 可能同时监听多个端口；通常建议关闭不再使用的旧端口。")
+	}
+	return disable, err
 }
 
 func confirmDefaultYes(view *ui.UI, prompt string) (bool, error) {

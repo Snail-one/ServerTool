@@ -37,6 +37,9 @@ func Cleanup(_ *system.Account) error {
 			return err
 		}
 		cleaned := shared.NormalizeCleanedContent(shared.RemoveManagedBlock(content, configBegin, configEnd))
+		if err := disableUnusedAutostart(cleaned); err != nil {
+			return err
+		}
 		if err := shared.AtomicWriteFile(configPath, []byte(cleaned), shared.AtomicWriteOptions{Mode: 0644}); err != nil {
 			return err
 		}

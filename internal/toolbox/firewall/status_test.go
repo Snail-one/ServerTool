@@ -78,8 +78,8 @@ func TestCurrentConfigFieldsShowsOnlyFirewallStatus(t *testing.T) {
 			} else if fieldValue(fields, "入站策略") != "未加载本工具规则" || !strings.Contains(fieldValue(fields, "nftables"), "v1.1.3") {
 				t.Fatal("saved config must not imply loaded rules; installed version should be shown")
 			}
-			if scenario != "query failure" && len(fields) != 4 {
-				t.Fatalf("status card should have four fields, got %d", len(fields))
+			if scenario != "query failure" && len(fields) != 5 {
+				t.Fatalf("status card should have five fields, got %d", len(fields))
 			}
 		})
 	}

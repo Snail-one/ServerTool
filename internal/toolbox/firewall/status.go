@@ -105,6 +105,9 @@ func currentConfigFields() []ui.CardField {
 		software += " v" + strings.TrimPrefix(live.version, "v")
 	}
 	fields := []ui.CardField{{Label: "nftables", Value: software}}
+	if installed {
+		fields = append(fields, ui.CardField{Label: "开机自启", Value: inspectAutostart().label})
+	}
 	switch {
 	case !installed:
 		return append(fields, ui.CardField{Label: "规则状态", Value: "未安装"})

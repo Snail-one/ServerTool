@@ -45,12 +45,13 @@ func Run(view *ui.UI) error {
 		ui.MenuTitle("防火墙管理")
 		ui.PrintInfoCard("防火墙状态", currentConfigFields()...)
 		fmt.Println()
-		ui.MenuOptionHint("1", "生成 / 更新配置", "保留 SSH 端口，写入后自动加载")
+		ui.MenuOptionHint("1", "生成 / 更新配置", "替换配置，备份后自动加载")
 		ui.MenuOptionHint("2", "查看配置文件", configPath)
 		ui.MenuOptionHint("3", "放行规则管理", "端口 / 来源 IP / 来源 IP + 端口")
 		ui.MenuOptionHint("4", "查看已加载规则", "全部 nftables 表和规则")
 		ui.MenuOptionHint("5", "手动编辑配置", "依次使用 vim / vi / nano")
 		ui.MenuOptionHint("6", "查看生效端口", "公网 / 内网 · TCP / UDP · 来源例外")
+		ui.MenuOptionHint("7", "开机自启开关", "开启 / 关闭，当前规则保持生效")
 		ui.MenuOption("r", "校验加载配置")
 		ui.MenuExit("0/q", "返回主菜单")
 		fmt.Println()
@@ -82,6 +83,10 @@ func Run(view *ui.UI) error {
 			})
 		case "6":
 			shared.RunAction(view, "读取生效端口失败，已返回防火墙管理", showLoadedPorts)
+		case "7":
+			shared.RunAction(view, "修改开机自启失败，已返回防火墙管理", func() error {
+				return toggleAutostart(view)
+			})
 		default:
 			ui.InvalidChoice()
 			view.Pause()
@@ -261,6 +266,9 @@ func configure(view *ui.UI) error {
 	if err != nil {
 		return err
 	}
+	if len(ports) > 1 {
+		log.Warn("检测到多个 SSH 监听端口：", portList(ports), "。通常建议只保留一个 SSH 监听端口；本次会全部放行，请在 SSH 安全配置中检查并关闭不再使用的旧端口。")
+	}
 	ui.PrintInfoCard("检测到 SSH 监听端口",
 		ui.CardField{Label: "TCP 端口", Value: portList(ports)},
 		ui.CardField{Label: "开放范围", Value: "公网、内网及 IPv4 / IPv6"},
@@ -361,6 +369,8 @@ func confirmConfig(view *ui.UI, content string, ports []int, publicWeb, privateW
 			ui.CardField{Label: "局域网 TCP", Value: privatePorts, Detail: "IPv4 私有地址；IPv6 ULA 和链路本地地址"},
 			ui.CardField{Label: "局域网 UDP", Value: privatePorts, Detail: "与 TCP 同时选择，列表独立保留"},
 			ui.CardField{Label: "附加放行规则", Value: fmt.Sprintf("保留 %d 条，可额外放行来源和端口", len(extraRules))},
+			ui.CardField{Label: "手动修改", Value: "端口列表、来源例外等将由新模板覆盖"},
+			ui.CardField{Label: "内核规则", Value: "重建 inet snail 表，保留其他表"},
 			ui.CardField{Label: "未匹配入站流量", Value: "丢弃；保留已建立连接、回环、指定 IPv6 控制流量及 DHCPv6"},
 			ui.CardField{Label: "配置文件", Value: configPath, Detail: "整份替换，已有文件先备份；校验成功后写入"},
 			ui.CardField{Label: "生效方式", Value: "写入后自动加载，立即生效"},

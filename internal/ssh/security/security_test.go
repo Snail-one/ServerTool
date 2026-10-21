@@ -21,7 +21,7 @@ func TestActivateSSHDConfigAllowsAllPortsBeforeReload(t *testing.T) {
 	}
 	allowFirewallSSHPorts = func(ports []int) (bool, error) {
 		steps = append(steps, "allow")
-		if !reflect.DeepEqual(ports, []int{3022, 2200, 3022, 2200, 4022}) {
+		if !reflect.DeepEqual(ports, []int{2200, 3022, 4022}) {
 			t.Fatalf("not all new and retained SSH ports included: %v", ports)
 		}
 		return true, nil
