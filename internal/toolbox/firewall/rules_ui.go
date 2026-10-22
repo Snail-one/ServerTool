@@ -37,7 +37,6 @@ func runRuleManager(view *ui.UI) error {
 		ui.MenuOption("2", "按规则 ID 编辑")
 		ui.MenuOption("3", "删除规则")
 		ui.MenuOptionHint("4", "调整规则顺序", "预览草稿，统一保存并加载")
-		ui.MenuOption("r", "刷新规则")
 		ui.MenuExit("0/q", "返回防火墙管理")
 		choice, err := view.Ask("请选择：")
 		if err != nil {
@@ -70,8 +69,6 @@ func runRuleManager(view *ui.UI) error {
 			shared.RunAction(view, "调整规则顺序失败，已返回规则管理", func() error {
 				return reorderAllowRules(view, version, rules)
 			})
-		case "r":
-			continue
 		default:
 			ui.InvalidChoice()
 			view.Pause()
