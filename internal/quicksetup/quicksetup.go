@@ -35,7 +35,7 @@ type setupSummary struct {
 
 func Run(view *ui.UI) error {
 	ui.ClearScreen()
-	ui.MenuTitle("一键配置")
+	ui.MenuTitle("配置管理", "一键初始化")
 	fmt.Println("将按顺序配置：SSH 公钥 → SSH 安全策略 → Vim → Bash")
 	fmt.Println("未检测到 SSH 公钥时必须先添加，成功后才会配置 SSH 安全策略。")
 	fmt.Println()
@@ -52,7 +52,7 @@ func Run(view *ui.UI) error {
 
 	summary, err := loadSetupSummary()
 	if err != nil {
-		return fmt.Errorf("读取一键配置结果失败: %w", err)
+		return fmt.Errorf("读取一键初始化结果失败: %w", err)
 	}
 	printSetupSummaryCard(summary)
 	return nil
@@ -89,7 +89,7 @@ func loadSetupSummary() (setupSummary, error) {
 
 func printSetupSummaryCard(summary setupSummary) {
 	fmt.Println()
-	ui.PrintSuccessCard("一键配置完成",
+	ui.PrintSuccessCard("一键初始化完成",
 		ui.CardField{Label: "用户", Value: summary.user},
 		ui.CardField{Label: "SSH 公钥", Value: ui.ConfiguredBadge(summary.sshKeys), Detail: summary.sshKeysPath},
 		ui.CardField{Label: "SSH 安全策略", Value: ui.ConfiguredBadge(summary.sshSecurity)},

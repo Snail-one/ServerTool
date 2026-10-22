@@ -46,9 +46,8 @@ snail --version
 | 模块 | 主要能力 |
 | --- | --- |
 | 防火墙管理 | 管理 nftables 配置及端口、来源 IP、来源 IP + 端口放行规则，查询、编辑和精确删除规则；汇总已加载端口及来源例外；本工具修改 SSH 端口时，在重载 SSH 前自动放行全部新端口并保留现有监听端口 |
-| 一键配置 | 按顺序添加 SSH 公钥、配置 SSH 安全策略、Vim 和 Bash |
 | SSH 管理 | 查看、添加和删除公钥，配置随机端口、禁用密码登录，查看生效配置 |
-| 通用配置 | 管理 Vim、Bash、tmux 状态栏和 HTTP/HTTPS 代理环境变量 |
+| 配置管理 | 一键初始化 SSH 公钥、安全策略、Vim 和 Bash；单独管理 Vim、Bash、Bash 自动补全、HTTP/HTTPS 代理和 tmux 状态栏 |
 | 系统工具 | 单独或批量安装常用命令行工具，安装、更新、切换、修复和卸载 Go 官方稳定版本并管理用户 PATH，配置 UPS（NUT），查看本次启动信息 |
 | 容器管理 | 管理 Docker/Podman 容器和 Compose 项目，配置 Docker 代理与日志轮转，清理资源 |
 | 清理配置 | 按项或全部清理 SSH、Vim、Bash、代理、tmux、防火墙、UPS、Docker、Go 环境配置，支持统一备份及旧备份清理 |
@@ -83,7 +82,7 @@ sudo snail uninstall
 
 ## 使用说明
 
-- **一键配置**：没有已有 SSH 公钥时，必须成功添加一把公钥才会继续安全加固。
+- **一键初始化**：没有已有 SSH 公钥时，必须成功添加一把公钥才会继续安全加固。
 - **容器运行时**：Docker 和 Podman 同时存在时，容器操作优先使用 Docker，资源清理可选择运行时。资源清理逐次确认，数据卷需单独选择清理并确认永久删除卷内数据；完全卸载运行时并删除数据需要强确认。Docker 完全卸载还会删除 docker 用户组及成员关系，保留用户账号；仅卸载运行时则保留该组。
 - **Go 环境**：各版本保存在 `/opt/go/goX.Y.Z`，由 `/opt/go/current` 指向当前版本，旧版本会保留。安装或切换后需重新登录或执行 `source ~/.bashrc`；命令软链接可在 Go 菜单中手动创建。
 - **状态检测**：启动检测仅执行一次，首页状态使用启动时结果。“系统工具 → 查看本次启动信息”可查看检测结果与耗时；工具安装页面提供独立的安装状态刷新。
@@ -143,9 +142,9 @@ git push origin v1.0.0
 ```text
 cmd/snail_tool/       程序入口
 internal/app/         交互菜单与流程编排
-internal/quicksetup/  一键配置
+internal/quicksetup/  一键初始化
 internal/ssh/         SSH 公钥与安全配置
-internal/common/      Vim、Bash、代理及 UPS 配置
+internal/common/      配置管理菜单及 Vim、Bash、代理、tmux、UPS 配置
 internal/container/   容器与 Compose 管理
 internal/environment/ Go 环境管理
 internal/toolbox/     系统工具与启动信息

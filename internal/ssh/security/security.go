@@ -128,6 +128,9 @@ func ReloadService() error {
 
 func printSSHSecurityRows(settings sshdSettings) {
 	for _, row := range buildSSHSecurityRows(settings) {
+		if row.value == "已开启" {
+			row.value = ui.PrimaryText(row.value)
+		}
 		if row.status == "" {
 			fmt.Printf("%s %s：%s\n", ui.PrimaryText("-"), ui.InfoText(row.name), row.value)
 		} else {

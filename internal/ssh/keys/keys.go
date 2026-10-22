@@ -86,7 +86,7 @@ func ensureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		return nil
 	}
 
-	log.Warn("一键配置必须先添加至少一把有效 SSH 公钥")
+	log.Warn("一键初始化必须先添加至少一把有效 SSH 公钥")
 	for {
 		if IsConfigured(account) {
 			return nil
@@ -104,7 +104,7 @@ func ensureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		}
 		fmt.Println()
 		if shared.IsReturnChoice(choice) {
-			log.Info("已取消一键配置")
+			log.Info("已取消一键初始化")
 			return shared.ErrReturnToMenu
 		}
 

@@ -22,7 +22,7 @@ func TestEnsureSSHAuthorizedKeysAllowsQToReturn(t *testing.T) {
 		t.Fatalf("输入 q 应返回菜单，得到：%v", err)
 	}
 	if system.DirExists(filepath.Join(home, ".ssh")) {
-		t.Fatal("取消一键配置时不应创建 .ssh 目录")
+		t.Fatal("取消一键初始化时不应创建 .ssh 目录")
 	}
 }
 

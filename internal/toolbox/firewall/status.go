@@ -134,10 +134,18 @@ func currentConfigFields(autostart autostartStatus) []ui.CardField {
 		software += " v" + strings.TrimPrefix(live.version, "v")
 	}
 	data, fileErr := os.ReadFile(configPath)
+	autostartLabel := autostart.label
+	if autostartLabel == "已开启" || autostart.state == "enabled-runtime" {
+		autostartLabel = ui.PrimaryText(autostartLabel)
+	}
+	ownership := toolOwnershipField(data, fileErr)
+	if ownership.Value == "已接管" || ownership.Value == "部分接管" {
+		ownership.Value = ui.PrimaryText(ownership.Value)
+	}
 	fields := []ui.CardField{
 		firewallStateField(installed, live),
-		toolOwnershipField(data, fileErr),
-		{Label: "开机自启", Value: autostart.label},
+		ownership,
+		{Label: "开机自启", Value: autostartLabel},
 	}
 	if installed && live.err == nil {
 		if live.inputActive {
@@ -154,6 +162,9 @@ func currentConfigFields(autostart autostartStatus) []ui.CardField {
 	state, _, _ := strings.Cut(sync.Value, " · ")
 	if state == "已同步" || state == "未同步" {
 		sync.Value, sync.Detail = state, ""
+	}
+	if state == "已同步" {
+		sync.Value = ui.PrimaryText(sync.Value)
 	}
 	return append(fields, sync, ui.CardField{Label: "nftables", Value: software})
 }
@@ -204,7 +215,7 @@ func firewallStateField(installed bool, live liveRules) ui.CardField {
 	case live.err != nil:
 		field.Value, field.Detail = "检测失败", live.err.Error()
 	case live.inputActive:
-		field.Value = "已开启（本工具入站规则）"
+		field.Value = ui.PrimaryText("已开启（本工具入站规则）")
 	case live.snailDormant:
 		field.Value = "未开启（本工具表已停用）"
 	case live.snailLoaded:
