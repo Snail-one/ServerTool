@@ -30,6 +30,7 @@ func showMenu(autostart autostartStatus) {
 		ui.MenuOptionHint("7", "开启开机自启", "下次开机自动加载配置")
 	}
 	ui.MenuOptionHint("8", "ICMP 回显（Ping）", "允许 / 禁止 IPv4 / IPv6 回显请求")
+	ui.MenuOptionHint("9", "实时拦截统计", "每秒刷新丢弃包数、流量和速率")
 	fmt.Println()
 	ui.MenuShortcutHint("r", "校验加载配置", "使当前配置文件立即生效")
 	ui.MenuExit("0/q", "返回主菜单")

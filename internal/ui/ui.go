@@ -38,6 +38,11 @@ func New() *UI {
 func (u *UI) Ask(prompt string) (string, error) {
 	prompt = normalizePrompt(prompt)
 	fmt.Print(paint(bold+orange, "❯ ") + paint(bold, prompt) + " ")
+	return u.ReadLine()
+}
+
+// ReadLine consumes one response without printing over a refreshing display.
+func (u *UI) ReadLine() (string, error) {
 	value, err := u.reader.ReadString('\n')
 	if err != nil {
 		return "", err

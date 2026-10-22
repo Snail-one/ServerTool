@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
@@ -85,6 +86,10 @@ func Run(view *ui.UI) error {
 		case "8":
 			shared.RunAction(view, "设置 ICMP 回显失败，已返回防火墙管理", func() error {
 				return configurePing(view)
+			})
+		case "9":
+			shared.RunAction(view, "查看实时拦截统计失败，已返回防火墙管理", func() error {
+				return monitorTraffic(view, time.Second)
 			})
 		default:
 			ui.InvalidChoice()
