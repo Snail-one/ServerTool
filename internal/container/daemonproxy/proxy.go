@@ -111,6 +111,37 @@ func configuredDockerProxyURL(path string) (string, bool) {
 	return dockerProxyURLFromContent(content)
 }
 
+// CurrentSummary 返回当前 Docker 服务代理的单行状态，供容器管理信息卡显示。
+func CurrentSummary() string {
+	return summarizeProxyConfig(dockerProxyPath)
+}
+
+func summarizeProxyConfig(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "未配置"
+		}
+		return "无法读取"
+	}
+	content := string(data)
+	if strings.TrimSpace(content) == "" {
+		return "未配置"
+	}
+	httpProxy, httpOK := dockerEnvironmentValue(content, "HTTP_PROXY")
+	httpsProxy, httpsOK := dockerEnvironmentValue(content, "HTTPS_PROXY")
+	switch {
+	case httpOK && httpsOK && httpProxy != httpsProxy:
+		return "HTTP " + commonproxy.MaskProxyURL(httpProxy) + "，HTTPS " + commonproxy.MaskProxyURL(httpsProxy)
+	case httpOK:
+		return commonproxy.MaskProxyURL(httpProxy)
+	case httpsOK:
+		return commonproxy.MaskProxyURL(httpsProxy)
+	default:
+		return "未识别代理地址"
+	}
+}
+
 func dockerProxyURLFromContent(content string) (string, bool) {
 	for _, name := range []string{"HTTP_PROXY", "HTTPS_PROXY"} {
 		if value, ok := dockerEnvironmentValue(content, name); ok {

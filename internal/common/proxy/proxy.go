@@ -344,12 +344,17 @@ func removeUnmanagedProxyLines(content string) string {
 func maskProxyURL(proxyURL string) string {
 	prefix := "http://"
 	raw := strings.TrimPrefix(proxyURL, prefix)
+	suffix := ""
+	if strings.HasSuffix(raw, "/") {
+		raw = strings.TrimSuffix(raw, "/")
+		suffix = "/"
+	}
 
 	match := proxyWithAuth.FindStringSubmatch(raw)
 	if match == nil {
 		return proxyURL
 	}
-	return fmt.Sprintf("%s%s:******@%s:%s", prefix, match[1], match[3], match[4])
+	return fmt.Sprintf("%s%s:******@%s:%s%s", prefix, match[1], match[3], match[4], suffix)
 }
 
 func maskProxyValue(value string) string {

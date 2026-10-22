@@ -36,9 +36,12 @@ func Run(view *ui.UI) error {
 		}
 		ui.ClearScreen()
 		ui.MenuTitle("容器管理")
-		ui.PrintInfoCard("容器运行时状态",
-			ui.CardField{Label: "当前运行时", Value: runtime.DisplaySummary(installedRuntimes)},
-		)
+		logSummary, proxySummary := "", ""
+		if hasDocker {
+			logSummary = daemonlog.CurrentSummary()
+			proxySummary = daemonproxy.CurrentSummary()
+		}
+		ui.PrintInfoCard("容器运行时状态", runtimeStatusFields(installedRuntimes, logSummary, proxySummary)...)
 		fmt.Println()
 		ui.MenuOptionHint("1", "管理容器", "查看状态、日志与生命周期操作")
 		ui.MenuOptionHint("2", "管理 Compose 项目", "查看、更新与重建项目")
@@ -100,6 +103,23 @@ func Run(view *ui.UI) error {
 			view.Pause()
 		}
 	}
+}
+
+func runtimeStatusFields(installedRuntimes []runtime.Runtime, logSummary, proxySummary string) []ui.CardField {
+	fields := []ui.CardField{{
+		Label: "当前运行时",
+		Value: runtime.DisplaySummary(installedRuntimes),
+	}}
+	for _, installed := range installedRuntimes {
+		if installed.Name != "docker" {
+			continue
+		}
+		return append(fields,
+			ui.CardField{Label: "容器日志", Value: logSummary},
+			ui.CardField{Label: "服务代理", Value: proxySummary},
+		)
+	}
+	return fields
 }
 
 func runComposeMenu(view *ui.UI) error {

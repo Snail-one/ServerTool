@@ -21,6 +21,11 @@ func TestMaskProxyURL(t *testing.T) {
 	if got := maskProxyURL(plain); got != plain {
 		t.Fatalf("maskProxyURL() = %q, want %q", got, plain)
 	}
+
+	withSlash := maskProxyURL("http://admin:secret@192.168.1.100:7890/")
+	if withSlash != "http://admin:******@192.168.1.100:7890/" {
+		t.Fatalf("maskProxyURL() = %q", withSlash)
+	}
 }
 
 func TestWriteProxyBlockIsIdempotent(t *testing.T) {

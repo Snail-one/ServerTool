@@ -321,6 +321,75 @@ func dockerLogConfigStatus(config map[string]any) (dockerLogStatus, bool) {
 	return status, status.hasLogDriver || status.hasLogOpts
 }
 
+// CurrentSummary 返回当前 Docker 日志轮转的单行状态，供容器管理信息卡显示。
+func CurrentSummary() string {
+	return summarizeLogConfig(dockerDaemonPath)
+}
+
+func summarizeLogConfig(path string) string {
+	config, exists, err := readDockerDaemonJSON(path)
+	if err != nil {
+		if exists {
+			return "无法解析"
+		}
+		return "无法读取"
+	}
+	if !exists {
+		return "未配置"
+	}
+	status, configured := dockerLogConfigStatus(config)
+	if !configured {
+		return "未配置"
+	}
+	return formatLogSummary(status)
+}
+
+func formatLogSummary(status dockerLogStatus) string {
+	parts := make([]string, 0, 2)
+	if status.hasLogDriver {
+		if driver := scalarString(status.logDriver); driver != "" {
+			parts = append(parts, driver)
+		}
+	}
+	switch opts := status.logOpts.(type) {
+	case map[string]any:
+		size := scalarString(opts["max-size"])
+		file := scalarString(opts["max-file"])
+		switch {
+		case size != "" && file != "":
+			parts = append(parts, size+" × "+file)
+		case size != "":
+			parts = append(parts, "max-size="+size)
+		case file != "":
+			parts = append(parts, "max-file="+file)
+		}
+	default:
+		if status.hasLogOpts && status.logOpts != nil {
+			parts = append(parts, "日志选项无法识别")
+		}
+	}
+	if len(parts) == 0 {
+		return "未配置"
+	}
+	return strings.Join(parts, "，")
+}
+
+func scalarString(value any) string {
+	switch v := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(v)
+	case float64:
+		if v == float64(int64(v)) {
+			return strconv.FormatInt(int64(v), 10)
+		}
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	default:
+		return strings.TrimSpace(fmt.Sprint(v))
+	}
+}
+
 func printDockerDaemonJSON(path string) {
 	ui.PrintField("当前配置文件", path)
 	data, err := os.ReadFile(path)

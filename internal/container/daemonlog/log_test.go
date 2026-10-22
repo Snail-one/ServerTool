@@ -183,6 +183,35 @@ func TestWriteDockerDaemonLogConfigStopsIfBackupFails(t *testing.T) {
 	}
 }
 
+func TestSummarizeLogConfig(t *testing.T) {
+	dir := t.TempDir()
+	tests := []struct {
+		name    string
+		path    string
+		content string
+		want    string
+	}{
+		{name: "missing", path: filepath.Join(dir, "missing.json"), want: "未配置"},
+		{name: "other settings", path: filepath.Join(dir, "other.json"), content: `{"debug":true}`, want: "未配置"},
+		{name: "rotation", path: filepath.Join(dir, "rotation.json"), content: `{"log-driver":"json-file","log-opts":{"max-size":"100m","max-file":3}}`, want: "json-file，100m × 3"},
+		{name: "size only", path: filepath.Join(dir, "size.json"), content: `{"log-opts":{"max-size":"1m"}}`, want: "max-size=1m"},
+		{name: "invalid", path: filepath.Join(dir, "invalid.json"), content: `{`, want: "无法解析"},
+		{name: "unreadable", path: dir, want: "无法读取"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.content != "" {
+				if err := os.WriteFile(tt.path, []byte(tt.content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := summarizeLogConfig(tt.path); got != tt.want {
+				t.Fatalf("summarizeLogConfig() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDockerLogConfigStatusDetectsDriverOrOpts(t *testing.T) {
 	tests := []struct {
 		name string
