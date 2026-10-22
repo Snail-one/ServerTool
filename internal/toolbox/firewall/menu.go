@@ -9,7 +9,7 @@ import (
 
 func showMenu() {
 	fmt.Println()
-	ui.MenuOptionHint("1", "查看端口策略", "公网 / 内网 · TCP / UDP")
+	ui.MenuOptionHint("1", "查看端口策略", "公网 / 内网 · Docker 发布端口")
 	ui.MenuOptionHint("2", "查看全部规则", "当前已加载的完整规则")
 	ui.MenuOptionHint("3", "放行规则管理", "添加 / 编辑 / 删除 / 排序")
 	fmt.Println()

@@ -18,6 +18,7 @@ func showLoadedPorts() error {
 	if err != nil {
 		return fmt.Errorf("解析当前端口规则失败: %w", err)
 	}
+	defer showDockerPorts()
 	if !summary.found {
 		ui.PrintInfoCard("未加载本工具防火墙规则", ui.CardField{Label: "本工具表", Value: "未找到 inet snail；不能据此判断服务器端口全部开放或关闭"})
 		return nil
