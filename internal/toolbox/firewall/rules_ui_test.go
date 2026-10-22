@@ -65,6 +65,64 @@ func TestEditRuleKeepsIDAndCanonicalizesCIDR(t *testing.T) {
 	}
 }
 
+func TestRuleManagerEditsByDisplayedNumberAndKeepsOtherRules(t *testing.T) {
+	setupTest(t)
+	rules := orderTestRules()
+	ruleTestConfig(t, rules)
+	calls := acceptRuleCommands(t)
+	// Edit row 2, keep its type/source, and change its ports/protocol.
+	if err := runRuleManager(inputUI(t, "2\n2\n\n\n8443\n3\ny\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+		t.Fatal(err)
+	}
+	want := append([]allowRule(nil), rules...)
+	want[1].Ports, want[1].Protocol = "8443", "both"
+	got, err := managedRules(shared.ReadFileString(configPath))
+	if err != nil || !reflect.DeepEqual(got, want) || !reflect.DeepEqual(*calls, []string{"check", "load"}) {
+		t.Fatalf("editing by number changed the wrong rule: got=%v err=%v calls=%v", got, err, *calls)
+	}
+}
+
+func TestChooseRuleAcceptsNumbersAndPrefersFullNumericIDs(t *testing.T) {
+	rules := []allowRule{{ID: "aaaaaaaa"}, {ID: "00000001"}}
+	for _, scenario := range []struct{ input, want string }{
+		{"1\n", "aaaaaaaa"},
+		{"2\n", "00000001"},
+		{"00000001\n", "00000001"},
+		{"AAAAAAAA\n", "aaaaaaaa"},
+		{"3\nno-such-id\n-1\n2\n", "00000001"},
+	} {
+		t.Run(scenario.input, func(t *testing.T) {
+			view := inputUI(t, scenario.input+"next\n")
+			id, err := chooseRuleID(view, rules)
+			if err != nil || id != scenario.want {
+				t.Fatalf("id=%q want=%q err=%v", id, scenario.want, err)
+			}
+			if next, err := view.Ask("next"); err != nil || next != "next" {
+				t.Fatal("selection consumed extra input")
+			}
+		})
+	}
+}
+
+func TestDeleteByNumberUsesTheDisplayedFilteredList(t *testing.T) {
+	setupTest(t)
+	rules := []allowRule{
+		{ID: "aaaaaaaa", Kind: "port", Ports: "443", Protocol: "tcp"},
+		{ID: "bbbbbbbb", Kind: "port", Ports: "8080", Protocol: "tcp"},
+		{ID: "cccccccc", Kind: "port", Ports: "443", Protocol: "udp"},
+	}
+	version := ruleTestConfig(t, rules)
+	acceptRuleCommands(t)
+	// The second matching row is rule C, which was third in the full list.
+	if err := deleteAllowRule(inputUI(t, "2\n443\n2\ny\n"), version, rules); err != nil {
+		t.Fatal(err)
+	}
+	got, err := managedRules(shared.ReadFileString(configPath))
+	if err != nil || !reflect.DeepEqual(got, rules[:2]) {
+		t.Fatalf("filtered number selected a rule from the original list: got=%v err=%v", got, err)
+	}
+}
+
 func TestRuleAddCancellationAndDuplicateDoNotChangeConfiguration(t *testing.T) {
 	for _, scenario := range []string{"cancel", "duplicate", "cancel draft"} {
 		t.Run(scenario, func(t *testing.T) {

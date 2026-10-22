@@ -2,6 +2,7 @@ package firewall
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"snail_tool/internal/log"
@@ -34,7 +35,7 @@ func runRuleManager(view *ui.UI) error {
 		)
 		printRuleOrder(rules, "")
 		ui.MenuOption("1", "添加放行规则")
-		ui.MenuOptionHint("2", "编辑放行规则", "按规则 ID 修改来源、端口和协议")
+		ui.MenuOptionHint("2", "编辑放行规则", "按序号或 ID 修改来源、端口和协议")
 		ui.MenuOption("3", "删除规则")
 		ui.MenuOptionHint("4", "调整规则顺序", "预览草稿，统一保存并加载")
 		ui.MenuExit("0/q", "返回防火墙管理")
@@ -76,24 +77,12 @@ func runRuleManager(view *ui.UI) error {
 	}
 }
 
-func printAllowRules(rules []allowRule) {
-	fmt.Println()
-	if len(rules) == 0 {
-		fmt.Println("没有匹配的附加放行规则")
-	} else {
-		for _, rule := range rules {
-			ui.PrintField(rule.ID, rule.description())
-		}
-	}
-	fmt.Println()
-}
-
 func chooseRuleID(view *ui.UI, rules []allowRule) (string, error) {
 	if len(rules) == 0 {
 		return "", fmt.Errorf("没有可选择的规则")
 	}
 	for {
-		id, err := view.Ask("请输入列表中的完整规则 ID（0/q 返回）")
+		id, err := view.Ask("请输入列表序号或完整规则 ID（0/q 返回）")
 		if err != nil {
 			return "", err
 		}
@@ -105,7 +94,10 @@ func chooseRuleID(view *ui.UI, rules []allowRule) (string, error) {
 				return rule.ID, nil
 			}
 		}
-		fmt.Println("未找到该规则 ID，请从当前列表选择")
+		if number, err := strconv.Atoi(id); err == nil && number >= 1 && number <= len(rules) {
+			return rules[number-1].ID, nil
+		}
+		fmt.Println("未找到该序号或规则 ID，请从当前列表选择")
 	}
 }
 
@@ -318,14 +310,14 @@ func queryRulesByPort(view *ui.UI, rules []allowRule) ([]allowRule, error) {
 		ui.CardField{Label: "端口 / 范围", Value: ports},
 		ui.CardField{Label: "查询范围", Value: "全部协议；IP 放行规则涵盖全部端口，也会列出"},
 	)
-	printAllowRules(matches)
+	printRuleOrder(matches, "")
 	return matches, nil
 }
 
 func deleteAllowRule(view *ui.UI, version configVersion, rules []allowRule) error {
 	ui.ClearScreen()
 	ui.MenuTitle("防火墙管理", "删除放行规则")
-	ui.MenuOption("1", "按规则 ID 删除")
+	ui.MenuOption("1", "按序号 / 规则 ID 删除")
 	ui.MenuOption("2", "按端口查询后选择规则删除")
 	ui.MenuExit("0/q", "返回")
 	mode, err := askRuleChoice(view, "请选择删除方式：", "1", map[string]string{"1": "id", "2": "port"})
@@ -339,7 +331,7 @@ func deleteAllowRule(view *ui.UI, version configVersion, rules []allowRule) erro
 			return err
 		}
 	} else {
-		printAllowRules(candidates)
+		printRuleOrder(candidates, "")
 	}
 	id, err := chooseRuleID(view, candidates)
 	if err != nil {
