@@ -300,6 +300,19 @@ func configure(view *ui.UI) error {
 	if err != nil {
 		return err
 	}
+	firstConfiguration := !hasManagedConfig(string(version.content))
+	var firstAutostart *autostartStatus
+	autostartAction := "保持当前设置"
+	if firstConfiguration {
+		firstAutostart, err = prepareFirstAutostart()
+		if err != nil {
+			return err
+		}
+		autostartAction = "首次配置加载成功后自动开启"
+		if firstAutostart == nil {
+			autostartAction = "不支持自动设置（未找到 systemctl）"
+		}
+	}
 	var preserved []allowRule
 	countersEnabled, err := packetCountersEnabled(string(version.content))
 	if err != nil {
@@ -358,7 +371,7 @@ func configure(view *ui.UI) error {
 		if err != nil {
 			return err
 		}
-		write, err := confirmConfig(view, content, ports, publicWeb, privateWeb)
+		write, err := confirmConfig(view, content, ports, publicWeb, privateWeb, autostartAction)
 		if err != nil {
 			return err
 		}
@@ -375,16 +388,30 @@ func configure(view *ui.UI) error {
 	if portList(latest) != portList(ports) {
 		return fmt.Errorf("SSH 配置端口已变化，请重新进入防火墙管理生成配置")
 	}
+	if firstAutostart != nil {
+		if err := checkAutostartVersion(*firstAutostart); err != nil {
+			return err
+		}
+	}
 	if err := writeConfig(content, version); err != nil {
 		return err
 	}
 	if err := applyConfig([]byte(content)); err != nil {
 		return fmt.Errorf("配置已写入 %s，但未成功加载: %w", configPath, err)
 	}
+	if firstAutostart != nil {
+		if err := enableFirstAutostart(*firstAutostart, []byte(content)); err != nil {
+			return fmt.Errorf("防火墙配置已写入并加载，但自动开启开机自启未完成，请在常用功能设置中重试: %w", err)
+		}
+		autostartAction = "已开启"
+	} else if firstConfiguration {
+		log.Warn("当前系统未找到 systemctl，防火墙配置已加载，未自动设置开机自启")
+	}
 	ui.PrintSuccessCard("nftables 配置已写入并加载",
 		ui.CardField{Label: "配置文件", Value: configPath},
 		ui.CardField{Label: "SSH 端口", Value: portList(ports)},
 		ui.CardField{Label: "当前状态", Value: "配置已校验并立即生效"},
+		ui.CardField{Label: "开机自启", Value: autostartAction},
 		ui.CardField{Label: "查看规则", Value: "选择 1 查看端口策略，选择 2 查看全部规则"},
 	)
 	return nil
@@ -412,7 +439,7 @@ func askWeb(view *ui.UI, scope string) (bool, error) {
 
 // A false result lets the caller return to the web-port choices; cancellation
 // uses ErrReturnToMenu so RunAction returns directly to the firewall menu.
-func confirmConfig(view *ui.UI, content string, ports []int, publicWeb, privateWeb bool) (bool, error) {
+func confirmConfig(view *ui.UI, content string, ports []int, publicWeb, privateWeb bool, autostartAction string) (bool, error) {
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理", "确认配置")
@@ -457,6 +484,7 @@ func confirmConfig(view *ui.UI, content string, ports []int, publicWeb, privateW
 			ui.CardField{Label: "未匹配入站流量", Value: "丢弃；保留已建立连接、回环、指定 IPv6 控制流量及 DHCPv6"},
 			ui.CardField{Label: "配置文件", Value: configPath, Detail: "整份替换，已有文件先备份；校验成功后写入"},
 			ui.CardField{Label: "生效方式", Value: "写入后自动加载，立即生效"},
+			ui.CardField{Label: "开机自启", Value: autostartAction},
 		)
 		fmt.Println()
 		ui.MenuOption("1", "校验、写入并立即加载")

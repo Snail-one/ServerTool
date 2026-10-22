@@ -23,9 +23,9 @@ func showMenu() {
 	case hasManagedConfig(string(version.content)):
 		ui.MenuOptionHint("6", "重建基础配置", "重新设置端口策略，备份后替换")
 	case version.exists:
-		ui.MenuOptionHint("6", "生成默认配置", "检测 SSH 端口，备份现有配置后替换")
+		ui.MenuOptionHint("6", "生成默认配置", "备份现有配置后替换，首次配置开启自启")
 	default:
-		ui.MenuOptionHint("6", "生成默认配置", "检测 SSH 端口，生成后自动加载")
+		ui.MenuOptionHint("6", "生成默认配置", "检测 SSH 端口，首次配置开启自启")
 	}
 	ui.MenuOptionHint("7", "常用功能设置", "开机自启 / ICMP 回显 / 数据包统计")
 	ui.MenuOptionHint("8", "实时查看规则", "每秒刷新，支持切换规则表")

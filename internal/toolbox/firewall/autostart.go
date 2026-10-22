@@ -73,6 +73,60 @@ func serviceLoadsConfig(execStart string) bool {
 	return false
 }
 
+// First configuration may enable boot loading after the rules are saved and
+// applied. Rebuilds do not use this path and keep the user's startup setting.
+func prepareFirstAutostart() (*autostartStatus, error) {
+	if !commandExists("systemctl") {
+		return nil, nil
+	}
+	status := inspectAutostart()
+	if status.err != nil {
+		return nil, status.err
+	}
+	if !serviceLoadsConfig(status.execStart) {
+		return nil, fmt.Errorf("无法确认 %s 启动时加载 %s，未生成配置；请先检查该服务的 ExecStart 配置", nftablesUnit, configPath)
+	}
+	return &status, nil
+}
+
+func checkAutostartVersion(expected autostartStatus) error {
+	latest := inspectAutostart()
+	if latest.err != nil {
+		return latest.err
+	}
+	if latest.state != expected.state || latest.execStart != expected.execStart {
+		return fmt.Errorf("nftables 服务状态或启动命令已变化，未修改，请重新操作")
+	}
+	return nil
+}
+
+func enableFirstAutostart(expected autostartStatus, content []byte) error {
+	if err := checkAutostartVersion(expected); err != nil {
+		return err
+	}
+	if err := checkConfigVersion(configVersion{content: content, exists: true}); err != nil {
+		return err
+	}
+	if expected.enabled {
+		return nil
+	}
+	if err := preserveOriginal(); err != nil {
+		return err
+	}
+	// Loading already succeeded; enable without restarting or flushing any table.
+	if err := commandRun("systemctl", "enable", nftablesUnit); err != nil {
+		return fmt.Errorf("开启防火墙开机自启失败: %w", err)
+	}
+	result := inspectAutostart()
+	if result.err != nil {
+		return fmt.Errorf("无法确认开机自启状态: %w", result.err)
+	}
+	if !result.enabled || result.execStart != expected.execStart {
+		return fmt.Errorf("开机自启未达到预期状态或启动命令已变化，当前为 %s", result.label)
+	}
+	return nil
+}
+
 func toggleAutostart(view *ui.UI) error {
 	if !isRoot() {
 		return fmt.Errorf("修改防火墙开机自启需要 root 权限，请使用 sudo 运行本工具")
@@ -119,12 +173,8 @@ func toggleAutostart(view *ui.UI) error {
 	if !confirmed {
 		return shared.ErrReturnToMenu
 	}
-	latest := inspectAutostart()
-	if latest.err != nil {
-		return latest.err
-	}
-	if latest.state != status.state || latest.execStart != status.execStart {
-		return fmt.Errorf("nftables 服务状态或启动命令已变化，未修改，请重新操作")
+	if err := checkAutostartVersion(status); err != nil {
+		return err
 	}
 	if action == "enable" {
 		if err := checkConfigVersion(version); err != nil {
