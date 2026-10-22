@@ -18,12 +18,9 @@ func printRuleOrder(rules []allowRule, selected string) {
 		fmt.Println()
 		return
 	}
-	fmt.Println(ui.InfoText("   " + ui.TableCell("顺序", 6) + ui.TableCell("规则 ID", 11) + ui.TableCell("协议", 10) + ui.TableCell("来源", 43) + "端口"))
+	fmt.Println(ui.InfoText("   " + ui.TableCell("顺序", 6) + ui.TableCell("规则 ID", 11) + ui.TableCell("IP 版本", 12) + ui.TableCell("协议", 10) + ui.TableCell("来源", 43) + "端口"))
 	for index, rule := range rules {
-		source, ports := rule.Source, rule.Ports
-		if source == "" {
-			source = "任意来源"
-		}
+		source, ports := rule.sourceLabel(), rule.Ports
 		if ports == "" {
 			ports = "全部端口"
 		}
@@ -31,7 +28,7 @@ func printRuleOrder(rules []allowRule, selected string) {
 		if rule.ID == selected {
 			prefix = ui.PrimaryText(" > ")
 		}
-		fmt.Println(prefix + ui.TableCell(strconv.Itoa(index+1), 6) + ui.TableCell(rule.ID, 11) + ui.TableCell(protocolLabel(rule.Protocol), 10) + ui.TableCell(source, 43) + ports)
+		fmt.Println(prefix + ui.TableCell(strconv.Itoa(index+1), 6) + ui.TableCell(rule.ID, 11) + ui.TableCell(rule.familyLabel(), 12) + ui.TableCell(protocolLabel(rule.Protocol), 10) + ui.TableCell(source, 43) + " " + ports)
 	}
 	fmt.Println()
 }

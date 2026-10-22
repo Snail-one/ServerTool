@@ -37,12 +37,12 @@ func TestRuleManagerAddsOneLogicalRuleForBothProtocols(t *testing.T) {
 	setupTest(t)
 	ruleTestConfig(t, nil)
 	calls := acceptRuleCommands(t)
-	// Main menu -> add -> port -> range -> both -> confirm -> return.
-	if err := runRuleManager(inputUI(t, "1\n1\n8000-8100\n3\ny\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	// Main menu -> add -> port -> both IP versions -> range -> both protocols.
+	if err := runRuleManager(inputUI(t, "1\n1\n3\n8000-8100\n3\ny\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	rules, err := managedRules(shared.ReadFileString(configPath))
-	if err != nil || len(rules) != 1 || rules[0].Kind != "port" || rules[0].Ports != "8000-8100" || rules[0].Protocol != "both" {
+	if err != nil || len(rules) != 1 || rules[0].Kind != "port" || rules[0].Family != "both" || rules[0].Ports != "8000-8100" || rules[0].Protocol != "both" {
 		t.Fatalf("incorrect saved rule: %v %v", rules, err)
 	}
 	if !reflect.DeepEqual(*calls, []string{"check", "load"}) {
@@ -55,11 +55,11 @@ func TestEditRuleKeepsIDAndCanonicalizesCIDR(t *testing.T) {
 	initial := []allowRule{{ID: "aaaaaaaa", Kind: "source_port", Source: "192.168.1.0/24", Ports: "443", Protocol: "tcp"}}
 	version := ruleTestConfig(t, initial)
 	acceptRuleCommands(t)
-	if err := changeAllowRule(inputUI(t, "\n192.168.1.1/16\n21069\n3\ny\n"), version, initial, "aaaaaaaa"); err != nil {
+	if err := changeAllowRule(inputUI(t, "\n\n192.168.1.1/16\n21069\n3\ny\n"), version, initial, "aaaaaaaa"); err != nil {
 		t.Fatal(err)
 	}
 	rules, err := managedRules(shared.ReadFileString(configPath))
-	want := []allowRule{{ID: "aaaaaaaa", Kind: "source_port", Source: "192.168.0.0/16", Ports: "21069", Protocol: "both"}}
+	want := []allowRule{{ID: "aaaaaaaa", Kind: "source_port", Family: "ipv4", Source: "192.168.0.0/16", Ports: "21069", Protocol: "both"}}
 	if err != nil || !reflect.DeepEqual(rules, want) {
 		t.Fatalf("editing changed ID or failed to normalize: %v %v", rules, err)
 	}
@@ -71,11 +71,12 @@ func TestRuleManagerEditsByDisplayedNumberAndKeepsOtherRules(t *testing.T) {
 	ruleTestConfig(t, rules)
 	calls := acceptRuleCommands(t)
 	// Edit row 2, keep its type/source, and change its ports/protocol.
-	if err := runRuleManager(inputUI(t, "2\n2\n\n\n8443\n3\ny\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := runRuleManager(inputUI(t, "2\n2\n\n\n\n8443\n3\ny\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	want := append([]allowRule(nil), rules...)
 	want[1].Ports, want[1].Protocol = "8443", "both"
+	want[1].Family = "ipv4"
 	got, err := managedRules(shared.ReadFileString(configPath))
 	if err != nil || !reflect.DeepEqual(got, want) || !reflect.DeepEqual(*calls, []string{"check", "load"}) {
 		t.Fatalf("editing by number changed the wrong rule: got=%v err=%v calls=%v", got, err, *calls)
@@ -124,16 +125,20 @@ func TestDeleteByNumberUsesTheDisplayedFilteredList(t *testing.T) {
 }
 
 func TestRuleAddCancellationAndDuplicateDoNotChangeConfiguration(t *testing.T) {
-	for _, scenario := range []string{"cancel", "duplicate", "cancel draft"} {
+	for _, scenario := range []string{"cancel", "duplicate", "cancel draft", "cancel family", "cancel second source"} {
 		t.Run(scenario, func(t *testing.T) {
 			setupTest(t)
 			rules := []allowRule{{ID: "aaaaaaaa", Kind: "source_port", Source: "192.168.0.0/16", Ports: "443", Protocol: "tcp"}}
 			version := ruleTestConfig(t, rules)
-			input := "1\n8443\n1\nn\n"
+			input := "1\n1\n8443\n1\nn\n"
 			if scenario == "duplicate" {
-				input = "3\n192.168.1.1/16\n443-443\n1\n"
+				input = "3\n1\n192.168.1.1/16\n443-443\n1\n"
 			} else if scenario == "cancel draft" {
 				input = "q\n"
+			} else if scenario == "cancel family" {
+				input = "1\nq\n"
+			} else if scenario == "cancel second source" {
+				input = "3\n3\n192.168.1.0/24\nq\n"
 			}
 			err := changeAllowRule(inputUI(t, input), version, rules, "")
 			if scenario == "duplicate" && (err == nil || !strings.Contains(err.Error(), "完全重复")) {

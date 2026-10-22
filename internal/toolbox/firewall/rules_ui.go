@@ -35,7 +35,7 @@ func runRuleManager(view *ui.UI) error {
 		)
 		printRuleOrder(rules, "")
 		ui.MenuOption("1", "添加放行规则")
-		ui.MenuOptionHint("2", "编辑放行规则", "按序号或 ID 修改来源、端口和协议")
+		ui.MenuOptionHint("2", "编辑放行规则", "按序号或 ID 修改 IP 版本、来源、端口和协议")
 		ui.MenuOption("3", "删除规则")
 		ui.MenuOptionHint("4", "调整规则顺序", "预览草稿，统一保存并加载")
 		ui.MenuExit("0/q", "返回防火墙管理")
@@ -120,11 +120,15 @@ func askRuleChoice(view *ui.UI, prompt, fallback string, choices map[string]stri
 	}
 }
 
-func askRuleSource(view *ui.UI, current string) (string, error) {
+func askRuleSource(view *ui.UI, current, family string) (string, error) {
+	if current != "" && sourcePrefix(current).Addr().Is4() != (family == "ipv4") {
+		current = ""
+	}
 	for {
-		prompt := "请输入来源 IP / CIDR（0/q 返回）："
+		label := map[string]string{"ipv4": "IPv4", "ipv6": "IPv6"}[family]
+		prompt := "请输入 " + label + " 来源 IP / CIDR（0/q 返回）："
 		if current != "" {
-			prompt = "请输入来源 IP / CIDR（回车保留 " + current + "，0/q 返回）："
+			prompt = "请输入 " + label + " 来源 IP / CIDR（回车保留 " + current + "，0/q 返回）："
 		}
 		value, err := view.Ask(prompt)
 		if err != nil {
@@ -141,7 +145,12 @@ func askRuleSource(view *ui.UI, current string) (string, error) {
 			log.Warn(err)
 			continue
 		}
+		if sourcePrefix(source).Addr().Is4() != (family == "ipv4") {
+			log.Warn("请输入与所选 ", label, " 版本一致的来源地址")
+			continue
+		}
 		ui.PrintInfoCard("实际来源匹配范围",
+			ui.CardField{Label: "IP 版本", Value: label},
 			ui.CardField{Label: "输入地址", Value: value},
 			ui.CardField{Label: "规范化地址", Value: source},
 			ui.CardField{Label: "覆盖范围", Value: sourceRange(source)},
@@ -178,7 +187,7 @@ func askRulePorts(view *ui.UI, current string) (string, error) {
 func askAllowRule(view *ui.UI, current allowRule) (allowRule, error) {
 	rule := allowRule{ID: current.ID}
 	ui.MenuSection("请选择入站放行类型")
-	ui.MenuOptionHint("1", "端口放行", "任意来源 IPv4 / IPv6")
+	ui.MenuOptionHint("1", "端口放行", "任意来源，可选择 IP 版本")
 	ui.MenuOptionHint("2", "来源 IP 放行", "指定来源的全部 TCP / UDP 端口")
 	ui.MenuOptionHint("3", "来源 IP + 端口", "指定来源和端口 / 范围")
 	ui.MenuExit("0/q", "返回")
@@ -191,10 +200,41 @@ func askAllowRule(view *ui.UI, current allowRule) (allowRule, error) {
 		return rule, err
 	}
 	rule.Kind = kind
+	ui.MenuSection("请选择 IP 版本")
+	ui.MenuOption("1", "IPv4")
+	ui.MenuOption("2", "IPv6")
+	ui.MenuOption("3", "IPv4 + IPv6")
+	fallback = strconv.Itoa(current.familyMask())
+	if current.Kind == "" {
+		fallback = "1"
+	}
+	rule.Family, err = askRuleChoice(view, "请选择 IP 版本（回车默认 "+fallback+"，0/q 返回）：", fallback,
+		map[string]string{"1": "ipv4", "2": "ipv6", "3": "both", "ipv4": "ipv4", "ipv6": "ipv6", "ipv4+ipv6": "both", "both": "both"})
+	if err != nil {
+		return rule, err
+	}
 	if kind != "port" {
-		rule.Source, err = askRuleSource(view, current.Source)
+		family := rule.Family
+		if family == "both" {
+			family = "ipv4"
+		}
+		currentSource := current.Source
+		if family == "ipv6" && current.SourceIPv6 != "" {
+			currentSource = current.SourceIPv6
+		}
+		rule.Source, err = askRuleSource(view, currentSource, family)
 		if err != nil {
 			return rule, err
+		}
+		if rule.Family == "both" {
+			currentSource = current.SourceIPv6
+			if currentSource == "" && current.Source != "" && !sourcePrefix(current.Source).Addr().Is4() {
+				currentSource = current.Source
+			}
+			rule.SourceIPv6, err = askRuleSource(view, currentSource, "ipv6")
+			if err != nil {
+				return rule, err
+			}
 		}
 	}
 	if kind != "source" {
@@ -258,8 +298,9 @@ func changeAllowRule(view *ui.UI, version configVersion, rules []allowRule, id s
 	}
 	ui.PrintInfoCard("即将保存的入站放行规则",
 		ui.CardField{Label: "规则 ID", Value: draft.ID},
+		ui.CardField{Label: "IP 版本", Value: draft.familyLabel()},
 		ui.CardField{Label: "放行内容", Value: draft.description()},
-		ui.CardField{Label: "实际来源范围", Value: sourceRange(draft.Source)},
+		ui.CardField{Label: "实际来源范围", Value: draft.sourceRange()},
 	)
 	if len(warnings) > 0 {
 		ui.PrintWarningCard("发现覆盖或重叠",
@@ -308,7 +349,7 @@ func queryRulesByPort(view *ui.UI, rules []allowRule) ([]allowRule, error) {
 	}
 	ui.PrintInfoCard("端口查询结果",
 		ui.CardField{Label: "端口 / 范围", Value: ports},
-		ui.CardField{Label: "查询范围", Value: "全部协议；IP 放行规则涵盖全部端口，也会列出"},
+		ui.CardField{Label: "查询范围", Value: "IPv4 / IPv6、全部协议；IP 放行规则涵盖全部端口，也会列出"},
 	)
 	printRuleOrder(matches, "")
 	return matches, nil
@@ -348,8 +389,9 @@ func deleteAllowRule(view *ui.UI, version configVersion, rules []allowRule) erro
 	}
 	ui.PrintWarningCard("即将删除一条放行规则",
 		ui.CardField{Label: "规则 ID", Value: target.ID},
+		ui.CardField{Label: "IP 版本", Value: target.familyLabel()},
 		ui.CardField{Label: "放行内容", Value: target.description()},
-		ui.CardField{Label: "实际来源范围", Value: sourceRange(target.Source)},
+		ui.CardField{Label: "实际来源范围", Value: target.sourceRange()},
 		ui.CardField{Label: "删除范围", Value: "仅删除此 ID；其他放行规则及基础端口保持，仍可能允许相同流量"},
 	)
 	for _, rule := range updated {
