@@ -27,7 +27,7 @@ func showMenu() {
 	default:
 		ui.MenuOptionHint("6", "生成默认配置", "检测 SSH 端口，生成后自动加载")
 	}
-	ui.MenuOptionHint("7", "功能设置", "ICMP 回显 / 数据包统计 / 开机自启")
+	ui.MenuOptionHint("7", "常用功能设置", "ICMP 回显 / 数据包统计 / 开机自启")
 	ui.MenuOptionHint("8", "实时查看规则", "每秒刷新，支持切换规则表")
 	fmt.Println()
 	ui.MenuShortcutHint("r", "校验加载配置", "使当前配置文件立即生效")
@@ -38,7 +38,7 @@ func showMenu() {
 func runFeatureSettings(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
-		ui.MenuTitle("防火墙管理", "功能设置")
+		ui.MenuTitle("防火墙管理", "常用功能设置")
 		autostart := inspectAutostart()
 		installed := commandExists("nft")
 		live := liveRules{}
@@ -72,15 +72,15 @@ func runFeatureSettings(view *ui.UI) error {
 		}
 		switch choice {
 		case "ping":
-			shared.RunAction(view, "设置 ICMP 回显失败，已返回功能设置", func() error {
+			shared.RunAction(view, "设置 ICMP 回显失败，已返回常用功能设置", func() error {
 				return configurePing(view)
 			})
 		case "counters":
-			shared.RunAction(view, "设置数据包统计失败，已返回功能设置", func() error {
+			shared.RunAction(view, "设置数据包统计失败，已返回常用功能设置", func() error {
 				return configurePacketCounters(view)
 			})
 		case "autostart":
-			shared.RunAction(view, "修改开机自启失败，已返回功能设置", func() error {
+			shared.RunAction(view, "修改开机自启失败，已返回常用功能设置", func() error {
 				return toggleAutostart(view)
 			})
 		}

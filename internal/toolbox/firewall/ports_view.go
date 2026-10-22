@@ -24,7 +24,7 @@ func showLoadedPorts() error {
 	}
 	policy := "无法识别"
 	if summary.policy == "drop" {
-		policy = "默认丢弃（drop）"
+		policy = ui.PrimaryText("默认丢弃（drop）")
 	}
 	if summary.policy == "accept" {
 		policy = "默认放行（accept）"

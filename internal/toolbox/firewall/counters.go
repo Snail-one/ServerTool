@@ -317,7 +317,7 @@ func configurePacketCounters(view *ui.UI) error {
 		state = "部分开启"
 	}
 	ui.ClearScreen()
-	ui.MenuTitle("防火墙管理", "功能设置", "数据包统计")
+	ui.MenuTitle("防火墙管理", "常用功能设置", "数据包统计")
 	ui.PrintInfoCard("数据包统计",
 		ui.CardField{Label: "配置状态", Value: state},
 		ui.CardField{Label: "作用范围", Value: "本工具 inet snail 规则表"},
@@ -327,7 +327,7 @@ func configurePacketCounters(view *ui.UI) error {
 	)
 	ui.MenuOption("1", "开启数据包统计")
 	ui.MenuOption("2", "关闭数据包统计")
-	ui.MenuExit("0/q", "返回功能设置")
+	ui.MenuExit("0/q", "返回常用功能设置")
 	choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "on", "2": "off"})
 	if err != nil {
 		return err

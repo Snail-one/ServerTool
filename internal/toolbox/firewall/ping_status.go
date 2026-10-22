@@ -225,7 +225,7 @@ func echoStateFields(installed bool, live liveRules) []ui.CardField {
 			case echoAllow:
 				fields[i].Value = ui.PrimaryText("已允许")
 			case echoBlock:
-				fields[i].Value = "已拦截"
+				fields[i].Value = ui.PrimaryText("已拦截")
 			case echoAllow | echoBlock:
 				fields[i].Value = "按规则放行"
 			default:

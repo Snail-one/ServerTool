@@ -80,7 +80,7 @@ func Run(view *ui.UI) error {
 				return configure(view)
 			})
 		case "7":
-			shared.RunAction(view, "功能设置失败，已返回防火墙管理", func() error {
+			shared.RunAction(view, "常用功能设置失败，已返回防火墙管理", func() error {
 				return runFeatureSettings(view)
 			})
 		case "8":

@@ -151,7 +151,9 @@ func currentConfigFields(autostart autostartStatus) []ui.CardField {
 	fields = append(fields, echoStateFields(installed, live)...)
 	if installed && live.err == nil {
 		if live.inputActive {
-			fields = append(fields, ui.CardField{Label: "入站策略", Value: strings.TrimPrefix(live.inputPolicy, "input：")})
+			policy := strings.TrimPrefix(live.inputPolicy, "input：")
+			policy = strings.ReplaceAll(policy, "默认丢弃（drop）", ui.PrimaryText("默认丢弃（drop）"))
+			fields = append(fields, ui.CardField{Label: "入站策略", Value: policy})
 		}
 		if live.snailLoaded {
 			fields = append(fields, ui.CardField{Label: "本工具规则", Value: fmt.Sprintf("%d 条链 · %d 条规则", live.snailChains, live.snailRules)})

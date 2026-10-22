@@ -78,7 +78,7 @@ func toggleAutostart(view *ui.UI) error {
 		return fmt.Errorf("修改防火墙开机自启需要 root 权限，请使用 sudo 运行本工具")
 	}
 	ui.ClearScreen()
-	ui.MenuTitle("防火墙管理", "功能设置", "开机自启设置")
+	ui.MenuTitle("防火墙管理", "常用功能设置", "开机自启设置")
 	status := inspectAutostart()
 	if status.err != nil {
 		return status.err
