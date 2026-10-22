@@ -31,6 +31,7 @@ func showMenu(autostart autostartStatus) {
 	}
 	ui.MenuOptionHint("8", "ICMP 回显（Ping）", "允许 / 禁止 IPv4 / IPv6 回显请求")
 	ui.MenuOptionHint("9", "实时查看规则", "每秒刷新，支持切换规则表")
+	ui.MenuOptionHint("10", "数据包统计", "开启 / 关闭规则中的 counter")
 	fmt.Println()
 	ui.MenuShortcutHint("r", "校验加载配置", "使当前配置文件立即生效")
 	ui.MenuExit("0/q", "返回主菜单")

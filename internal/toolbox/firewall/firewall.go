@@ -91,6 +91,10 @@ func Run(view *ui.UI) error {
 			shared.RunAction(view, "实时查看规则失败，已返回防火墙管理", func() error {
 				return monitorTraffic(view, time.Second)
 			})
+		case "10":
+			shared.RunAction(view, "设置数据包统计失败，已返回防火墙管理", func() error {
+				return configurePacketCounters(view)
+			})
 		default:
 			ui.InvalidChoice()
 			view.Pause()
@@ -304,6 +308,10 @@ func configure(view *ui.UI) error {
 		return err
 	}
 	var preserved []allowRule
+	countersEnabled, err := packetCountersEnabled(string(version.content))
+	if err != nil {
+		return err
+	}
 	pingEnabled, pingFound, err := readPingSetting(string(version.content))
 	if err != nil {
 		return err
@@ -350,6 +358,10 @@ func configure(view *ui.UI) error {
 		} else {
 			content, err = withPingSetting(content, pingEnabled)
 		}
+		if err != nil {
+			return err
+		}
+		content, err = withPacketCounters(content, countersEnabled)
 		if err != nil {
 			return err
 		}
@@ -431,6 +443,14 @@ func confirmConfig(view *ui.UI, content string, ports []int, publicWeb, privateW
 		if pingFound {
 			pingState = pingLabel(pingEnabled)
 		}
+		counters, err := packetCountersEnabled(content)
+		if err != nil {
+			return false, err
+		}
+		counterState := "已关闭"
+		if counters {
+			counterState = ui.PrimaryText("已开启")
+		}
 		ui.PrintInfoCard("即将写入的配置",
 			ui.CardField{Label: "公网 TCP", Value: publicPorts, Detail: "IPv4 / IPv6 同时应用"},
 			ui.CardField{Label: "公网 UDP", Value: publicPorts, Detail: "与 TCP 同时选择，列表独立保留"},
@@ -438,6 +458,7 @@ func confirmConfig(view *ui.UI, content string, ports []int, publicWeb, privateW
 			ui.CardField{Label: "局域网 UDP", Value: privatePorts, Detail: "与 TCP 同时选择，列表独立保留"},
 			ui.CardField{Label: "附加放行规则", Value: fmt.Sprintf("保留 %d 条，可额外放行来源和端口", len(extraRules))},
 			ui.CardField{Label: "ICMP / ICMPv6 回显", Value: pingState},
+			ui.CardField{Label: "数据包统计", Value: counterState},
 			ui.CardField{Label: "手动修改", Value: "端口列表、来源例外等将由新模板覆盖"},
 			ui.CardField{Label: "内核规则", Value: "重建 inet snail 表，保留其他表"},
 			ui.CardField{Label: "未匹配入站流量", Value: "丢弃；保留已建立连接、回环、指定 IPv6 控制流量及 DHCPv6"},

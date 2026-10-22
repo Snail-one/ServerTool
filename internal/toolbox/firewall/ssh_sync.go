@@ -63,7 +63,11 @@ func EnsureSSHPorts(configured []int) (bool, error) {
 	for _, handle := range handles {
 		fmt.Fprintf(&batch, "delete rule inet snail input handle %d\n", handle)
 	}
-	rules := sshPortRules(ports)
+	counters, err := packetCountersEnabled(string(version.content))
+	if err != nil {
+		return false, err
+	}
+	rules := sshPortRules(ports, counters)
 	// Each insert prepends a rule. Reverse the commands so the resulting
 	// chain order agrees with the persistent block (TCP followed by UDP).
 	for i := len(rules) - 1; i >= 0; i-- {
@@ -130,10 +134,14 @@ func mergeSSHPorts(groups ...[]int) ([]int, error) {
 	return ports, nil
 }
 
-func sshPortRules(ports []int) []string {
+func sshPortRules(ports []int, counters bool) []string {
 	var rules []string
+	counter := "counter "
+	if !counters {
+		counter = ""
+	}
 	for _, protocol := range []string{"tcp", "udp"} {
-		rules = append(rules, fmt.Sprintf("%s dport { %s } counter accept comment %q", protocol, portList(ports), sshPortsTag))
+		rules = append(rules, fmt.Sprintf("%s dport { %s } %saccept comment %q", protocol, portList(ports), counter, sshPortsTag))
 	}
 	return rules
 }
@@ -148,7 +156,11 @@ func withSSHPorts(content string, ports []int) (string, error) {
 	} else if found {
 		insertion = strings.Index(content, pingEnd) + len(pingEnd)
 	}
-	block := sshPortsBegin + "\n        " + strings.Join(sshPortRules(ports), "\n        ") + "\n        " + sshPortsEnd
+	counters, err := packetCountersEnabled(content)
+	if err != nil {
+		return "", err
+	}
+	block := sshPortsBegin + "\n        " + strings.Join(sshPortRules(ports, counters), "\n        ") + "\n        " + sshPortsEnd
 	begin, end := strings.Index(content, sshPortsBegin), strings.Index(content, sshPortsEnd)
 	if begin >= 0 || end >= 0 {
 		if strings.Count(content, sshPortsBegin) != 1 || strings.Count(content, sshPortsEnd) != 1 || begin < open || end < begin || end+len(sshPortsEnd) > close {

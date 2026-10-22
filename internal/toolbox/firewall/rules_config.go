@@ -236,7 +236,12 @@ func managedRules(content string) ([]allowRule, error) {
 		ids[rule.ID] = true
 		rules = append(rules, rule)
 	}
-	if compactRuleBody(body) != compactRuleBody(renderRuleBody(rules)) {
+	actual, err := withoutCounterStatements(body)
+	if err != nil {
+		return nil, err
+	}
+	expected, _ := withoutCounterStatements(renderRuleBody(rules))
+	if compactRuleBody(actual) != compactRuleBody(expected) {
 		return nil, fmt.Errorf("规则托管区块已被手动修改，元数据与实际规则不一致；请先修正，避免覆盖手动规则")
 	}
 	return rules, nil
@@ -281,7 +286,18 @@ func replaceManagedRules(content string, rules []allowRule) (string, error) {
 		}
 		ids[rule.ID] = true
 	}
-	block := rulesBegin + "\n" + renderRuleBody(rules) + "        " + rulesEnd
+	counters, err := packetCountersEnabled(content)
+	if err != nil {
+		return "", err
+	}
+	body := renderRuleBody(rules)
+	if !counters {
+		body, err = withoutCounterStatements(body)
+		if err != nil {
+			return "", err
+		}
+	}
+	block := rulesBegin + "\n" + body + "        " + rulesEnd
 	begin, end := strings.Index(content, rulesBegin), strings.Index(content, rulesEnd)
 	if begin >= 0 {
 		return content[:begin] + block + content[end+len(rulesEnd):], nil

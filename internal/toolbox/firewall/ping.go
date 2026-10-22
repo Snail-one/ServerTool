@@ -64,8 +64,13 @@ func readPingSetting(content string) (enabled, found bool, err error) {
 		return false, false, fmt.Errorf("Ping 区块前存在其他规则，请将 Ping 区块移到 input 链规则最前面")
 	}
 	body := content[begin+len(pingBegin) : end]
+	body, err = withoutCounterStatements(body)
+	if err != nil {
+		return false, false, err
+	}
 	for _, value := range []bool{false, true} {
-		if sameConfigTokens(body, pingBody(value)) {
+		expected, _ := withoutCounterStatements(pingBody(value))
+		if sameConfigTokens(body, expected) {
 			return value, true, nil
 		}
 	}
@@ -77,7 +82,18 @@ func withPingSetting(content string, enabled bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	block := pingBegin + "\n        " + pingBody(enabled) + "\n        " + pingEnd
+	counters, err := packetCountersEnabled(content)
+	if err != nil {
+		return "", err
+	}
+	body := pingBody(enabled)
+	if !counters {
+		body, err = withoutCounterStatements(body)
+		if err != nil {
+			return "", err
+		}
+	}
+	block := pingBegin + "\n        " + body + "\n        " + pingEnd
 	if found {
 		begin, end := strings.Index(content, pingBegin), strings.Index(content, pingEnd)
 		return content[:begin] + block + content[end+len(pingEnd):], nil
