@@ -146,6 +146,7 @@ func currentConfigFields(autostart autostartStatus) []ui.CardField {
 		firewallStateField(installed, live),
 		ownership,
 		{Label: "开机自启", Value: autostartLabel},
+		packetCounterStateField(installed, live),
 	}
 	fields = append(fields, echoStateFields(installed, live)...)
 	if installed && live.err == nil {

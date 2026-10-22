@@ -11,6 +11,74 @@ import (
 
 const packetCounterMarker = "# SNAIL PACKET COUNTERS: "
 
+// Reuse the menu's kernel snapshot: a saved preference may not be loaded yet.
+// Branch/return rules are not counted unless they contain a counter themselves.
+func packetCounterStateField(installed bool, live liveRules) ui.CardField {
+	field := ui.CardField{Label: "数据包统计"}
+	switch {
+	case !installed:
+		field.Value = "无法检测"
+		return field
+	case live.err != nil:
+		field.Value = "检测失败"
+		return field
+	case !live.inputActive:
+		field.Value = "未启用本工具过滤"
+		return field
+	}
+	objects, err := decodeRules(live.json)
+	if err != nil {
+		field.Value = "无法判断"
+		return field
+	}
+	rules, counted := 0, 0
+	for _, object := range objects {
+		rule, ok := object["rule"].(map[string]any)
+		if !ok || rule["family"] != "inet" || rule["table"] != "snail" {
+			continue
+		}
+		expressions, ok := rule["expr"].([]any)
+		if !ok || len(expressions) == 0 {
+			field.Value = "无法判断"
+			return field
+		}
+		hasCounter, verdict := false, false
+		for _, raw := range expressions {
+			expression, ok := raw.(map[string]any)
+			if !ok || len(expression) != 1 {
+				field.Value = "无法判断"
+				return field
+			}
+			if _, ok := expression["counter"]; ok {
+				hasCounter = true
+			}
+			for kind := range expression {
+				if kind == "accept" || kind == "drop" || kind == "reject" {
+					verdict = true
+				}
+			}
+			if verdict {
+				break
+			}
+		}
+		if verdict || hasCounter {
+			rules++
+			if hasCounter {
+				counted++
+			}
+		}
+	}
+	switch {
+	case counted == 0:
+		field.Value = "已关闭"
+	case counted == rules:
+		field.Value = ui.PrimaryText("已开启")
+	default:
+		field.Value = "部分开启"
+	}
+	return field
+}
+
 type counterEdit struct {
 	start, end int
 	text       string

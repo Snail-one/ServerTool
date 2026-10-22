@@ -75,6 +75,80 @@ func TestStatusCountsOwnRulesAndKeepsDetectionFailureUnknown(t *testing.T) {
 	}
 }
 
+func TestPacketCounterStatusUsesLoadedRulesAndOneSharedQuery(t *testing.T) {
+	counted := `{"counter":{"packets":0,"bytes":0}},{"accept":null}`
+	unCounted := `{"drop":null}`
+	rule := func(expr string) string {
+		return `{"rule":{"family":"inet","table":"snail","chain":"input","expr":[` + expr + `]}}`
+	}
+	branch := rule(`{"jump":{"target":"public_ports"}}`) + "," + rule(`{"return":null}`)
+	foreign := `{"rule":{"family":"ip","table":"snail","chain":"input","expr":[{"counter":null},{"accept":null}]}}`
+	for _, scenario := range []struct {
+		name, rules, want string
+		installed         bool
+		queryErr          error
+	}{
+		{"zero counts still enabled", rule(counted) + "," + branch, ui.PrimaryText("已开启"), true, nil},
+		{"populated counts", rule(strings.Replace(counted, `"packets":0`, `"packets":100`, 1)), ui.PrimaryText("已开启"), true, nil},
+		{"stateless listing", rule(`{"counter":null},{"drop":null}`), ui.PrimaryText("已开启"), true, nil},
+		{"named counter", rule(`{"counter":"manual"},{"reject":null}`), ui.PrimaryText("已开启"), true, nil},
+		{"no counters", rule(unCounted) + "," + branch, "已关闭", true, nil},
+		{"mixed", rule(counted) + "," + rule(unCounted), "部分开启", true, nil},
+		{"other table ignored", rule(unCounted) + "," + foreign, "已关闭", true, nil},
+		{"no rule counters", branch, "已关闭", true, nil},
+		{"missing expressions", `{"rule":{"family":"inet","table":"snail","chain":"input"}}`, "无法判断", true, nil},
+		{"not installed", "", "无法检测", false, nil},
+		{"query failed", "", "检测失败", true, errors.New("permission denied")},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			setupTest(t)
+			// Keep the saved setting opposite to the loaded state where possible.
+			// A pending edit must not be presented as the kernel's current switch.
+			base, _ := buildConfig([]int{2222}, false, false)
+			content, err := withPacketCounters(base, scenario.want != ui.PrimaryText("已开启"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+				t.Fatal(err)
+			}
+			commandExists = func(name string) bool { return name == "nft" && scenario.installed }
+			queries := 0
+			commandOutput = func(name string, args ...string) (string, error) {
+				if name != "nft" || !reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
+					t.Fatalf("unexpected query: %s %v", name, args)
+				}
+				queries++
+				objects := `{"table":{"family":"inet","name":"snail"}},` +
+					`{"chain":{"family":"inet","table":"snail","name":"input","type":"filter","hook":"input","policy":"drop"}}`
+				if scenario.rules != "" {
+					objects += "," + scenario.rules
+				}
+				return `{"nftables":[` + objects + `]}`, scenario.queryErr
+			}
+			fields := currentConfigFields(autostartStatus{label: "已关闭"})
+			if got := fieldValue(fields, "数据包统计"); got != scenario.want {
+				t.Fatalf("counter status=%q, want %q", got, scenario.want)
+			}
+			wantQueries := 0
+			if scenario.installed {
+				wantQueries = 1
+			}
+			if queries != wantQueries {
+				t.Fatalf("status must share the existing ruleset query: %d", queries)
+			}
+		})
+	}
+	for _, output := range []string{
+		`{"nftables":[]}`,
+		`{"nftables":[{"table":{"family":"inet","name":"snail","flags":["dormant"]}}]}`,
+	} {
+		if got := packetCounterStateField(true, parseLiveRules(output)); got.Value != "未启用本工具过滤" {
+			t.Fatalf("inactive firewall misreported as a counter switch: %+v", got)
+		}
+	}
+}
+
 func TestParseLiveRulesCountsAllTablesAndScopesPolicyToSnail(t *testing.T) {
 	output := `{"nftables":[
 		{"metainfo":{"version":"1.1.3"}},
@@ -146,8 +220,8 @@ func TestCurrentConfigFieldsShowsOnlyFirewallStatus(t *testing.T) {
 			} else if fieldValue(fields, "防火墙") != "未开启（本工具）" || !strings.Contains(fieldValue(fields, "nftables"), "v1.1.3") {
 				t.Fatal("saved config must not imply loaded rules; installed version should be shown")
 			}
-			if scenario != "query failure" && len(fields) != 7 {
-				t.Fatalf("unloaded status card should have seven fields, got %d", len(fields))
+			if scenario != "query failure" && len(fields) != 8 {
+				t.Fatalf("unloaded status card should have eight fields, got %d", len(fields))
 			}
 			if scenario == "managed" && fieldValue(fields, "工具接管") != "已接管" {
 				t.Fatal("owned config should show managed even when not active")
