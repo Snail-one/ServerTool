@@ -54,7 +54,7 @@ func runRuleManager(view *ui.UI) error {
 			shared.RunAction(view, "编辑规则失败，已返回规则管理", func() error {
 				ui.ClearScreen()
 				ui.MenuTitle("防火墙管理", "选择编辑规则")
-				printAllowRules(rules)
+				printRuleOrder(rules, "")
 				id, err := chooseRuleID(view, rules)
 				if err != nil {
 					return err
@@ -93,7 +93,7 @@ func chooseRuleID(view *ui.UI, rules []allowRule) (string, error) {
 		return "", fmt.Errorf("没有可选择的规则")
 	}
 	for {
-		id, err := view.Ask("请输入列表中的完整规则 ID（0/q 返回）：")
+		id, err := view.Ask("请输入列表中的完整规则 ID（0/q 返回）")
 		if err != nil {
 			return "", err
 		}
