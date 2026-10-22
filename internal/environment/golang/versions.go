@@ -132,6 +132,35 @@ func removeCurrentLink(link string) error {
 	return os.Remove(link)
 }
 
+// InstallArtifact is one interrupted Go install file or directory under the install root.
+type InstallArtifact struct {
+	Root string
+	Name string
+	Info os.FileInfo
+}
+
+// ListInstallArtifacts returns leftovers that the Go installer would clean.
+func ListInstallArtifacts(root string) ([]InstallArtifact, error) {
+	names, err := installArtifacts(root)
+	if err != nil {
+		return nil, err
+	}
+	artifacts := make([]InstallArtifact, 0, len(names))
+	for _, name := range names {
+		info, err := installArtifactInfo(root, name)
+		if err != nil {
+			return nil, err
+		}
+		artifacts = append(artifacts, InstallArtifact{Root: root, Name: name, Info: info})
+	}
+	return artifacts, nil
+}
+
+// DeleteInstallArtifact removes one previously listed leftover after rechecking its identity.
+func DeleteInstallArtifact(artifact InstallArtifact) error {
+	return removeInstallArtifact(artifact.Root, artifact.Name, artifact.Info)
+}
+
 func installArtifacts(root string) ([]string, error) {
 	if err := shared.CheckRemovalTree(root); err != nil {
 		return nil, err

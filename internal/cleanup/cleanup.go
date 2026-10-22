@@ -10,6 +10,7 @@ import (
 	cleanupproxy "snail_tool/internal/cleanup/proxy"
 	cleanupsshd "snail_tool/internal/cleanup/sshd"
 	cleanupsshkeys "snail_tool/internal/cleanup/sshkeys"
+	"snail_tool/internal/cleanup/temps"
 	cleanupvim "snail_tool/internal/cleanup/vim"
 	commontmux "snail_tool/internal/common/tmux"
 	commonups "snail_tool/internal/common/ups"
@@ -39,6 +40,7 @@ func Run(view *ui.UI) error {
 	backupChoice := strconv.Itoa(len(steps) + 1)
 	allChoice := strconv.Itoa(len(steps) + 2)
 	dataChoice := strconv.Itoa(len(steps) + 3)
+	tempChoice := strconv.Itoa(len(steps) + 4)
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("清理本工具配置")
@@ -51,6 +53,7 @@ func Run(view *ui.UI) error {
 		ui.MenuOptionHint(backupChoice, "清理备份", "按模块 / 全部")
 		ui.MenuOptionHint(allChoice, "清理全部本工具配置", "成功后删除整个软件数据目录")
 		ui.MenuOptionHint(dataChoice, "删除软件数据目录", shared.DataDir+"，包含全部备份和隐藏文件")
+		ui.MenuOptionHint(tempChoice, "清理中断临时文件", "/tmp、/etc 与 /opt/go 中的本工具残留")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -127,6 +130,10 @@ func Run(view *ui.UI) error {
 				continue
 			}
 			return err
+		case tempChoice:
+			shared.RunAction(view, "中断临时文件清理失败，已返回清理配置", func() error {
+				return temps.Run(view)
+			})
 		default:
 			ui.InvalidChoice()
 			view.Pause()
