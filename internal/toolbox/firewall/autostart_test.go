@@ -192,17 +192,20 @@ func TestCleanupDisablesAutostartOnlyWhenNoOtherConfigRemains(t *testing.T) {
 			if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
 				t.Fatal(err)
 			}
+			disabled := false
 			commandOutput = func(name string, args ...string) (string, error) {
 				if name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
 					return `{"nftables":[]}`, nil
 				}
 				if name == "systemctl" && !otherConfig {
+					if disabled {
+						return autostartProperties("disabled"), nil
+					}
 					return autostartProperties("enabled"), nil
 				}
 				t.Fatalf("unexpected query: %s %v", name, args)
 				return "", nil
 			}
-			disabled := false
 			commandRun = func(name string, args ...string) error {
 				if otherConfig || name != "systemctl" || !reflect.DeepEqual(args, []string{"disable", nftablesUnit}) {
 					t.Fatalf("unexpected mutation: %s %v", name, args)

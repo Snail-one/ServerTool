@@ -22,10 +22,11 @@ import (
 )
 
 type cleanupStep struct {
-	name   string
-	label  string
-	run    func(*system.Account) error
-	detail string
+	name    string
+	label   string
+	run     func(*system.Account) error
+	detail  string
+	confirm func(*ui.UI) error
 }
 
 func Run(view *ui.UI) error {
@@ -73,12 +74,12 @@ func Run(view *ui.UI) error {
 				ui.CardField{Label: "SSH 安全策略", Value: "将移除本工具写入的配置"},
 				ui.CardField{Label: "潜在影响", Value: "可能恢复系统默认 SSH 密码登录"},
 				ui.CardField{Label: "tmux", Value: "移除目标用户的托管配置块；已有会话保持当前设置"},
-				ui.CardField{Label: "防火墙", Value: "移除托管配置及 inet snail 表，该表的入站限制将解除"},
+				ui.CardField{Label: "防火墙", Value: "恢复首次快照中的配置和自启状态；无快照时移除托管区块；删除 inet snail 表，解除本工具限制"},
 				ui.CardField{Label: "UPS", Value: "停用相关 NUT 服务，恢复首次备份或移除可识别的工具配置"},
 				ui.CardField{Label: "Docker", Value: "移除日志轮转和服务代理，可能重启 Docker 并影响容器"},
 				ui.CardField{Label: "Go 环境", Value: "移除托管 PATH 和命令链接，保留已安装版本"},
 				ui.CardField{Label: "其他范围", Value: "软件、容器数据和旧位置备份使用独立清理入口"},
-				ui.CardField{Label: "备份清理", Value: plan.Summary(), Detail: "永久删除全部模块备份，包含 UPS 首次备份"},
+				ui.CardField{Label: "备份清理", Value: plan.Summary(), Detail: "永久删除全部模块备份，包含防火墙和 UPS 首次快照"},
 			)
 			confirmed, err := view.Confirm("确认清理全部本工具配置及备份？请输入 y 确认，默认取消 (y/N)：")
 			if err != nil {
@@ -118,11 +119,14 @@ func allCleanupSteps() []cleanupStep {
 		{name: "UPS", label: "UPS 配置", run: commonups.Cleanup, detail: "停用相关 NUT 服务，恢复首次备份或移除可识别的工具配置"},
 		{name: "Docker", label: "Docker 配置", run: cleanupDocker, detail: "移除日志轮转和服务代理，可能重启 Docker 并影响容器"},
 		{name: "Go 环境", label: "Go 环境配置", run: goenvironment.CleanupEnvironment, detail: "移除托管 PATH 和命令链接，保留已安装 Go 版本"},
-		{name: "防火墙", label: "防火墙配置", run: firewall.Cleanup, detail: "移除托管配置和 inet snail 表，该表的入站限制将解除"},
+		{name: "防火墙", label: "防火墙配置", run: firewall.Cleanup, confirm: firewall.CleanupWithConfirm, detail: "恢复首次快照中的完整配置和自启状态，覆盖接入后的文件修改；无快照时只移除托管区块；删除 inet snail 表，解除本工具限制"},
 	}
 }
 
 func runCleanupStepWithConfirm(view *ui.UI, account *system.Account, step cleanupStep) error {
+	if step.confirm != nil {
+		return step.confirm(view)
+	}
 	if step.detail != "" {
 		ui.PrintDangerCard("清理 "+step.label, ui.CardField{Label: "操作范围", Value: step.detail})
 	}

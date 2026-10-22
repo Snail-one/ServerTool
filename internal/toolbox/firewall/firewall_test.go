@@ -16,9 +16,12 @@ func setupTest(t *testing.T) {
 	t.Helper()
 	previousExists, previousRun, previousOutput, previousRoot, previousPath := commandExists, commandRun, commandOutput, isRoot, configPath
 	previousDataDir := dataDir
+	previousPreserve := preserveOriginal
+	preserveOriginal = func() error { return nil }
 	t.Cleanup(func() {
 		commandExists, commandRun, commandOutput, isRoot, configPath = previousExists, previousRun, previousOutput, previousRoot, previousPath
 		dataDir = previousDataDir
+		preserveOriginal = previousPreserve
 	})
 	t.Setenv("SSH_CONNECTION", "")
 	configPath = filepath.Join(t.TempDir(), "nftables.conf")

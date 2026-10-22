@@ -93,6 +93,9 @@ func EnsureSSHPorts(configured []int) (bool, error) {
 	} else if err := checkConfigVersion(version); err != nil {
 		return false, err
 	}
+	if err := preserveOriginal(); err != nil {
+		return false, err
+	}
 	if out, err := commandOutput("nft", "-f", tmp.Name()); err != nil {
 		loadErr := fmt.Errorf("SSH 放行规则加载失败，未重载 SSH: %w: %s", err, strings.TrimSpace(out))
 		if changed {

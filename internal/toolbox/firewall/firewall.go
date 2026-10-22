@@ -204,6 +204,9 @@ func applyConfig(expected []byte) error {
 	if !bytes.Equal(expected, latest) {
 		return fmt.Errorf("配置文件已变化，未加载规则，请重新选择校验加载配置")
 	}
+	if err := preserveOriginal(); err != nil {
+		return err
+	}
 	if out, err := commandOutput("nft", "-f", configPath); err != nil {
 		return fmt.Errorf("nftables 配置加载失败: %w: %s", err, strings.TrimSpace(out))
 	}
@@ -225,6 +228,9 @@ func editConfig(view *ui.UI) error {
 	}
 	before, err := readConfigVersion()
 	if err != nil {
+		return err
+	}
+	if err := preserveOriginal(); err != nil {
 		return err
 	}
 	if before.exists {
@@ -501,6 +507,14 @@ func writeConfig(content string, versions ...configVersion) error {
 	}
 	if out, err := commandOutput("nft", "-c", "-f", tmp.Name()); err != nil {
 		return fmt.Errorf("nftables 配置校验失败，未写入正式配置: %w: %s", err, strings.TrimSpace(out))
+	}
+	if len(versions) > 0 {
+		if err := checkConfigVersion(versions[0]); err != nil {
+			return err
+		}
+	}
+	if err := preserveOriginal(); err != nil {
+		return err
 	}
 	if len(versions) > 0 {
 		if err := checkConfigVersion(versions[0]); err != nil {

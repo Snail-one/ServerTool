@@ -127,6 +127,9 @@ func toggleAutostart(view *ui.UI) error {
 			return err
 		}
 	}
+	if err := preserveOriginal(); err != nil {
+		return err
+	}
 	// Do not use --now: stopping nftables may run ExecStop=flush ruleset,
 	// affecting all tables, and starting it would load pending config edits.
 	if err := commandRun("systemctl", action, nftablesUnit); err != nil {
@@ -140,31 +143,5 @@ func toggleAutostart(view *ui.UI) error {
 		return fmt.Errorf("命令已执行，但开机自启未达到预期状态，当前为 %s", result.label)
 	}
 	log.Info("防火墙开机自启已", target, "，当前已加载规则保持生效")
-	return nil
-}
-
-// Keep a shared service enabled when other configuration remains in its file.
-func disableUnusedAutostart(cleaned string) error {
-	tokens, err := configTokens(cleaned)
-	if err != nil {
-		return err
-	}
-	if len(tokens) != 0 || !commandExists("systemctl") {
-		return nil
-	}
-	status := inspectAutostart()
-	if status.label == "服务不可用" {
-		return nil
-	}
-	if status.err != nil {
-		return status.err
-	}
-	if !status.enabled || !serviceLoadsConfig(status.execStart) {
-		return nil
-	}
-	if err := commandRun("systemctl", "disable", nftablesUnit); err != nil {
-		return fmt.Errorf("关闭防火墙开机自启失败，未清理配置: %w", err)
-	}
-	log.Info("防火墙文件清理后无其他规则，已关闭开机自启")
 	return nil
 }

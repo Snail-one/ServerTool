@@ -23,6 +23,9 @@ func TestCleanupRemovesOnlyManagedFirewallBlockAndSnailTable(t *testing.T) {
 			t.Fatal(name)
 		}
 		if reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
+			if len(mutations) > 0 {
+				return `{"nftables":[{"table":{"family":"inet","name":"custom"}}]}`, nil
+			}
 			return `{"nftables":[{"table":{"family":"inet","name":"snail"}},{"table":{"family":"inet","name":"custom"}}]}`, nil
 		}
 		mutations = append(mutations, args)
