@@ -3,7 +3,10 @@ package cleanup
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
+	"syscall"
 	"testing"
 
 	"snail_tool/internal/shared"
@@ -46,27 +49,63 @@ func TestCancelledCleanupDoesNotConsumeAnotherInput(t *testing.T) {
 	}
 }
 
-func TestAllConfigurationCleanupDeletesBackupsAfterSuccess(t *testing.T) {
-	for _, fail := range []bool{false, true} {
-		t.Run(map[bool]string{false: "success", true: "failed configuration cleanup"}[fail], func(t *testing.T) {
+func TestAllConfigurationCleanupDeletesEntireDataDirectoryOnlyAfterSuccess(t *testing.T) {
+	for _, scenario := range []string{"success", "failed configuration cleanup", "locked data directory"} {
+		t.Run(scenario, func(t *testing.T) {
+			root := seedSoftwareData(t)
+			info, err := inspectSoftwareData(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			outside := filepath.Join(filepath.Dir(root), "preserve")
+			if err := os.WriteFile(outside, []byte("unrelated data"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if scenario == "locked data directory" {
+				lock, err := os.OpenFile(filepath.Join(root, "backups/firewall/etc/.snailtool-backup.lock"), os.O_RDWR, 0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer lock.Close()
+				if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+					t.Fatal(err)
+				}
+				defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+			}
 			var calls []string
 			steps := []cleanupStep{{name: "test", run: func(*system.Account) error {
 				calls = append(calls, "configuration")
-				if fail {
+				if got := shared.ReadFileString(filepath.Join(root, "backups/ups/config.original.json")); got != "keep until confirmed" {
+					t.Fatal("restoration data deleted before configuration cleanup finished")
+				}
+				if scenario == "failed configuration cleanup" {
 					return errors.New("test failure")
 				}
 				return nil
 			}}}
-			err := runAllCleanupSteps(&system.Account{}, steps, func() error {
-				calls = append(calls, "backups")
-				return nil
+			err = runAllCleanupSteps(&system.Account{}, steps, func() error {
+				calls = append(calls, "data")
+				return deleteSoftwareData(root, info)
 			})
-			want := []string{"configuration", "backups"}
-			if fail {
+			want := []string{"configuration", "data"}
+			if scenario == "failed configuration cleanup" {
 				want = []string{"configuration"}
 			}
-			if !reflect.DeepEqual(calls, want) || (err != nil) != fail {
+			if !reflect.DeepEqual(calls, want) || (err != nil) != (scenario != "success") {
 				t.Fatalf("cleanup order=%v err=%v", calls, err)
+			}
+			if scenario == "success" {
+				if _, err := os.Lstat(root); !os.IsNotExist(err) {
+					t.Fatalf("entire data directory remains: %v", err)
+				}
+			} else if got := shared.ReadFileString(filepath.Join(root, ".hidden")); got != "keep until confirmed" {
+				t.Fatal("failed cleanup partially removed software data")
+			}
+			if scenario == "locked data directory" && !strings.Contains(err.Error(), "配置已清理，但软件数据目录删除未完成") {
+				t.Fatal("directory deletion failure must report completed configuration cleanup")
+			}
+			if shared.ReadFileString(outside) != "unrelated data" {
+				t.Fatal("cleanup affected files outside the software data directory")
 			}
 		})
 	}

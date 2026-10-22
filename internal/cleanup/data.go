@@ -12,7 +12,7 @@ import (
 	"snail_tool/internal/ui"
 )
 
-// DeleteSoftwareData is used after the uninstall script receives explicit consent.
+// DeleteSoftwareData is used after consent during uninstall or full cleanup.
 // Keep its target fixed; callers cannot supply an arbitrary directory to delete.
 func DeleteSoftwareData() error {
 	info, err := inspectSoftwareData(shared.DataDir)

@@ -49,7 +49,7 @@ func Run(view *ui.UI) error {
 		}
 		fmt.Println()
 		ui.MenuOptionHint(backupChoice, "清理备份", "按模块 / 全部")
-		ui.MenuOption(allChoice, "清理全部本工具配置")
+		ui.MenuOptionHint(allChoice, "清理全部本工具配置", "成功后删除整个软件数据目录")
 		ui.MenuOptionHint(dataChoice, "删除软件数据目录", shared.DataDir+"，包含全部备份和隐藏文件")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
@@ -72,6 +72,9 @@ func Run(view *ui.UI) error {
 		}
 		switch choice {
 		case allChoice:
+			if _, err := inspectSoftwareData(shared.DataDir); err != nil {
+				return err
+			}
 			plan, err := cleanupbackups.PrepareAll()
 			if err != nil {
 				return err
@@ -86,8 +89,9 @@ func Run(view *ui.UI) error {
 				ui.CardField{Label: "Go 环境", Value: "移除托管 PATH 和命令链接，保留已安装版本"},
 				ui.CardField{Label: "其他范围", Value: "软件、容器数据和旧位置备份使用独立清理入口"},
 				ui.CardField{Label: "备份清理", Value: plan.Summary(), Detail: "永久删除全部模块备份，包含防火墙和 UPS 首次快照"},
+				ui.CardField{Label: "数据目录", Value: shared.DataDir, Detail: "配置全部清理成功后删除整个目录，包括锁文件、隐藏文件、其他文件和子目录"},
 			)
-			confirmed, err := view.Confirm("确认清理全部本工具配置及备份？请输入 y 确认，默认取消 (y/N)：")
+			confirmed, err := view.Confirm("确认清理全部本工具配置并删除整个软件数据目录？(y/N)：")
 			if err != nil {
 				if errors.Is(err, shared.ErrReturnToMenu) {
 					continue
@@ -98,7 +102,7 @@ func Run(view *ui.UI) error {
 				fmt.Println("已取消清理")
 				continue
 			}
-			return runAllCleanupSteps(account, steps, plan.Delete)
+			return runAllCleanupSteps(account, steps, DeleteSoftwareData)
 		case backupChoice:
 			shared.RunAction(view, "备份清理失败，已返回清理配置", func() error { return cleanupbackups.Run(view) })
 		case dataChoice:
@@ -114,12 +118,15 @@ func Run(view *ui.UI) error {
 	}
 }
 
-func runAllCleanupSteps(account *system.Account, steps []cleanupStep, deleteBackups func() error) error {
+func runAllCleanupSteps(account *system.Account, steps []cleanupStep, deleteData func() error) error {
 	if err := runCleanupSteps(account, steps); err != nil {
-		log.Warn("配置清理未全部完成，已保留备份")
+		log.Warn("配置清理未全部完成，已保留软件数据目录及备份")
 		return err
 	}
-	return deleteBackups()
+	if err := deleteData(); err != nil {
+		return fmt.Errorf("配置已清理，但软件数据目录删除未完成: %w", err)
+	}
+	return nil
 }
 
 func allCleanupSteps() []cleanupStep {
