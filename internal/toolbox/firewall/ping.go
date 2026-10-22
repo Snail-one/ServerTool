@@ -109,18 +109,27 @@ func configurePing(view *ui.UI) error {
 	}
 	ui.ClearScreen()
 	ui.MenuTitle("防火墙管理", "ICMP 回显（Ping）")
-	state := "未单独设置（沿用现有规则）"
+	state := "未设置"
 	if found {
 		state = pingLabel(enabled)
 	}
-	ui.PrintInfoCard("ICMP 回显（Ping）",
-		ui.CardField{Label: "配置状态", Value: state},
-		ui.CardField{Label: "协议", Value: "ICMP（IPv4） / ICMPv6（IPv6）"},
-		ui.CardField{Label: "作用范围", Value: "外部访问本机的回显请求（Echo Request）"},
-		ui.CardField{Label: "保留流量", Value: "本机主动 Ping、回环及 IPv6 必需控制报文"},
-		ui.CardField{Label: "生效方式", Value: "确认后校验、备份、保存并加载当前完整配置"},
-		ui.CardField{Label: "连通条件", Value: "允许仅在本工具内放行，仍受其他规则及云安全组限制"},
-	)
+	installed := commandExists("nft")
+	live := liveRules{}
+	if installed {
+		live = inspectLiveRules()
+	}
+	fields := echoStateFields(installed, live)
+	fields = append(fields, ui.CardField{Label: "保存的开关", Value: state})
+	sync := configSyncField(version.content, nil, installed, live)
+	sync.Value, _, _ = strings.Cut(sync.Value, " · ")
+	if sync.Value == "已同步" || sync.Value == "未同步" {
+		sync.Detail = ""
+	}
+	if sync.Value == "已同步" {
+		sync.Value = ui.PrimaryText(sync.Value)
+	}
+	fields = append(fields, sync)
+	ui.PrintInfoCard("ICMP 回显（Ping）", fields...)
 	ui.MenuOption("1", "允许 ICMP 回显")
 	ui.MenuOption("2", "禁止 ICMP 回显")
 	ui.MenuExit("0/q", "返回防火墙管理")

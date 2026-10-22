@@ -85,6 +85,9 @@ func TestConfigurePingValidationBackupLoadAndConcurrentEdits(t *testing.T) {
 			}
 			var calls []string
 			commandOutput = func(name string, args ...string) (string, error) {
+				if name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
+					return `{"nftables":[]}`, nil
+				}
 				if name == "nft" && len(args) == 3 && args[0] == "-c" && args[1] == "-f" {
 					calls = append(calls, "check")
 					if scenario == "invalid" {
@@ -146,6 +149,13 @@ func TestPingCancelDoesNotWriteOrConsumeNextInput(t *testing.T) {
 		t.Run(input, func(t *testing.T) {
 			setupTest(t)
 			version := ruleTestConfig(t, nil)
+			commandOutput = func(name string, args ...string) (string, error) {
+				if name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
+					return `{"nftables":[]}`, nil
+				}
+				t.Fatalf("unexpected query: %s %v", name, args)
+				return "", nil
+			}
 			view := inputUI(t, input+"next\n")
 			if err := configurePing(view); !errors.Is(err, shared.ErrReturnToMenu) {
 				t.Fatalf("cancel did not return directly: %v", err)

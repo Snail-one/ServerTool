@@ -147,6 +147,7 @@ func currentConfigFields(autostart autostartStatus) []ui.CardField {
 		ownership,
 		{Label: "开机自启", Value: autostartLabel},
 	}
+	fields = append(fields, echoStateFields(installed, live)...)
 	if installed && live.err == nil {
 		if live.inputActive {
 			fields = append(fields, ui.CardField{Label: "入站策略", Value: strings.TrimPrefix(live.inputPolicy, "input：")})
