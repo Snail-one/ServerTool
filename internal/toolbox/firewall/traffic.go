@@ -26,6 +26,41 @@ var queryTrafficRules = func(ctx context.Context) (string, error) {
 	return string(output), nil
 }
 
+func highlightTrafficChanges(previous, current string) string {
+	if previous == "" || previous == current {
+		return current
+	}
+	before, lines := strings.Split(previous, "\n"), strings.Split(current, "\n")
+	for i, line := range lines {
+		if i >= len(before) {
+			if line != "" {
+				lines[i] = ui.PrimaryBoldText(line)
+			}
+			continue
+		}
+		if before[i] == line || line == "" {
+			continue
+		}
+		old, next := []rune(before[i]), []rune(line)
+		start := 0
+		for start < len(old) && start < len(next) && old[start] == next[start] {
+			start++
+		}
+		oldEnd, end := len(old), len(next)
+		for oldEnd > start && end > start && old[oldEnd-1] == next[end-1] {
+			oldEnd--
+			end--
+		}
+		if start == end {
+			// A pure deletion has no remaining characters to highlight.
+			lines[i] = ui.PrimaryBoldText(line)
+		} else {
+			lines[i] = string(next[:start]) + ui.PrimaryBoldText(string(next[start:end])) + string(next[end:])
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 // Input stays on the calling goroutine. Cancelling waits for the display worker
 // to stop, so it cannot redraw or consume input after returning to the menu.
 func monitorTraffic(view *ui.UI, interval time.Duration) error {
@@ -37,12 +72,14 @@ func monitorTraffic(view *ui.UI, interval time.Duration) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	previous := ""
 	refresh := func() {
 		output, err := queryTrafficRules(ctx)
 		if ctx.Err() != nil {
 			return
 		}
 		if err != nil {
+			previous = ""
 			ui.ClearScreen()
 			ui.MenuTitle("防火墙管理", "实时查看规则")
 			ui.PrintInfoCard("规则读取失败",
@@ -54,9 +91,10 @@ func monitorTraffic(view *ui.UI, interval time.Duration) error {
 		}
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理", "实时查看规则")
-		fmt.Println(ui.MutedText("每秒刷新：nft -a list table inet snail · " + time.Now().Format("15:04:05")))
+		fmt.Println(ui.MutedText("每秒刷新：nft -a list table inet snail · "+time.Now().Format("15:04:05")) + ui.PrimaryText(" · 变化高亮"))
 		fmt.Println()
-		fmt.Print(output)
+		fmt.Print(highlightTrafficChanges(previous, output))
+		previous = output
 		if !strings.HasSuffix(output, "\n") {
 			fmt.Println()
 		}

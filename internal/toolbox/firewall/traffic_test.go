@@ -92,6 +92,10 @@ func TestTrafficMonitorMenuReturnsWithoutPauseOrConfigurationWrites(t *testing.T
 
 func TestTrafficMonitorRetriesAndCancelsItsWorkerBeforeReturning(t *testing.T) {
 	setupTest(t)
+	t.Setenv("CLICOLOR_FORCE", "1")
+	t.Setenv("TERM", "xterm")
+	t.Setenv("NO_COLOR", "")
+	_ = os.Unsetenv("NO_COLOR")
 	queries := 0
 	blocked, cancelled := make(chan struct{}), make(chan struct{})
 	setTrafficQuery(t, func(ctx context.Context) (string, error) {
@@ -101,6 +105,8 @@ func TestTrafficMonitorRetriesAndCancelsItsWorkerBeforeReturning(t *testing.T) {
 			return "", errors.New("temporary read failure")
 		case 2:
 			return trafficRawRules, nil
+		case 3:
+			return strings.Replace(trafficRawRules, "packets 27 bytes 2376", "packets 28 bytes 2464", 1), nil
 		default:
 			close(blocked)
 			<-ctx.Done()
@@ -134,8 +140,11 @@ func TestTrafficMonitorRetriesAndCancelsItsWorkerBeforeReturning(t *testing.T) {
 	default:
 		t.Fatal("return left a reader/display worker running")
 	}
-	if queries != 3 || !strings.Contains(output, "规则读取失败") || !strings.Contains(output, trafficRawRules) {
+	if queries != 4 || !strings.Contains(output, "规则读取失败") || !strings.Contains(output, trafficRawRules) {
 		t.Fatalf("query failure did not recover: queries=%d output=%s", queries, output)
+	}
+	if !strings.Contains(output, "counter packets 2"+ui.PrimaryBoldText("8 bytes 2464")+" drop # handle 65") {
+		t.Fatal("updated native counters were not highlighted")
 	}
 	if next, err := view.ReadLine(); err != nil || next != "next" {
 		t.Fatal("watcher stole the following menu input")
