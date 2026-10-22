@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -56,10 +57,56 @@ func inputUI(t *testing.T, input string) *ui.UI {
 	return view
 }
 
-func TestDetectSSHPortsUsesLiveListenersAndSocketActivation(t *testing.T) {
+func isSSHDTest(name string, args []string) bool {
+	return name == sshdCommandPath && reflect.DeepEqual(args, []string{"-T"})
+}
+
+func sshdTestConfig(ports ...int) string {
+	lines := make([]string, 0, len(ports)*3)
+	for _, port := range ports {
+		text := strconv.Itoa(port)
+		lines = append(lines, "port "+text, "listenaddress 0.0.0.0:"+text, "listenaddress [::]:"+text)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func TestDetectSSHPortsUsesEffectiveConfiguration(t *testing.T) {
+	setupTest(t)
+	commandOutput = func(name string, args ...string) (string, error) {
+		if !isSSHDTest(name, args) {
+			t.Fatalf("unexpected query: %s %v", name, args)
+		}
+		return "port 2222\nport 2200\nlistenaddress 0.0.0.0:2222\nlistenaddress [::]:2222\nlistenaddress 0.0.0.0\nlistenaddress [::]\nlistenaddress [::]:4022\npasswordauthentication yes\n", nil
+	}
+	got, err := detectSSHPorts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int{2200, 2222, 4022}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("SSH ports = %v, want %v", got, want)
+	}
+}
+
+func TestDetectSSHPortsUsesConfiguredPortOnly(t *testing.T) {
+	setupTest(t)
+	commandOutput = func(name string, args ...string) (string, error) {
+		if !isSSHDTest(name, args) {
+			t.Fatalf("unexpected query: %s %v", name, args)
+		}
+		return sshdTestConfig(22783), nil
+	}
+	got, err := detectSSHPorts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int{22783}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("SSH ports = %v, want %v", got, want)
+	}
+}
+
+func TestDetectListeningSSHPortsUsesLiveListenersAndSocketActivation(t *testing.T) {
 	setupTest(t)
 	commandExists = func(name string) bool { return name == "systemctl" }
-	t.Setenv("SSH_CONNECTION", "192.0.2.10 54321 192.0.2.20 2022")
 	commandOutput = func(name string, args ...string) (string, error) {
 		if name == "ss" {
 			if !reflect.DeepEqual(args, []string{"-H", "-ltnp"}) {
@@ -77,25 +124,58 @@ LISTEN 0 128 [fe80::1%eth0]:2223 [::]:* users:(("sshd",pid=3,fd=4))`, nil
 		}
 		return "", errors.New("missing unit")
 	}
-	got, err := detectSSHPorts()
+	got, err := detectListeningSSHPorts()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []int{2022, 2200, 2222, 2223}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("SSH ports = %v, want %v", got, want)
+	if want := []int{2200, 2222, 2223}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("SSH listeners = %v, want %v", got, want)
+	}
+}
+
+func TestDetectListeningSSHPortsIgnoresUnrelatedListenerOnAdvertisedSocketPort(t *testing.T) {
+	setupTest(t)
+	commandExists = func(name string) bool { return name == "systemctl" }
+	commandOutput = func(name string, args ...string) (string, error) {
+		if name == "ss" {
+			return `LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:(("docker-proxy",pid=9,fd=4))
+LISTEN 0 128 *:22783 *:* users:(("sshd",pid=1,fd=3))`, nil
+		}
+		if name == "systemctl" && len(args) > 1 && args[1] == "ssh.socket" {
+			return "0.0.0.0:22 (Stream)", nil
+		}
+		return "", errors.New("missing unit")
+	}
+	got, err := detectListeningSSHPorts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int{22783}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("SSH listeners = %v, want %v", got, want)
 	}
 }
 
 func TestDetectSSHPortsFailsInsteadOfAssumingPort22(t *testing.T) {
-	for _, queryErr := range []error{nil, errors.New("permission denied")} {
-		t.Run("query", func(t *testing.T) {
+	for _, scenario := range []struct {
+		name string
+		out  string
+		err  error
+	}{
+		{name: "command", err: errors.New("exit status 1")},
+		{name: "empty"},
+		{name: "invalid port", out: "port 65536\n"},
+		{name: "invalid listen", out: "port 22783\nlistenaddress [::]:oops\n"},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
 			setupTest(t)
-			t.Setenv("SSH_CONNECTION", "192.0.2.10 54321 192.0.2.20 22")
-			commandOutput = func(string, ...string) (string, error) {
-				return `LISTEN 0 128 *:80 *:* users:(("nginx",pid=2,fd=3))`, queryErr
+			commandOutput = func(name string, args ...string) (string, error) {
+				if !isSSHDTest(name, args) {
+					t.Fatalf("unexpected query: %s %v", name, args)
+				}
+				return scenario.out, scenario.err
 			}
 			if ports, err := detectSSHPorts(); err == nil || len(ports) != 0 {
-				t.Fatalf("unidentified SSH listener must stop generation: ports=%v err=%v", ports, err)
+				t.Fatalf("invalid SSH configuration must stop generation: ports=%v err=%v", ports, err)
 			}
 		})
 	}
@@ -223,18 +303,18 @@ func TestConfigureCancellationAndDetectionFailureDoNotWrite(t *testing.T) {
 			}
 			calls := 0
 			commandOutput = func(name string, args ...string) (string, error) {
-				if name != "ss" {
+				if !isSSHDTest(name, args) {
 					t.Fatalf("unexpected query: %s %v", name, args)
 				}
 				calls++
 				if scenario == "no SSH" {
 					return "", nil
 				}
-				port := "2222"
+				port := 2222
 				if scenario == "SSH changed" && calls > 1 {
-					port = "2200"
+					port = 2200
 				}
-				return `LISTEN 0 128 *:` + port + ` *:* users:(("sshd",pid=1,fd=3))`, nil
+				return sshdTestConfig(port), nil
 			}
 			err := configure(inputUI(t, input))
 			if errors.Is(err, shared.ErrReturnToMenu) {
@@ -269,8 +349,8 @@ func TestRunConfirmsInstallAndWritesThenApplies(t *testing.T) {
 		if name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
 			return `{"nftables":[]}`, nil
 		}
-		if name == "ss" {
-			return `LISTEN 0 128 *:2200 *:* users:(("sshd",pid=1,fd=3))`, nil
+		if isSSHDTest(name, args) {
+			return sshdTestConfig(2200), nil
 		}
 		if name == "nft" && len(args) == 3 && args[0] == "-c" && args[1] == "-f" {
 			operations = append(operations, "check")
@@ -418,8 +498,8 @@ func TestConfigurePreviewsAndReselectsPortsBeforeWriting(t *testing.T) {
 	validations := 0
 	loads := 0
 	commandOutput = func(name string, args ...string) (string, error) {
-		if name == "ss" {
-			return `LISTEN 0 128 *:2222 *:* users:(("sshd",pid=1,fd=3))`, nil
+		if isSSHDTest(name, args) {
+			return sshdTestConfig(2222), nil
 		}
 		if name == "nft" && reflect.DeepEqual(args, []string{"-f", configPath}) {
 			loads++
@@ -454,8 +534,8 @@ func TestConfigureStopsOnCheckWriteOrLoadFailure(t *testing.T) {
 			}
 			loads := 0
 			commandOutput = func(name string, args ...string) (string, error) {
-				if name == "ss" {
-					return `LISTEN 0 128 *:2222 *:* users:(("sshd",pid=1,fd=3))`, nil
+				if isSSHDTest(name, args) {
+					return sshdTestConfig(2222), nil
 				}
 				if name == "nft" && len(args) == 3 && args[0] == "-c" && args[1] == "-f" {
 					if scenario == "check" {

@@ -254,8 +254,8 @@ func TestRegenerationRetainsDisabledCounters(t *testing.T) {
 			acceptRuleCommands(t)
 			accept := commandOutput
 			commandOutput = func(name string, args ...string) (string, error) {
-				if name == "ss" {
-					return `LISTEN 0 128 *:2222 *:* users:(("sshd",pid=1,fd=3))`, nil
+				if isSSHDTest(name, args) {
+					return sshdTestConfig(2222), nil
 				}
 				return accept(name, args...)
 			}

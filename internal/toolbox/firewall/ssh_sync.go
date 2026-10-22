@@ -37,7 +37,7 @@ func EnsureSSHPorts(configured []int) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	listening, err := detectSSHPorts()
+	listening, err := detectListeningSSHPorts()
 	if err != nil {
 		return false, fmt.Errorf("无法保留当前 SSH 监听端口，未重载 SSH: %w", err)
 	}

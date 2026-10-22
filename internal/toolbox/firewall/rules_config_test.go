@@ -147,8 +147,8 @@ func TestRegeneratingBaseConfigurationPreservesManagedRules(t *testing.T) {
 	wanted := []allowRule{{ID: "aaaaaaaa", Kind: "source_port", Source: "192.168.0.0/16", Ports: "21069", Protocol: "udp"}}
 	ruleTestConfig(t, wanted)
 	commandOutput = func(name string, args ...string) (string, error) {
-		if name == "ss" {
-			return `LISTEN 0 128 *:2222 *:* users:(("sshd",pid=1,fd=3))`, nil
+		if isSSHDTest(name, args) {
+			return sshdTestConfig(2222), nil
 		}
 		if name == "nft" && len(args) == 3 && args[0] == "-c" && args[1] == "-f" {
 			return "", nil

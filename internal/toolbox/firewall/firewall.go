@@ -319,10 +319,10 @@ func configure(view *ui.UI) error {
 		return err
 	}
 	if len(ports) > 1 {
-		log.Warn("检测到多个 SSH 监听端口：", portList(ports), "。通常建议只保留一个 SSH 监听端口；本次会全部放行，请在 SSH 安全配置中检查并关闭不再使用的旧端口。")
+		log.Warn("SSH 生效配置包含多个端口：", portList(ports), "。通常建议只保留一个 SSH 端口；本次会全部放行，请在 SSH 安全配置中检查并关闭不再使用的旧端口。")
 	}
-	ui.PrintInfoCard("检测到 SSH 监听端口",
-		ui.CardField{Label: "TCP 端口", Value: portList(ports)},
+	ui.PrintInfoCard("检测到 SSH 配置端口",
+		ui.CardField{Label: "端口", Value: portList(ports), Detail: "/usr/sbin/sshd -T"},
 		ui.CardField{Label: "开放范围", Value: "公网、内网及 IPv4 / IPv6"},
 		ui.CardField{Label: "放行协议", Value: "相同端口号同时放行 TCP / UDP，列表独立维护"},
 		ui.CardField{Label: "附加放行规则", Value: fmt.Sprintf("保留已有 %d 条规则", len(preserved))},
@@ -372,7 +372,7 @@ func configure(view *ui.UI) error {
 		return err
 	}
 	if portList(latest) != portList(ports) {
-		return fmt.Errorf("SSH 监听端口已变化，请重新进入防火墙管理生成配置")
+		return fmt.Errorf("SSH 配置端口已变化，请重新进入防火墙管理生成配置")
 	}
 	if err := writeConfig(content, version); err != nil {
 		return err

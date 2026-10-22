@@ -198,8 +198,8 @@ func TestRemovePingConfigurationKeepsOtherRulesAndDoesNotRecreateOnRegeneration(
 				if name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
 					return `{"nftables":[]}`, nil
 				}
-				if name == "ss" {
-					return `LISTEN 0 128 *:2222 *:* users:(("sshd",pid=1,fd=3))`, nil
+				if isSSHDTest(name, args) {
+					return sshdTestConfig(2222), nil
 				}
 				return accept(name, args...)
 			}
@@ -255,8 +255,8 @@ func TestRegenerationKeepsPingEnabledAndMenuEntryWorks(t *testing.T) {
 	calls := acceptRuleCommands(t)
 	accept := commandOutput
 	commandOutput = func(name string, args ...string) (string, error) {
-		if name == "ss" {
-			return `LISTEN 0 128 *:2222 *:* users:(("sshd",pid=1,fd=3))`, nil
+		if isSSHDTest(name, args) {
+			return sshdTestConfig(2222), nil
 		}
 		if name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
 			return `{"nftables":[]}`, nil
