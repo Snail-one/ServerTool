@@ -158,7 +158,7 @@ func TestTrafficMonitorMenuReturnsWithoutPauseOrConfigurationWrites(t *testing.T
 		}
 		return `{"nftables":[]}`, nil
 	}
-	view := inputUI(t, "9\nq\nq\nnext\n")
+	view := inputUI(t, "8\nq\nq\nnext\n")
 	output := capturePortOutput(t, func() {
 		if err := Run(view); !errors.Is(err, shared.ErrReturnToMenu) {
 			t.Fatal(err)

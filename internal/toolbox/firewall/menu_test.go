@@ -94,12 +94,12 @@ func TestMenuReflectsAutostartChangeAndQueriesStateOncePerDisplay(t *testing.T) 
 		return nil
 	}
 	output := capturePortOutput(t, func() {
-		if err := Run(inputUI(t, "7\ny\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+		if err := Run(inputUI(t, "7\n3\ny\n\nq\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 			t.Fatal(err)
 		}
 	})
-	if commands != 1 || queries != 5 {
-		t.Fatalf("commands=%d queries=%d; expected two menu snapshots and three toggle checks", commands, queries)
+	if commands != 1 || queries != 7 {
+		t.Fatalf("commands=%d queries=%d; expected four menu snapshots and three toggle checks", commands, queries)
 	}
 	if !strings.Contains(output, "开启开机自启") || !strings.Contains(output, "关闭开机自启") {
 		t.Fatal("menu did not switch the displayed next action after enabling")

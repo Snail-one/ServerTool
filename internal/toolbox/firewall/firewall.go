@@ -46,7 +46,7 @@ func Run(view *ui.UI) error {
 		ui.MenuTitle("防火墙管理")
 		autostart := inspectAutostart()
 		ui.PrintInfoCard("防火墙状态", currentConfigFields(autostart)...)
-		showMenu(autostart)
+		showMenu()
 		choice, err := view.Ask("请选择（回车刷新状态）：")
 		if err != nil {
 			return err
@@ -80,14 +80,10 @@ func Run(view *ui.UI) error {
 				return configure(view)
 			})
 		case "7":
-			shared.RunAction(view, "修改开机自启失败，已返回防火墙管理", func() error {
-				return toggleAutostart(view)
-			})
-		case "8":
 			shared.RunAction(view, "功能设置失败，已返回防火墙管理", func() error {
 				return runFeatureSettings(view)
 			})
-		case "9":
+		case "8":
 			shared.RunAction(view, "实时查看规则失败，已返回防火墙管理", func() error {
 				return monitorTraffic(view, time.Second)
 			})
