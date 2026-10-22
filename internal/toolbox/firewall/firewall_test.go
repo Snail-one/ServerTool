@@ -190,7 +190,7 @@ func TestBuildConfigKeepsPublicAndPrivatePortsSeparate(t *testing.T) {
 		for _, family := range []string{"ipv4", "ipv6"} {
 			for _, protocol := range []string{"tcp", "udp"} {
 				for scope, web := range map[string]bool{"public": choices.public, "private": choices.private} {
-					ports := "$snail_ssh_port, $snail_ssh_port_2"
+					ports := "$snail_ssh_port"
 					if web {
 						ports += ", 80, 443"
 					}
@@ -204,7 +204,7 @@ func TestBuildConfigKeepsPublicAndPrivatePortsSeparate(t *testing.T) {
 			}
 		}
 		for _, required := range []string{
-			"#!/usr/sbin/nft -f\n", "define snail_ssh_port = 2222", "define snail_ssh_port_2 = 22000",
+			"#!/usr/sbin/nft -f\n", "define snail_ssh_port = { 2222, 22000 }",
 			"add table inet snail\nflush table inet snail", "type filter hook input priority 0; policy drop;",
 			"ct state established,related counter accept", `iifname "lo" counter accept`,
 			"ip saddr $snail_private_ipv4 goto private_ports", "ip6 saddr $snail_private_ipv6 goto private_ports",
@@ -377,7 +377,7 @@ func TestRunConfirmsInstallAndWritesThenApplies(t *testing.T) {
 		t.Fatalf("must validate, write and automatically load exactly once: %v", operations)
 	}
 	content := shared.ReadFileString(configPath)
-	if !strings.Contains(content, "define snail_ssh_port = 2200") ||
+	if !strings.Contains(content, "define snail_ssh_port = { 2200 }") ||
 		!strings.Contains(content, "define snail_public_ipv4_tcp_ports = { $snail_ssh_port, 80, 443 }") ||
 		!strings.Contains(content, "define snail_public_ipv4_udp_ports = { $snail_ssh_port, 80, 443 }") ||
 		!strings.Contains(content, "define snail_private_ipv4_tcp_ports = { $snail_ssh_port }") ||
@@ -558,7 +558,7 @@ func TestConfigureStopsOnCheckWriteOrLoadFailure(t *testing.T) {
 				if loads != 1 || !strings.Contains(err.Error(), "已写入") || !strings.Contains(err.Error(), "未成功加载") || !strings.Contains(err.Error(), "netlink failure") {
 					t.Fatalf("load failure must report saved config and detailed cause: loads=%d err=%v", loads, err)
 				}
-				if !strings.Contains(shared.ReadFileString(configPath), "define snail_ssh_port = 2222") {
+				if !strings.Contains(shared.ReadFileString(configPath), "define snail_ssh_port = { 2222 }") {
 					t.Fatal("load failure must preserve the generated configuration for retry")
 				}
 			} else if loads != 0 {

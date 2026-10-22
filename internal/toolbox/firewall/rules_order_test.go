@@ -57,7 +57,7 @@ func TestReorderRulesPersistsMatchingOrderAndKeepsLogicalRulesIntact(t *testing.
 			if err != nil || !reflect.DeepEqual(got, want) {
 				t.Fatalf("wrong saved matching order: got=%v want=%v err=%v", got, want, err)
 			}
-			if !strings.Contains(saved, manual) || !strings.Contains(saved, "define snail_ssh_port = 2222") {
+			if !strings.Contains(saved, manual) || !strings.Contains(saved, "define snail_ssh_port = { 2222 }") {
 				t.Fatal("reordering changed manual or baseline configuration")
 			}
 			if !reflect.DeepEqual(*calls, []string{"check", "load"}) {

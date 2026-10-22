@@ -47,7 +47,7 @@ func TestPingSwitchPreservesOtherRulesAndPrecedesConnectionTracking(t *testing.T
 		}
 		state, _, err = readPingSetting(updated)
 		if err != nil || state != enabled || strings.Count(updated, pingBegin) != 1 ||
-			!strings.Contains(updated, "define snail_ssh_port_2 = 4022") || strings.Contains(updated, sshPortsBegin) {
+			!strings.Contains(updated, "define snail_ssh_port = { 2222, 4022 }") || strings.Contains(updated, sshPortsBegin) {
 			t.Fatal("SSH updates damaged or duplicated Ping settings")
 		}
 	}
@@ -221,7 +221,7 @@ func TestRemovePingConfigurationKeepsOtherRulesAndDoesNotRecreateOnRegeneration(
 			}
 			// Every other active directive, including SSH, is preserved.
 			without, _ := withoutPingSetting(content)
-			if !sameConfigTokens(saved, without) || !strings.Contains(saved, "define snail_ssh_port_2 = 3022") {
+			if !sameConfigTokens(saved, without) || !strings.Contains(saved, "define snail_ssh_port = { 2222, 3022 }") {
 				t.Fatal("removal changed unrelated rules")
 			}
 			backups, _ := filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))

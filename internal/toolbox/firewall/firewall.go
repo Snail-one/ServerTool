@@ -489,20 +489,11 @@ func confirmConfig(view *ui.UI, content string, ports []int, publicWeb, privateW
 }
 
 func buildConfig(ports []int, publicWeb, privateWeb bool) (string, error) {
-	if len(ports) == 0 {
-		return "", fmt.Errorf("SSH 端口不能为空")
+	ports, err := mergeSSHPorts(ports)
+	if err != nil {
+		return "", err
 	}
-	var definitions, references []string
-	for i, port := range ports {
-		if port < 1 || port > 65535 {
-			return "", fmt.Errorf("SSH 端口无效: %d", port)
-		}
-		name := sshPortName(i)
-		definitions = append(definitions, fmt.Sprintf("define %s = %d", name, port))
-		references = append(references, "$"+name)
-	}
-	sshPorts := strings.Join(references, ", ")
-	publicPorts, privatePorts := sshPorts, sshPorts
+	publicPorts, privatePorts := "$snail_ssh_port", "$snail_ssh_port"
 	publicDescription, privateDescription := "当前仅开放 SSH 端口", "当前仅开放 SSH 端口"
 	if publicWeb {
 		publicPorts += ", 80, 443"
@@ -513,7 +504,7 @@ func buildConfig(ports []int, publicWeb, privateWeb bool) (string, error) {
 		privateDescription = "当前开放 SSH 端口及 80、443"
 	}
 	content := strings.NewReplacer(
-		"__SSH_DEFINITIONS__", strings.Join(definitions, "\n"),
+		"__SSH_PORTS__", portList(ports),
 		"__PUBLIC_PORTS__", publicPorts,
 		"__PRIVATE_PORTS__", privatePorts,
 		"__PUBLIC_PORT_DESCRIPTION__", publicDescription,

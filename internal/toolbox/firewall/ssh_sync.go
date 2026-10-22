@@ -161,12 +161,12 @@ func sshPortRules(ports []int, counters bool) []string {
 	return rules
 }
 
-var sshDefinitionLine = regexp.MustCompile(`(?m)^[\t ]*define[\t ]+(snail_ssh_port(?:_[0-9]+)?)[\t ]*=[\t ]*([0-9]+)[\t ]*(?:#[^\n]*)?\r?$`)
+var sshDefinitionLine = regexp.MustCompile(`(?m)^[\t ]*define[\t ]+snail_ssh_port[\t ]*=[\t ]*\{([0-9,\t \r\n]+)\}[\t ]*(?:#[^\n]*)?\r?$`)
 var sshPortListLine = regexp.MustCompile(`(?m)^([\t ]*define[\t ]+(snail_(?:public|private)_ipv[46]_(?:tcp|udp)_ports)[\t ]*=[\t ]*\{)([^{}\n]*)(\}[\t ]*(?:#[^\n]*)?\r?)$`)
 
-// withSSHPorts updates the generated scalar definitions and their references in
-// the eight port lists. Business ports and all other rules remain in place.
-// Older standalone SSH allow blocks must be replaced by regenerating the config.
+// withSSHPorts updates only the generated SSH port set. The eight port lists
+// retain the same reference regardless of how many SSH ports are configured.
+// Older formats must be replaced by regenerating the config.
 func withSSHPorts(content string, ports []int) (string, error) {
 	ports, err := mergeSSHPorts(ports)
 	if err != nil {
@@ -182,62 +182,39 @@ func withSSHPorts(content string, ports []int) (string, error) {
 		return "", err
 	}
 	definitions := sshDefinitionLine.FindAllStringSubmatchIndex(content, -1)
-	oldNames := make(map[string]bool)
-	for i, match := range definitions {
-		name := content[match[2]:match[3]]
-		if name != sshPortName(i) || oldNames[name] || (i > 0 && strings.TrimSpace(content[definitions[i-1][1]:match[0]]) != "") {
-			return "", fmt.Errorf("SSH 端口定义重复或格式异常，请重新生成防火墙配置")
+	if len(definitions) != 1 {
+		return "", fmt.Errorf("SSH 端口集合定义缺失、重复或格式异常，请重新生成防火墙配置")
+	}
+	definition := definitions[0]
+	for _, value := range strings.Split(content[definition[2]:definition[3]], ",") {
+		port, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || port < 1 || port > 65535 {
+			return "", fmt.Errorf("SSH 端口集合内容无效，请重新生成防火墙配置")
 		}
-		oldNames[name] = true
 	}
-	if len(definitions) == 0 {
-		return "", fmt.Errorf("未找到 snail_ssh_port 端口定义，请重新生成防火墙配置")
-	}
-	var newDefinitions, references []string
-	for i, port := range ports {
-		name := sshPortName(i)
-		newDefinitions = append(newDefinitions, fmt.Sprintf("define %s = %d", name, port))
-		references = append(references, "$"+name)
-	}
-	first, last := definitions[0][0], definitions[len(definitions)-1][1]
-	content = content[:first] + strings.Join(newDefinitions, "\n") + content[last:]
 	lists := make(map[string]bool)
-	var listErr error
-	content = sshPortListLine.ReplaceAllStringFunc(content, func(line string) string {
-		parts := sshPortListLine.FindStringSubmatch(line)
+	for _, parts := range sshPortListLine.FindAllStringSubmatch(content, -1) {
 		if lists[parts[2]] {
-			listErr = fmt.Errorf("业务端口列表重复，请重新生成防火墙配置")
+			return "", fmt.Errorf("业务端口列表重复，请重新生成防火墙配置")
 		}
 		lists[parts[2]] = true
-		values := append([]string(nil), references...)
+		references := 0
 		for _, raw := range strings.Split(parts[3], ",") {
 			value := strings.TrimSpace(raw)
-			if oldNames[strings.TrimPrefix(value, "$")] && strings.HasPrefix(value, "$") {
-				continue
-			}
-			if strings.Contains(value, "$snail_ssh_port") {
-				listErr = fmt.Errorf("SSH 端口引用无法识别，请重新生成防火墙配置")
-			}
-			if value != "" {
-				values = append(values, value)
+			if value == "$snail_ssh_port" {
+				references++
+			} else if strings.Contains(value, "$snail_ssh_port") {
+				return "", fmt.Errorf("SSH 端口集合引用异常，请重新生成防火墙配置")
 			}
 		}
-		return parts[1] + " " + strings.Join(values, ", ") + " " + parts[4]
-	})
-	if listErr != nil {
-		return "", listErr
+		if references != 1 {
+			return "", fmt.Errorf("业务端口列表缺少唯一的 SSH 集合引用，请重新生成防火墙配置")
+		}
 	}
 	if len(lists) != 8 {
 		return "", fmt.Errorf("缺少完整的公网、内网 TCP / UDP 端口列表，请重新生成防火墙配置")
 	}
-	return content, nil
-}
-
-func sshPortName(index int) string {
-	if index == 0 {
-		return "snail_ssh_port"
-	}
-	return "snail_ssh_port_" + strconv.Itoa(index+1)
+	return content[:definition[2]] + " " + portList(ports) + " " + content[definition[3]:], nil
 }
 
 // inputChainBounds returns the body and the end of its base-chain declarations.

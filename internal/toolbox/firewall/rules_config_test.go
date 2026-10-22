@@ -51,7 +51,7 @@ func TestManagedRulesRoundTripPreservesManualAndBaseConfiguration(t *testing.T) 
 	if err != nil || !reflect.DeepEqual(got, rules) {
 		t.Fatalf("managed rules round trip: %v %v", got, err)
 	}
-	if !strings.Contains(content, manual) || !strings.Contains(content, "define snail_ssh_port = 2222") || strings.Count(content, rulesBegin) != 1 {
+	if !strings.Contains(content, manual) || !strings.Contains(content, "define snail_ssh_port = { 2222 }") || strings.Count(content, rulesBegin) != 1 {
 		t.Fatal("manual configuration or SSH baseline changed")
 	}
 	again, err := replaceManagedRules(content, rules)
