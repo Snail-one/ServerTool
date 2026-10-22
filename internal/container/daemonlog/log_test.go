@@ -20,6 +20,7 @@ func setupBackupStore(t *testing.T) {
 }
 
 func TestWriteDockerDaemonLogConfigCreatesDefault(t *testing.T) {
+	setupBackupStore(t)
 	path := filepath.Join(t.TempDir(), "docker", "daemon.json")
 
 	result, err := writeDockerDaemonLogConfig(path, defaultLogRotationConfig(), failOverwritePrompt(t))
@@ -330,6 +331,7 @@ func TestPromptLogRotationConfigRejectsInvalidCustomInput(t *testing.T) {
 }
 
 func TestConfigureDockerLogRotationCanSkipComposeRebuild(t *testing.T) {
+	setupBackupStore(t)
 	path := filepath.Join(t.TempDir(), "daemon.json")
 	view := &fakePromptReader{answers: []string{"1"}, confirms: []bool{false}}
 	var runCalls []systemRunCall
@@ -371,6 +373,7 @@ func TestConfigureDockerLogRotationCanSkipComposeRebuild(t *testing.T) {
 }
 
 func TestConfigureDockerLogRotationConfirmCallsComposeRebuild(t *testing.T) {
+	setupBackupStore(t)
 	path := filepath.Join(t.TempDir(), "daemon.json")
 	view := &fakePromptReader{answers: []string{"2"}, confirms: []bool{true}}
 	rebuildCalled := false

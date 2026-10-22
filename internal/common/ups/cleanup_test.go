@@ -35,6 +35,9 @@ func setupCleanup(t *testing.T, files map[string]string) string {
 		if err := os.WriteFile(path, []byte(content), mode); err != nil {
 			t.Fatal(err)
 		}
+		if err := backupStore.RememberManaged(path, []byte(content)); err != nil {
+			t.Fatal(err)
+		}
 		nutConfigFiles = append(nutConfigFiles, nutConfigFile{path: path, mode: mode})
 	}
 	cleanupCommandExists = func(string) bool { return true }
@@ -151,5 +154,18 @@ func TestCleanupUPSPreflightAndServiceFailuresPreserveConfiguration(t *testing.T
 				t.Fatal("UPS files changed before all prerequisites succeeded")
 			}
 		})
+	}
+}
+
+func TestCleanupUPSDoesNotDeleteUserSectionWithoutOwnership(t *testing.T) {
+	dir := setupCleanup(t, map[string]string{"ups.conf": "[ups]\ndriver=usbhid-ups\nport=auto\n"})
+	backupStore.Root = filepath.Join(t.TempDir(), "snailtool")
+	path := filepath.Join(dir, "ups.conf")
+	before := shared.ReadFileString(path)
+	if err := Cleanup(nil); err == nil {
+		t.Fatal("manually configured UPS accepted as tool data")
+	}
+	if shared.ReadFileString(path) != before {
+		t.Fatal("manual UPS section removed")
 	}
 }

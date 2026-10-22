@@ -110,3 +110,17 @@ func TestAllConfigurationCleanupDeletesEntireDataDirectoryOnlyAfterSuccess(t *te
 		})
 	}
 }
+
+func TestCleanupStopsAtFirstFailure(t *testing.T) {
+	var calls []string
+	steps := []cleanupStep{
+		{name: "failed", run: func(*system.Account) error { calls = append(calls, "failed"); return errors.New("failed") }},
+		{name: "must retain", run: func(*system.Account) error { calls = append(calls, "unexpected deletion"); return nil }},
+	}
+	if err := runAllCleanupSteps(&system.Account{}, steps, func() error { calls = append(calls, "delete data"); return nil }); err == nil {
+		t.Fatal("failure ignored")
+	}
+	if !reflect.DeepEqual(calls, []string{"failed"}) {
+		t.Fatalf("deletion continued after failure: %v", calls)
+	}
+}

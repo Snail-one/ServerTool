@@ -1,7 +1,6 @@
 package sshkeys
 
 import (
-	"os"
 	"path/filepath"
 
 	"snail_tool/internal/log"
@@ -14,18 +13,20 @@ var sshAuthorizedKeysBegin, sshAuthorizedKeysEnd = keys.Markers()
 
 func Run(account *system.Account) error {
 	authKeys := filepath.Join(account.Home, ".ssh", "authorized_keys")
-	if !system.FileExists(authKeys) {
+	data, exists, err := shared.ReadRegularFile(authKeys)
+	if err != nil {
+		return err
+	}
+	if !exists {
 		log.Info("未发现 SSH authorized_keys，跳过")
 		return nil
 	}
 
-	data, err := os.ReadFile(authKeys)
+	content := string(data)
+	cleaned, err := shared.RemoveManagedBlockChecked(content, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd)
 	if err != nil {
 		return err
 	}
-
-	content := string(data)
-	cleaned := shared.RemoveManagedBlock(content, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd)
 	if cleaned == content {
 		log.Warn("未发现由本工具标记的 SSH 公钥，已保留 authorized_keys")
 		return nil

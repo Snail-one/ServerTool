@@ -115,7 +115,10 @@ func replaceVimConfig(path string) error {
 		// 旧版本会将模板写成整个文件；迁移时避免保留一份重复配置。
 		content = ""
 	} else {
-		content = shared.RemoveManagedBlock(content, vimrcBegin, vimrcEnd)
+		content, err = shared.RemoveManagedBlockChecked(content, vimrcBegin, vimrcEnd)
+		if err != nil {
+			return err
+		}
 	}
 
 	block := shared.FormatManagedBlock(vimrcBegin, vimrcContent, vimrcEnd)

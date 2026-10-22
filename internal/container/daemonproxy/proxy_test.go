@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"snail_tool/internal/shared"
 )
 
 func TestBuildDockerProxyConfig(t *testing.T) {
@@ -34,6 +36,9 @@ func TestDockerProxyURLAddsTrailingSlash(t *testing.T) {
 }
 
 func TestWriteDockerProxyConfig(t *testing.T) {
+	previous := managedStore
+	managedStore = shared.BackupStore{Root: filepath.Join(t.TempDir(), "snailtool"), Module: "docker"}
+	t.Cleanup(func() { managedStore = previous })
 	path := filepath.Join(t.TempDir(), "docker.service.d", "http-proxy.conf")
 	proxyURL := "http://127.0.0.1:7890/"
 	if err := writeDockerProxyConfig(path, proxyURL); err != nil {

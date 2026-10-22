@@ -181,6 +181,16 @@ func TestRemoveContainerSafety(t *testing.T) {
 	if err == nil || confirmed != 0 || runs != 0 {
 		t.Fatalf("running rm was not blocked: confirmed=%d runs=%d err=%v", confirmed, runs, err)
 	}
+	c.State = containerStateExited
+	executed, err = removeContainer(func(string) (bool, error) { return true, nil }, func(name string, args ...string) error {
+		if name != "docker" || !reflect.DeepEqual(args, []string{"rm", "abcdef"}) {
+			t.Fatalf("deletion must use stable ID: %s %v", name, args)
+		}
+		return nil
+	}, "docker", c)
+	if err != nil || !executed {
+		t.Fatal("stopped container deletion failed", err)
+	}
 }
 
 func TestParseComposePSJSON(t *testing.T) {

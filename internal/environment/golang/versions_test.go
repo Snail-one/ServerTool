@@ -114,6 +114,19 @@ func TestInstallArtifactsOnlyReturnsKnownTemporaryEntries(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	writeManagedVersion(t, filepath.Join(root, ".backup-go1.24.1-123"), "binary")
+	if err := os.Remove(filepath.Join(root, ".current.tmp")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "go1.24.1"), filepath.Join(root, ".current.tmp")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(root, ".download-123.tar.gz")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".download-123.tar.gz"), []byte("partial download"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	got, err := installArtifacts(root)
 	if err != nil {
 		t.Fatal(err)

@@ -554,12 +554,15 @@ func removeContainer(confirm func(string) (bool, error), run func(string, ...str
 	if !canRemoveContainer(c) {
 		return false, fmt.Errorf("当前状态不允许删除容器")
 	}
+	if c.ID == "" {
+		return false, fmt.Errorf("未取得容器 ID，无法安全删除，请刷新后重试")
+	}
 	prompt := fmt.Sprintf("容器：%s\nID：%s\n确认执行 rm（不会强制删除）？(y/N)：", defaultText(c.Name), defaultText(c.ID))
 	confirmed, err := confirm(prompt)
 	if err != nil || !confirmed {
 		return false, err
 	}
-	if err := run(runtimeName, containerRemoveArgs(containerRef(c))...); err != nil {
+	if err := run(runtimeName, containerRemoveArgs(c.ID)...); err != nil {
 		return true, err
 	}
 	log.Info("已删除容器: ", containerRef(c))

@@ -195,7 +195,10 @@ func replaceBashConfig(path, body string) error {
 		return err
 	}
 
-	content := shared.RemoveManagedBlock(string(data), bashAliasBegin, bashAliasEnd)
+	content, err := shared.RemoveManagedBlockChecked(string(data), bashAliasBegin, bashAliasEnd)
+	if err != nil {
+		return err
+	}
 	block := shared.FormatManagedBlock(bashAliasBegin, body, bashAliasEnd)
 	return shared.AtomicWriteFile(path, []byte(shared.AppendBlock(content, block)), shared.AtomicWriteOptions{Mode: 0644})
 }

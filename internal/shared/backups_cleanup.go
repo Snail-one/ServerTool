@@ -68,7 +68,22 @@ func (store BackupStore) List() ([]BackupEntry, error) {
 }
 
 func isBackupName(name string) bool {
-	return !strings.HasPrefix(name, ".") && (strings.Contains(name, ".bak.") || strings.HasSuffix(name, ".original.json"))
+	if strings.HasPrefix(name, ".") {
+		return false
+	}
+	if strings.HasSuffix(name, ".original.json") {
+		return true
+	}
+	at := strings.LastIndex(name, ".bak.")
+	if at <= 0 {
+		return false
+	}
+	parts := snapshotSuffix.FindStringSubmatch(name[at+len(".bak."):])
+	if len(parts) == 0 {
+		return false
+	}
+	_, err := time.Parse("20060102_150405", parts[1])
+	return err == nil
 }
 
 func (store BackupStore) CheckEntries(entries []BackupEntry) error {

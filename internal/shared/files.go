@@ -113,8 +113,12 @@ func AtomicWrite(path string, options AtomicWriteOptions, write func(io.Writer) 
 	}
 
 	// Recheck immediately before replacement to reject a link introduced while writing.
-	if _, _, err := validateAtomicTarget(path); err != nil {
+	latest, latestExists, err := validateAtomicTarget(path)
+	if err != nil {
 		return err
+	}
+	if exists != latestExists || (exists && (!os.SameFile(info, latest) || info.Size() != latest.Size() || !info.ModTime().Equal(latest.ModTime()) || info.Mode() != latest.Mode())) {
+		return fmt.Errorf("目标文件在写入期间发生变化，未覆盖: %s", path)
 	}
 	if err := os.Rename(tempPath, path); err != nil {
 		return fmt.Errorf("原子替换目标文件失败 %s: %w", path, err)
@@ -219,6 +223,9 @@ func RemoveRegularFile(path string) error {
 // RemovePathTree recursively removes a regular file or directory tree after
 // verifying that neither the target nor any existing parent is a symlink.
 func RemovePathTree(path string) error {
+	if err := CheckRemovalTree(path); err != nil {
+		return err
+	}
 	exists, err := validateRemovalTarget(path)
 	if err != nil || !exists {
 		return err
@@ -235,6 +242,46 @@ func RemovePathTree(path string) error {
 	defer directory.Close()
 	if err := syncAtomicDir(directory); err != nil {
 		return fmt.Errorf("同步父目录失败 %s: %w", dir, err)
+	}
+	return nil
+}
+
+// CheckRemovalTree rejects broad system directories, redirected paths and mount
+// points before recursive deletion. A bind mount can expose unrelated data even
+// when no symbolic links are present.
+func CheckRemovalTree(path string) error {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path || filepath.Dir(path) == string(os.PathSeparator) {
+		return fmt.Errorf("拒绝递归删除不明确或过宽的路径: %s", path)
+	}
+	switch path {
+	case "/var/lib", "/var/log", "/var/cache", "/usr/local", "/usr/local/bin", "/usr/local/sbin", "/etc/systemd", "/etc/systemd/system":
+		return fmt.Errorf("拒绝递归删除系统公共目录: %s", path)
+	}
+	exists, err := validateRemovalTarget(path)
+	if err != nil || !exists {
+		return err
+	}
+	data, err := os.ReadFile("/proc/self/mountinfo")
+	if err != nil {
+		return fmt.Errorf("无法检查删除范围内的挂载点，未删除: %w", err)
+	}
+	return checkRemovalMounts(path, string(data))
+}
+
+func checkRemovalMounts(path, mountinfo string) error {
+	unescape := strings.NewReplacer(`\040`, " ", `\011`, "\t", `\012`, "\n", `\134`, `\`)
+	for _, line := range strings.Split(mountinfo, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 6 {
+			return fmt.Errorf("挂载点信息不完整，未删除目录")
+		}
+		mount := unescape.Replace(fields[4])
+		if mount == path || strings.HasPrefix(mount, path+string(os.PathSeparator)) {
+			return fmt.Errorf("删除范围包含挂载点 %s，未删除，避免影响其他数据", mount)
+		}
 	}
 	return nil
 }
@@ -280,6 +327,35 @@ func RemoveManagedBlock(content, begin, end string) string {
 	return re.ReplaceAllString(content, "")
 }
 
+// RemoveManagedBlockChecked refuses ambiguous markers instead of deleting the
+// text between an accidental first begin and a later end.
+func RemoveManagedBlockChecked(content, begin, end string) (string, error) {
+	if begin == "" || end == "" || begin == end {
+		return "", fmt.Errorf("托管区块标记无效")
+	}
+	begins, ends := strings.Count(content, begin), strings.Count(content, end)
+	if begins == 0 && ends == 0 {
+		return content, nil
+	}
+	if begins != 1 || ends != 1 || strings.Index(content, begin) > strings.Index(content, end) {
+		return "", fmt.Errorf("托管区块标记重复、缺失或顺序异常，未清理配置")
+	}
+	for _, marker := range []string{begin, end} {
+		at := strings.Index(content, marker)
+		lineStart := strings.LastIndex(content[:at], "\n") + 1
+		lineEnd := strings.Index(content[at:], "\n")
+		if lineEnd < 0 {
+			lineEnd = len(content)
+		} else {
+			lineEnd += at
+		}
+		if strings.TrimSpace(content[lineStart:lineEnd]) != marker {
+			return "", fmt.Errorf("托管区块标记未独占一行，未清理配置")
+		}
+	}
+	return RemoveManagedBlock(content, begin, end), nil
+}
+
 func ManagedBlockContent(content, begin, end string) (string, bool) {
 	re := regexp.MustCompile(`(?s)` + regexp.QuoteMeta(begin) + `(.*?)` + regexp.QuoteMeta(end))
 	match := re.FindStringSubmatch(content)
@@ -314,18 +390,21 @@ func NormalizeCleanedContent(content string) string {
 }
 
 func CleanupManagedBlocks(path string, blocks ...BlockMarker) (bool, error) {
-	data, err := os.ReadFile(path)
+	data, exists, err := ReadRegularFile(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
 		return false, err
+	}
+	if !exists {
+		return false, nil
 	}
 
 	content := string(data)
 	cleaned := content
 	for _, block := range blocks {
-		cleaned = RemoveManagedBlock(cleaned, block.Begin, block.End)
+		cleaned, err = RemoveManagedBlockChecked(cleaned, block.Begin, block.End)
+		if err != nil {
+			return false, err
+		}
 	}
 	if cleaned == content {
 		return false, nil

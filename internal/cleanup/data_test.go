@@ -141,3 +141,28 @@ func TestSoftwareDataDeletionRejectsRedirectedOrInvalidRoots(t *testing.T) {
 		t.Fatal("redirected deletion modified the real directory")
 	}
 }
+
+func TestSoftwareDataDeletionRejectsReplacedDirectory(t *testing.T) {
+	root := seedSoftwareData(t)
+	info, err := inspectSoftwareData(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := root + "-saved"
+	if err := os.Rename(root, saved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "new-data")
+	if err := os.WriteFile(path, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := deleteSoftwareData(root, info); err == nil {
+		t.Fatal("replacement directory deleted")
+	}
+	if shared.ReadFileString(path) != "keep" || shared.ReadFileString(filepath.Join(saved, ".hidden")) != "keep until confirmed" {
+		t.Fatal("original or replacement data changed")
+	}
+}

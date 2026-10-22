@@ -15,14 +15,20 @@ func setupDockerCleanup(t *testing.T, daemon, proxy string) {
 	t.Helper()
 	previousDaemon, previousProxy := dockerDaemonPath, dockerProxyPath
 	previousRun, previousExists, previousUnit := cleanupCommandRun, cleanupCommandExists, cleanupUnitExists
+	previousStore := dockerManagedStore
+	dockerManagedStore = shared.BackupStore{Root: filepath.Join(t.TempDir(), "snailtool"), Module: "docker"}
 	t.Cleanup(func() {
 		dockerDaemonPath, dockerProxyPath = previousDaemon, previousProxy
 		cleanupCommandRun, cleanupCommandExists, cleanupUnitExists = previousRun, previousExists, previousUnit
+		dockerManagedStore = previousStore
 	})
 	dir := t.TempDir()
 	dockerDaemonPath, dockerProxyPath = filepath.Join(dir, "daemon.json"), filepath.Join(dir, "http-proxy.conf")
 	for path, content := range map[string]string{dockerDaemonPath: daemon, dockerProxyPath: proxy} {
 		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := dockerManagedStore.RememberManaged(path, []byte(content)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -99,6 +105,33 @@ func TestDockerCleanupPreflightsFilesAndReportsServiceFailure(t *testing.T) {
 			}
 			if scenario != "service failure" && shared.ReadFileString(dockerDaemonPath) != daemon {
 				t.Fatal("configuration changed before all files were validated")
+			}
+		})
+	}
+}
+
+func TestDockerCleanupRefusesUnownedAndManuallyChangedFiles(t *testing.T) {
+	for _, scenario := range []string{"no record", "manual daemon changes", "manual proxy changes"} {
+		t.Run(scenario, func(t *testing.T) {
+			setupDockerCleanup(t, `{"log-driver":"json-file","debug":true}`, "[Service]\nEnvironment=\"HTTP_PROXY=http://example:8080\"\n")
+			if scenario == "no record" {
+				dockerManagedStore.Root = filepath.Join(t.TempDir(), "snailtool")
+			}
+			changed := dockerDaemonPath
+			if scenario == "manual proxy changes" {
+				changed = dockerProxyPath
+			}
+			if scenario != "no record" {
+				if err := os.WriteFile(changed, []byte(shared.ReadFileString(changed)+"\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			daemon, proxy := shared.ReadFileString(dockerDaemonPath), shared.ReadFileString(dockerProxyPath)
+			if err := cleanupDocker(nil); err == nil {
+				t.Fatal("unknown ownership accepted")
+			}
+			if shared.ReadFileString(dockerDaemonPath) != daemon || shared.ReadFileString(dockerProxyPath) != proxy {
+				t.Fatal("ambiguous cleanup changed files")
 			}
 		})
 	}

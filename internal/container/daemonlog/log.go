@@ -276,6 +276,9 @@ func writeDockerDaemonLogConfig(path string, rotation logRotationConfig, confirm
 		return result, err
 	}
 	data = append(data, '\n')
+	if err := backupStore.RememberManaged(path, data); err != nil {
+		return result, fmt.Errorf("记录 Docker 日志配置归属失败，未写入配置: %w", err)
+	}
 	if err := shared.AtomicWriteFile(path, data, shared.AtomicWriteOptions{Mode: 0644, ForceMode: true}); err != nil {
 		return result, err
 	}

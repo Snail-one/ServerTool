@@ -72,7 +72,11 @@ func Run(view *ui.UI) error {
 		}
 		switch choice {
 		case allChoice:
-			if _, err := inspectSoftwareData(shared.DataDir); err != nil {
+			dataInfo, err := inspectSoftwareData(shared.DataDir)
+			if err != nil {
+				return err
+			}
+			if err := shared.CheckRemovalTree(shared.DataDir); err != nil {
 				return err
 			}
 			plan, err := cleanupbackups.PrepareAll()
@@ -102,7 +106,19 @@ func Run(view *ui.UI) error {
 				fmt.Println("已取消清理")
 				continue
 			}
-			return runAllCleanupSteps(account, steps, DeleteSoftwareData)
+			return runAllCleanupSteps(account, steps, func() error {
+				if dataInfo == nil {
+					latest, err := inspectSoftwareData(shared.DataDir)
+					if err != nil {
+						return err
+					}
+					if latest != nil {
+						return fmt.Errorf("清理期间出现新的软件数据目录，未删除，请检查后重试")
+					}
+					return nil
+				}
+				return deleteSoftwareData(shared.DataDir, dataInfo)
+			})
 		case backupChoice:
 			shared.RunAction(view, "备份清理失败，已返回清理配置", func() error { return cleanupbackups.Run(view) })
 		case dataChoice:
@@ -163,18 +179,13 @@ func runCleanupStepWithConfirm(view *ui.UI, account *system.Account, step cleanu
 }
 
 func runCleanupSteps(account *system.Account, steps []cleanupStep) error {
-	var errs []error
 	for _, step := range steps {
 		fmt.Println()
 		log.Info("清理 ", step.name, " 配置...")
 		if err := step.run(account); err != nil {
 			log.Error(step.name, " 配置清理失败：", err)
-			errs = append(errs, fmt.Errorf("%s: %w", step.name, err))
+			return fmt.Errorf("%s: %w", step.name, err)
 		}
-	}
-
-	if len(errs) > 0 {
-		return errors.Join(errs...)
 	}
 
 	fmt.Println()

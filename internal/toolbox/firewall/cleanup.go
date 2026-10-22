@@ -61,7 +61,10 @@ func prepareFirewallCleanup() (*firewallCleanup, error) {
 	}
 	cleaned := content
 	for _, markers := range [][2]string{{configBegin, configEnd}, {rulesBegin, rulesEnd}, {sshPortsBegin, sshPortsEnd}, {pingBegin, pingEnd}} {
-		cleaned = shared.RemoveManagedBlock(cleaned, markers[0], markers[1])
+		cleaned, err = shared.RemoveManagedBlockChecked(cleaned, markers[0], markers[1])
+		if err != nil {
+			return nil, err
+		}
 	}
 	plan.cleaned = []byte(shared.NormalizeCleanedContent(cleaned))
 	if original != nil {

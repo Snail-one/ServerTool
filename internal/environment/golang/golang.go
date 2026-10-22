@@ -309,6 +309,10 @@ func uninstallSelected(view *ui.UI) error {
 		selected = versions[index-1-offset]
 		break
 	}
+	selectedInfo, err := os.Lstat(filepath.Join(installRoot, selected))
+	if err != nil {
+		return err
+	}
 	confirmed, err := view.Confirm(fmt.Sprintf("确认卸载 %s？(y/N)：", selected))
 	if err != nil {
 		return err
@@ -319,7 +323,7 @@ func uninstallSelected(view *ui.UI) error {
 	}
 
 	wasActive := activeVersion(currentLink) == selected
-	if err := os.RemoveAll(filepath.Join(installRoot, selected)); err != nil {
+	if err := removeManagedVersion(installRoot, selected, selectedInfo); err != nil {
 		return fmt.Errorf("删除 %s 失败: %w", selected, err)
 	}
 	fields := []ui.CardField{{Label: "卸载版本", Value: selected}}
@@ -424,7 +428,13 @@ func cleanupInstallArtifacts(view *ui.UI) error {
 	}
 	fmt.Println(ui.PrimaryBoldText("检测到以下 Go 安装残留："))
 	containsBackup := false
+	expected := make(map[string]os.FileInfo)
 	for _, name := range artifacts {
+		info, err := installArtifactInfo(installRoot, name)
+		if err != nil {
+			return err
+		}
+		expected[name] = info
 		fmt.Println("- " + filepath.Join(installRoot, name))
 		if strings.HasPrefix(name, ".backup-") {
 			containsBackup = true
@@ -443,7 +453,7 @@ func cleanupInstallArtifacts(view *ui.UI) error {
 	}
 	for _, name := range artifacts {
 		path := filepath.Join(installRoot, name)
-		if err := os.RemoveAll(path); err != nil {
+		if err := removeInstallArtifact(installRoot, name, expected[name]); err != nil {
 			return fmt.Errorf("清理 Go 安装残留 %s 失败: %w", path, err)
 		}
 		log.Info("已清理：", path)

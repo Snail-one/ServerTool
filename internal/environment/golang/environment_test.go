@@ -59,6 +59,15 @@ export PATH="/opt/go/current/bin:$PATH"
 	}
 }
 
+func TestOfficialGoCleanupKeepsOtherPATHEntriesAndCommands(t *testing.T) {
+	input := "export PATH=\"/custom/bin:/usr/local/go/bin:$PATH\"\nexport PATH=/usr/local/golang/bin:$PATH\nexport PATH=/usr/local/go/bin:$PATH; echo keep-command\nexport GOROOT=/usr/local/golden\n"
+	cleaned, changed := removeOfficialGoEnv(input)
+	want := "export PATH=\"/custom/bin:$PATH\"\nexport PATH=/usr/local/golang/bin:$PATH\nexport PATH=/usr/local/go/bin:$PATH; echo keep-command\nexport GOROOT=/usr/local/golden\n"
+	if !changed || cleaned != want {
+		t.Fatalf("unrelated shell configuration removed: %q", cleaned)
+	}
+}
+
 func TestManagedPathIsIdempotentAndCleanable(t *testing.T) {
 	bashrc := filepath.Join(t.TempDir(), ".bashrc")
 	if err := os.WriteFile(bashrc, []byte("export EDITOR=vim\n"), 0644); err != nil {

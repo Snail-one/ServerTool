@@ -289,6 +289,9 @@ func replaceSSHAuthorizedKey(view *ui.UI, account *system.Account) error {
 			}
 
 			updated := replaceAuthorizedKeyIndex(content, index, pubkey)
+			if err := checkAuthorizedKeysVersion(authKeys, content); err != nil {
+				return err
+			}
 			if err := shared.AtomicWriteFile(authKeys, []byte(updated), shared.AtomicWriteOptions{Mode: 0600, ForceMode: true}); err != nil {
 				return err
 			}
@@ -381,8 +384,7 @@ func deleteSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		for _, index := range indexes {
 			selected[index] = struct{}{}
 		}
-		cleaned := removeAuthorizedKeyIndexes(content, selected)
-		if err := shared.AtomicWriteFile(authKeys, []byte(cleaned), shared.AtomicWriteOptions{Mode: 0600, ForceMode: true}); err != nil {
+		if err := removeSelectedAuthorizedKeys(authKeys, content, selected); err != nil {
 			return err
 		}
 
@@ -392,6 +394,28 @@ func deleteSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		)
 		return nil
 	}
+}
+
+func removeSelectedAuthorizedKeys(path, original string, selected map[int]struct{}) error {
+	if err := checkAuthorizedKeysVersion(path, original); err != nil {
+		return err
+	}
+	cleaned := removeAuthorizedKeyIndexes(original, selected)
+	return shared.AtomicWriteFile(path, []byte(cleaned), shared.AtomicWriteOptions{Mode: 0600, ForceMode: true})
+}
+
+func checkAuthorizedKeysVersion(path, original string) error {
+	if _, err := shared.RemoveManagedBlockChecked(original, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd); err != nil {
+		return err
+	}
+	latest, exists, err := shared.ReadRegularFile(path)
+	if err != nil {
+		return err
+	}
+	if !exists || string(latest) != original {
+		return fmt.Errorf("SSH 公钥文件在选择期间已变化，未删除，请重新进入选择")
+	}
+	return nil
 }
 
 func printAuthorizedKeys(account *system.Account) error {
@@ -527,10 +551,13 @@ func installAuthorizedKey(account *system.Account, pubkey string) error {
 }
 
 func writeManagedAuthorizedKey(path, content, pubkey string) error {
+	cleaned, err := shared.RemoveManagedBlockChecked(content, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd)
+	if err != nil {
+		return err
+	}
 	keys := managedAuthorizedKeys(content)
 	keys = append(keys, pubkey)
 
-	cleaned := shared.RemoveManagedBlock(content, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd)
 	block := shared.FormatManagedBlock(sshAuthorizedKeysBegin, strings.Join(keys, "\n"), sshAuthorizedKeysEnd)
 	return shared.AtomicWriteFile(path, []byte(shared.AppendBlock(cleaned, block)), shared.AtomicWriteOptions{Mode: 0600, ForceMode: true})
 }

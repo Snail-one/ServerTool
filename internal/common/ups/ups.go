@@ -435,6 +435,9 @@ func writeNUTConfigFile(file nutConfigFile, transform func(string) string) error
 			return ownerErr
 		}
 	}
+	if err := backupStore.RememberManaged(path, []byte(updated)); err != nil {
+		return fmt.Errorf("记录 UPS 配置归属失败，未写入配置: %w", err)
+	}
 	if err := shared.AtomicWriteFile(path, []byte(updated), options); err != nil {
 		return err
 	}
@@ -658,15 +661,28 @@ func restoreUPSBackup(view *ui.UI) error {
 }
 
 func deleteUPSBackups(view *ui.UI) error {
-	backups := existingNUTBackups()
+	all, err := backupStore.List()
+	if err != nil {
+		return err
+	}
+	allowed := make(map[string]bool)
+	for _, file := range nutConfigFiles {
+		allowed[originalNUTBackupPath(file.path)] = true
+	}
+	var backups []shared.BackupEntry
+	for _, entry := range all {
+		if allowed[entry.Path] {
+			backups = append(backups, entry)
+		}
+	}
 	if len(backups) == 0 {
 		fmt.Println("未发现 UPS 配置备份文件")
 		return nil
 	}
 
 	fmt.Println("将删除以下 UPS 配置备份文件：")
-	for _, file := range backups {
-		fmt.Printf("- %s\n", originalNUTBackupPath(file.path))
+	for _, entry := range backups {
+		fmt.Printf("- %s\n", entry.Path)
 	}
 	fmt.Println()
 
@@ -679,10 +695,8 @@ func deleteUPSBackups(view *ui.UI) error {
 		return shared.ErrReturnToMenu
 	}
 
-	for _, file := range backups {
-		if err := deleteNUTBackupFile(file); err != nil {
-			return err
-		}
+	if _, err := backupStore.Delete(backups); err != nil {
+		return err
 	}
 
 	fmt.Println()

@@ -17,6 +17,7 @@ var (
 	cleanupUnitExists    = system.SystemdUnitExists
 	cleanupCommandRun    = system.Run
 	cleanupCommandExists = system.CommandExists
+	dockerManagedStore   = shared.BackupStore{Root: shared.DataDir, Module: "docker"}
 )
 
 type fileCleanup struct {
@@ -52,6 +53,9 @@ func cleanupDocker(_ *system.Account) error {
 		_, driver := config["log-driver"]
 		_, options := config["log-opts"]
 		if driver || options {
+			if err := requireManagedDockerFile(dockerDaemonPath, content); err != nil {
+				return err
+			}
 			delete(config, "log-driver")
 			delete(config, "log-opts")
 			data, err := json.MarshalIndent(config, "", "  ")
@@ -86,6 +90,9 @@ func cleanupDocker(_ *system.Account) error {
 			}
 		}
 		if proxyChanged {
+			if err := requireManagedDockerFile(dockerProxyPath, content); err != nil {
+				return err
+			}
 			cleaned := strings.Join(kept, "")
 			meaningful := false
 			for _, line := range strings.Split(cleaned, "\n") {
@@ -101,6 +108,9 @@ func cleanupDocker(_ *system.Account) error {
 		if err := action.apply(); err != nil {
 			return err
 		}
+		if err := dockerManagedStore.ForgetManaged(action.path); err != nil {
+			return fmt.Errorf("Docker 配置已清理，但移除写入记录失败: %w", err)
+		}
 	}
 	if len(actions) > 0 && cleanupCommandExists("systemctl") {
 		if proxyChanged {
@@ -113,6 +123,17 @@ func cleanupDocker(_ *system.Account) error {
 				return fmt.Errorf("Docker 配置已清理，应用配置失败: %w", err)
 			}
 		}
+	}
+	return nil
+}
+
+func requireManagedDockerFile(path string, content []byte) error {
+	matches, err := dockerManagedStore.MatchesManaged(path, content)
+	if err != nil {
+		return err
+	}
+	if !matches {
+		return fmt.Errorf("Docker 配置没有本工具写入记录或已被修改，已保留，请手动检查: %s", path)
 	}
 	return nil
 }

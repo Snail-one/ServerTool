@@ -94,6 +94,14 @@ alias ll='ls -lah'
 	}
 }
 
+func TestProxyReplacementKeepsCompoundShellCommands(t *testing.T) {
+	input := "export http_proxy=http://localhost:1234; echo keep-command\nexport HTTPS_PROXY=\"http://localhost:1234\" && keep-another-command\nexport no_proxy=localhost\n"
+	want := "export http_proxy=http://localhost:1234; echo keep-command\nexport HTTPS_PROXY=\"http://localhost:1234\" && keep-another-command\n"
+	if got := removeUnmanagedProxyLines(input); got != want {
+		t.Fatalf("unrelated commands removed: %q", got)
+	}
+}
+
 func TestUnmanagedProxyAssignmentsIgnoresManagedBlock(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".bashrc")
 	input := `export http_proxy="http://user:secret@old.example:8080"

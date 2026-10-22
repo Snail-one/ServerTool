@@ -56,6 +56,9 @@ func cleanupSoftwareData(view *ui.UI, root string) error {
 }
 
 func deleteSoftwareData(root string, expected os.FileInfo) error {
+	if err := shared.CheckRemovalTree(root); err != nil {
+		return err
+	}
 	latest, err := inspectSoftwareData(root)
 	if err != nil {
 		return err

@@ -43,6 +43,13 @@ func Cleanup(_ *system.Account) error {
 		if !exists {
 			continue
 		}
+		matches, err := backupStore.MatchesManaged(file.path, current)
+		if err != nil {
+			return err
+		}
+		if !matches && (cleanupNUTContent(filepath.Base(file.path), string(current)) != string(current) || hasUPSOnBattScript(string(current))) {
+			return fmt.Errorf("UPS 配置缺少首次备份和有效写入记录，已保留，请手动检查: %s", file.path)
+		}
 		if filepath.Base(file.path) == filepath.Base(upsOnBattScript) {
 			if strings.TrimSpace(string(current)) == strings.TrimSpace(applyUPSOnBattScript("")) {
 				actions = append(actions, cleanupAction{file: file, remove: true})
@@ -75,6 +82,9 @@ func Cleanup(_ *system.Account) error {
 				return err
 			}
 		} else if err := shared.AtomicWriteFile(action.file.path, action.data, action.options); err != nil {
+			return err
+		}
+		if err := backupStore.ForgetManaged(action.file.path); err != nil {
 			return err
 		}
 		log.Info("已清理 UPS 配置：", action.file.path)

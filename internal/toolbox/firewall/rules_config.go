@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"unicode"
 
@@ -23,18 +22,8 @@ type configVersion struct {
 }
 
 func readConfigVersion() (configVersion, error) {
-	info, err := os.Lstat(configPath)
-	if os.IsNotExist(err) {
-		return configVersion{}, nil
-	}
-	if err != nil {
-		return configVersion{}, err
-	}
-	if !info.Mode().IsRegular() {
-		return configVersion{}, fmt.Errorf("配置不是普通文件，拒绝修改: %s", configPath)
-	}
-	data, err := os.ReadFile(configPath)
-	return configVersion{content: data, exists: true}, err
+	data, exists, err := shared.ReadRegularFile(configPath)
+	return configVersion{content: data, exists: exists}, err
 }
 
 func checkConfigVersion(expected configVersion) error {

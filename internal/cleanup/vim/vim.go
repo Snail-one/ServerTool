@@ -11,13 +11,20 @@ import (
 
 func Run(account *system.Account) error {
 	vimrc := filepath.Join(account.Home, ".vimrc")
-	if !system.FileExists(vimrc) {
+	data, exists, err := shared.ReadRegularFile(vimrc)
+	if err != nil {
+		return err
+	}
+	if !exists {
 		log.Info("未发现 Vim 配置，跳过")
 		return nil
 	}
 
-	content := shared.ReadFileString(vimrc)
+	content := string(data)
 	begin, end := commonvim.VimMarkers()
+	if _, err := shared.RemoveManagedBlockChecked(content, begin, end); err != nil {
+		return err
+	}
 	if _, hasManagedBlock := shared.ManagedBlockContent(content, begin, end); !hasManagedBlock {
 		if !commonvim.IsManagedVimConfigContent(content) {
 			log.Info("未发现 Vim 托管配置，跳过")

@@ -74,7 +74,10 @@ func configureTmux(account *system.Account) error {
 	if err != nil {
 		return err
 	}
-	content := shared.RemoveManagedBlock(string(data), tmuxBegin, tmuxEnd)
+	content, err := shared.RemoveManagedBlockChecked(string(data), tmuxBegin, tmuxEnd)
+	if err != nil {
+		return err
+	}
 	block := shared.FormatManagedBlock(tmuxBegin, tmuxContent, tmuxEnd)
 	return shared.AtomicWriteFile(path, []byte(shared.AppendBlock(content, block)), options)
 }

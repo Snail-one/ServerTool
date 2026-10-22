@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
+	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
 )
 
@@ -44,6 +46,9 @@ func installedVersions(root string) ([]string, error) {
 }
 
 func activeVersion(link string) string {
+	if !managedLinkPath(filepath.Dir(link), link) {
+		return ""
+	}
 	target, err := os.Readlink(link)
 	if err != nil {
 		return ""
@@ -56,7 +61,10 @@ func activeVersion(link string) string {
 }
 
 func activateVersion(root, link, version string) error {
-	if !validVersion(version) || !isManagedVersion(filepath.Join(root, version)) {
+	if err := shared.CheckRemovalTree(root); err != nil {
+		return err
+	}
+	if !validVersion(version) || !isManagedDirectory(filepath.Join(root, version)) {
 		return fmt.Errorf("Go 版本目录无效：%s", version)
 	}
 	if info, err := os.Lstat(link); err == nil && info.Mode()&os.ModeSymlink == 0 {
@@ -66,8 +74,10 @@ func activateVersion(root, link, version string) error {
 	} else if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	temporary := filepath.Join(filepath.Dir(link), ".current.tmp")
-	_ = os.Remove(temporary)
+	temporary, err := unusedTempPath(filepath.Dir(link), ".current-*")
+	if err != nil {
+		return err
+	}
 	if err := os.Symlink(filepath.Join(root, version), temporary); err != nil {
 		return err
 	}
@@ -95,6 +105,19 @@ func isManagedVersion(path string) bool {
 		system.FileExists(filepath.Join(path, managedFile))
 }
 
+func isManagedDirectory(path string) bool {
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	for _, name := range []string{managedFile, filepath.Join("bin", "go")} {
+		if _, exists, err := shared.ReadRegularFile(filepath.Join(path, name)); err != nil || !exists {
+			return false
+		}
+	}
+	return true
+}
+
 func removeCurrentLink(link string) error {
 	info, err := os.Lstat(link)
 	if os.IsNotExist(err) {
@@ -103,13 +126,16 @@ func removeCurrentLink(link string) error {
 	if err != nil {
 		return err
 	}
-	if info.Mode()&os.ModeSymlink == 0 {
+	if info.Mode()&os.ModeSymlink == 0 || !managedLinkPath(filepath.Dir(link), link) {
 		return fmt.Errorf("%s 不是本工具可安全删除的软链接", link)
 	}
 	return os.Remove(link)
 }
 
 func installArtifacts(root string) ([]string, error) {
+	if err := shared.CheckRemovalTree(root); err != nil {
+		return nil, err
+	}
 	entries, err := os.ReadDir(root)
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -120,14 +146,71 @@ func installArtifacts(root string) ([]string, error) {
 	artifacts := make([]string, 0)
 	for _, entry := range entries {
 		name := entry.Name()
-		if name == ".current.tmp" ||
-			strings.HasPrefix(name, ".backup-") ||
-			strings.HasPrefix(name, ".repair-") ||
-			strings.HasPrefix(name, ".install-") ||
-			(strings.HasPrefix(name, ".download-") && strings.HasSuffix(name, ".tar.gz")) {
+		if _, err := installArtifactInfo(root, name); err == nil {
 			artifacts = append(artifacts, name)
 		}
 	}
 	sort.Strings(artifacts)
 	return artifacts, nil
+}
+
+var artifactName = regexp.MustCompile(`^(\.(install|repair|current)-[0-9]+|\.download-[0-9]+\.tar\.gz|\.backup-(go[0-9]+\.[0-9]+(\.[0-9]+)?)-[0-9]+)$`)
+
+func installArtifactInfo(root, name string) (os.FileInfo, error) {
+	if filepath.Base(name) != name || (name != ".current.tmp" && !artifactName.MatchString(name)) {
+		return nil, fmt.Errorf("不是本工具的 Go 安装残留: %s", name)
+	}
+	if err := shared.CheckRemovalTree(root); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(root, name)
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if name == ".current.tmp" || strings.HasPrefix(name, ".current-") {
+		if info.Mode()&os.ModeSymlink == 0 || !managedLinkPath(root, path) {
+			return nil, fmt.Errorf("临时链接不属于本工具，已保留: %s", path)
+		}
+	} else if strings.HasPrefix(name, ".download-") {
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("下载残留不是普通文件: %s", path)
+		}
+	} else if !info.IsDir() || (strings.HasPrefix(name, ".backup-") && !isManagedDirectory(path)) {
+		return nil, fmt.Errorf("残留目录类型或 Go 备份归属不明: %s", path)
+	}
+	return info, nil
+}
+
+func removeInstallArtifact(root, name string, expected os.FileInfo) error {
+	info, err := installArtifactInfo(root, name)
+	if err != nil {
+		return err
+	}
+	if expected == nil || !os.SameFile(expected, info) || expected.ModTime() != info.ModTime() || expected.Size() != info.Size() {
+		return fmt.Errorf("Go 安装残留在确认期间变化，未删除: %s", name)
+	}
+	path := filepath.Join(root, name)
+	if name == ".current.tmp" || strings.HasPrefix(name, ".current-") {
+		return os.Remove(path) // Remove the validated link itself, never its target.
+	}
+	return shared.RemovePathTree(path)
+}
+
+func removeManagedVersion(root, version string, expected os.FileInfo) error {
+	if !validVersion(version) || filepath.Base(version) != version {
+		return fmt.Errorf("Go 版本名无效: %s", version)
+	}
+	path := filepath.Join(root, version)
+	if err := shared.CheckRemovalTree(path); err != nil {
+		return err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if expected == nil || !os.SameFile(expected, info) || !isManagedDirectory(path) {
+		return fmt.Errorf("Go 版本目录已变化或缺少托管标记，未删除: %s", path)
+	}
+	return shared.RemovePathTree(path)
 }

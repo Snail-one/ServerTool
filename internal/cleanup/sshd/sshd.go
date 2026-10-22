@@ -2,7 +2,6 @@ package sshd
 
 import (
 	"fmt"
-	"os"
 
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
@@ -31,6 +30,15 @@ func Run(_ *system.Account) error {
 
 func cleanupSSHDConfig() (bool, error) {
 	serviceChanged := false
+	data, exists, err := shared.ReadRegularFile(customSSHDConfigPath)
+	if err != nil {
+		return false, err
+	}
+	begin, end := security.ManagedSSHDConfigMarkers()
+	cleaned, err := shared.RemoveManagedBlockChecked(string(data), begin, end)
+	if err != nil {
+		return false, err
+	}
 
 	includeChanged, err := cleanupSSHDInclude()
 	if err != nil {
@@ -38,39 +46,37 @@ func cleanupSSHDConfig() (bool, error) {
 	}
 	serviceChanged = serviceChanged || includeChanged
 
-	if !system.FileExists(customSSHDConfigPath) {
+	if !exists {
 		log.Info("未发现 SSH 自定义配置，跳过")
 		return serviceChanged, nil
 	}
 
-	data, err := os.ReadFile(customSSHDConfigPath)
-	if err != nil {
-		return serviceChanged, err
-	}
 	if !security.IsManagedSSHDConfigContent(string(data)) {
 		log.Warn("SSH 自定义配置不是本工具生成，已跳过：", customSSHDConfigPath)
 		return serviceChanged, nil
 	}
 
-	if err := shared.AtomicWriteFile(customSSHDConfigPath, nil, shared.AtomicWriteOptions{Mode: 0644, ForceMode: true}); err != nil {
+	if err := shared.AtomicWriteFile(customSSHDConfigPath, []byte(shared.NormalizeCleanedContent(cleaned)), shared.AtomicWriteOptions{Mode: 0644, ForceMode: true}); err != nil {
 		return serviceChanged, err
 	}
-	log.Info("已清空 SSH 自定义配置：", customSSHDConfigPath)
+	log.Info("已移除 SSH 自定义配置中的托管区块：", customSSHDConfigPath)
 	return true, nil
 }
 
 func cleanupSSHDInclude() (bool, error) {
-	if !system.FileExists(sshdConfigPath) {
-		return false, nil
-	}
-
-	data, err := os.ReadFile(sshdConfigPath)
+	data, exists, err := shared.ReadRegularFile(sshdConfigPath)
 	if err != nil {
 		return false, err
 	}
+	if !exists {
+		return false, nil
+	}
 
 	content := string(data)
-	cleaned := shared.RemoveManagedBlock(content, managedSSHDIncludeBegin, managedSSHDIncludeEnd)
+	cleaned, err := shared.RemoveManagedBlockChecked(content, managedSSHDIncludeBegin, managedSSHDIncludeEnd)
+	if err != nil {
+		return false, err
+	}
 	if cleaned == content {
 		return false, nil
 	}

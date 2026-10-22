@@ -131,6 +131,7 @@ func TestWriteNUTConfigFileRequiresExistingNUTConfigFile(t *testing.T) {
 }
 
 func TestWriteNUTConfigFileCanCreateManagedScript(t *testing.T) {
+	setupBackupStore(t)
 	path := filepath.Join(t.TempDir(), "ups-onbatt-actions.sh")
 
 	err := writeNUTConfigFile(nutConfigFile{path: path, mode: 0700, owner: fileOwner{}}, applyUPSOnBattScript)

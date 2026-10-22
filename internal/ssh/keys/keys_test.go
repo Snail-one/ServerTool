@@ -26,6 +26,21 @@ func TestEnsureSSHAuthorizedKeysAllowsQToReturn(t *testing.T) {
 	}
 }
 
+func TestDeleteSelectedKeysPreservesConcurrentChanges(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "authorized_keys")
+	original := "ssh-ed25519 original old-key\n"
+	updated := original + "ssh-ed25519 newly-added other-key\n"
+	if err := os.WriteFile(path, []byte(updated), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeSelectedAuthorizedKeys(path, original, map[int]struct{}{1: {}}); err == nil {
+		t.Fatal("stale selection accepted")
+	}
+	if shared.ReadFileString(path) != updated {
+		t.Fatal("concurrent SSH key removed")
+	}
+}
+
 func TestEnsureSSHAuthorizedKeysOpensEditor(t *testing.T) {
 	home := t.TempDir()
 	account := &system.Account{Name: "test", Home: home, UID: os.Getuid(), GID: os.Getgid()}

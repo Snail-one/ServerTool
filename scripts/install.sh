@@ -136,6 +136,14 @@ proxy_configured() {
 		[ -n "${ALL_PROXY:-}" ] || [ -n "${all_proxy:-}" ]
 }
 
+data_directory_identity() {
+	if [ -e /var/lib/snailtool ] || [ -L /var/lib/snailtool ]; then
+		stat -c '%d:%i' /var/lib/snailtool
+	else
+		printf 'absent\n'
+	fi
+}
+
 trap cleanup 0
 trap 'exit 1' HUP INT TERM
 
@@ -159,7 +167,7 @@ else
 fi
 
 case "$BINARY_NAME" in
-	""|*/*) fail "命令名不能为空或包含路径分隔符" ;;
+	""|.|..|*/*) fail "命令名不能为空、点目录或包含路径分隔符" ;;
 esac
 case "$INSTALL_DIR" in
 	/*) ;;
@@ -170,11 +178,13 @@ TARGET="${INSTALL_DIR}/${BINARY_NAME}"
 [ "$(id -u)" -eq 0 ] || fail "该操作需要 root 权限，请使用 sudo sh scripts/install.sh 运行"
 
 if [ "$MODE" = "uninstall" ]; then
-	for REQUIRED_COMMAND in awk rm sed; do
+	for REQUIRED_COMMAND in awk rm sed stat; do
 		command -v "$REQUIRED_COMMAND" >/dev/null 2>&1 || fail "缺少必要命令：$REQUIRED_COMMAND"
 	done
 
 	step "检查安装状态"
+	INSTALL_REAL_DIR="$(cd "$INSTALL_DIR" && pwd -P)" || fail "无法验证程序安装目录"
+	[ "$INSTALL_REAL_DIR" = "$INSTALL_DIR" ] || fail "程序安装目录包含软链接或非规范路径，已停止卸载：${INSTALL_DIR}"
 	if [ ! -e "$TARGET" ] && [ ! -L "$TARGET" ]; then
 		info "程序文件不存在：${TARGET}"
 		result "ServerTool 当前未安装，无需卸载。"
@@ -182,15 +192,20 @@ if [ "$MODE" = "uninstall" ]; then
 	fi
 
 	CURRENT_RELEASE=""
+	[ ! -L "$TARGET" ] || fail "程序路径是软链接，无法确认卸载目标，已保留：${TARGET}"
+	[ -f "$TARGET" ] && [ -x "$TARGET" ] || fail "卸载目标不是可执行的普通程序，已保留：${TARGET}"
 	if [ -x "$TARGET" ]; then
 		CURRENT_VERSION="$("$TARGET" --version 2>/dev/null | sed -n '1p' || true)"
 		CURRENT_RELEASE="$(printf '%s\n' "$CURRENT_VERSION" | awk '$1 == "snailtool" { print $2; exit }')"
 	fi
+	[ -n "$CURRENT_RELEASE" ] || fail "无法确认目标属于 ServerTool，已停止卸载：${TARGET}"
+	TARGET_SIGNATURE="$(stat -c '%d:%i:%s:%Y' "$TARGET")" || fail "无法验证程序文件身份"
 	info "当前版本：${CURRENT_RELEASE:-未知}"
 	info "程序路径：${TARGET}"
 
 	printf '\n'
 	step "选择是否删除软件数据"
+	DATA_SIGNATURE="$(data_directory_identity)" || fail "无法确认软件数据目录身份，已停止卸载"
 	info "数据目录：/var/lib/snailtool（全部备份、首次快照、锁文件、隐藏文件及子目录）"
 	DATA_STATUS="已保留 /var/lib/snailtool（含全部备份）"
 	while :; do
@@ -203,6 +218,8 @@ if [ "$MODE" = "uninstall" ]; then
 			y|Y|[yY][eE][sS])
 				step "删除软件数据目录"
 				[ -x "$TARGET" ] || fail "程序无法运行，不能安全删除数据目录，已停止卸载：${TARGET}"
+				[ ! -L "$TARGET" ] && [ "$(stat -c '%d:%i:%s:%Y' "$TARGET")" = "$TARGET_SIGNATURE" ] || fail "程序文件在确认期间已变化，已停止卸载"
+				[ "$(data_directory_identity)" = "$DATA_SIGNATURE" ] || fail "软件数据目录在确认期间已变化，已停止卸载并保留数据"
 				"$TARGET" clean-data --yes || fail "数据目录删除失败，已停止卸载并保留程序"
 				DATA_STATUS="已清理 /var/lib/snailtool（整个目录）"
 				break
@@ -219,6 +236,7 @@ if [ "$MODE" = "uninstall" ]; then
 		esac
 	done
 	step "卸载程序"
+	[ ! -L "$TARGET" ] && [ "$(stat -c '%d:%i:%s:%Y' "$TARGET")" = "$TARGET_SIGNATURE" ] || fail "程序文件在卸载期间已变化，已保留当前文件"
 	rm -f "$TARGET"
 	[ ! -e "$TARGET" ] && [ ! -L "$TARGET" ] || fail "无法删除程序文件：${TARGET}"
 	print_uninstall_completion_card "${CURRENT_RELEASE:-未知}" "$TARGET" "$DATA_STATUS"

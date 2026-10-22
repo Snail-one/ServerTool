@@ -18,6 +18,8 @@ const (
 	dockerProxyPath = "/etc/systemd/system/docker.service.d/http-proxy.conf"
 )
 
+var managedStore = shared.BackupStore{Root: shared.DataDir, Module: "docker"}
+
 func Run(view *ui.UI) error {
 	return ConfigureDockerDaemonProxy(view)
 }
@@ -89,7 +91,11 @@ func writeDockerProxyConfig(path, proxyURL string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
-	return shared.AtomicWriteFile(path, []byte(buildDockerProxyConfig(proxyURL)), shared.AtomicWriteOptions{Mode: 0644, ForceMode: true})
+	data := []byte(buildDockerProxyConfig(proxyURL))
+	if err := managedStore.RememberManaged(path, data); err != nil {
+		return fmt.Errorf("记录 Docker 代理配置归属失败，未写入配置: %w", err)
+	}
+	return shared.AtomicWriteFile(path, data, shared.AtomicWriteOptions{Mode: 0644, ForceMode: true})
 }
 
 func buildDockerProxyConfig(proxyURL string) string {

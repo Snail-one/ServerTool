@@ -229,7 +229,10 @@ func writeProxyBlockWithOptions(path, proxyURL string, removeUnmanaged bool) err
 		return err
 	}
 
-	content := shared.RemoveManagedBlock(string(data), proxyBegin, proxyEnd)
+	content, err := shared.RemoveManagedBlockChecked(string(data), proxyBegin, proxyEnd)
+	if err != nil {
+		return err
+	}
 	if removeUnmanaged {
 		content = removeUnmanagedProxyLines(content)
 	}
@@ -298,7 +301,10 @@ func unmanagedProxyAssignments(path string) ([]proxyAssignment, error) {
 		return nil, err
 	}
 
-	content := shared.RemoveManagedBlock(string(data), proxyBegin, proxyEnd)
+	content, err := shared.RemoveManagedBlockChecked(string(data), proxyBegin, proxyEnd)
+	if err != nil {
+		return nil, err
+	}
 	return proxyAssignmentsFromContent(content), nil
 }
 
@@ -326,7 +332,8 @@ func removeUnmanagedProxyLines(content string) string {
 			continue
 		}
 		trimmed := strings.TrimRight(line, "\r\n")
-		if proxyShellEnvLine.MatchString(trimmed) {
+		match := proxyShellEnvLine.FindStringIndex(trimmed)
+		if match != nil && strings.TrimSpace(trimmed[match[1]:]) == "" {
 			continue
 		}
 		kept = append(kept, line)

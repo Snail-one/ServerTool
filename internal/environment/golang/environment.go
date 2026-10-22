@@ -1,7 +1,6 @@
 package golang
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -135,8 +134,37 @@ func removeOfficialGoEnv(content string) (string, bool) {
 		}
 		isGoAssignment := variable == "PATH" || variable == "GOROOT"
 		if !strings.HasPrefix(trimmed, "#") && isGoAssignment && strings.Contains(candidate, "/usr/local/go") {
-			changed = true
-			continue
+			value := strings.TrimSpace(candidate[equals+1:])
+			quote := ""
+			if len(value) >= 2 && (value[0] == '\'' || value[0] == '"') && value[len(value)-1] == value[0] {
+				quote, value = value[:1], value[1:len(value)-1]
+			}
+			// Preserve compound commands and complex shell expressions verbatim.
+			if !strings.ContainsAny(value, " \t;|&`\\()\"'") {
+				if variable == "GOROOT" && value == "/usr/local/go" {
+					changed = true
+					continue
+				}
+				if variable == "PATH" {
+					var paths []string
+					removed := false
+					for _, part := range strings.Split(value, ":") {
+						if part == "/usr/local/go/bin" {
+							removed = true
+						} else {
+							paths = append(paths, part)
+						}
+					}
+					if removed {
+						changed = true
+						remaining := strings.Join(paths, ":")
+						if remaining == "" || remaining == "$PATH" || remaining == "${PATH}" {
+							continue
+						}
+						line = strings.Replace(line, candidate, variable+"="+quote+remaining+quote, 1)
+					}
+				}
+			}
 		}
 		kept = append(kept, line)
 	}
@@ -148,13 +176,13 @@ func officialInstallDetected(root string) bool {
 }
 
 func removeOfficialInstall(root string) error {
-	if filepath.Clean(root) == string(os.PathSeparator) {
-		return errors.New("拒绝删除根目录")
+	if err := shared.CheckRemovalTree(root); err != nil {
+		return err
 	}
 	if !officialInstallDetected(root) {
 		return nil
 	}
-	if err := os.RemoveAll(root); err != nil {
+	if err := shared.RemovePathTree(root); err != nil {
 		return fmt.Errorf("卸载官方位置 Go 失败: %w", err)
 	}
 	return nil
@@ -182,7 +210,10 @@ func writeManagedPath(bashrc string) error {
 	if err != nil {
 		return err
 	}
-	content := shared.RemoveManagedBlock(string(data), pathBegin, pathEnd)
+	content, err := shared.RemoveManagedBlockChecked(string(data), pathBegin, pathEnd)
+	if err != nil {
+		return err
+	}
 	block := shared.FormatManagedBlock(pathBegin, pathBody, pathEnd)
 	if err := shared.AtomicWriteFile(bashrc, []byte(shared.AppendBlock(content, block)), shared.AtomicWriteOptions{Mode: 0644}); err != nil {
 		return err

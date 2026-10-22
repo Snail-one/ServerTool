@@ -8,6 +8,7 @@ import (
 	"runtime"
 
 	"snail_tool/internal/log"
+	"snail_tool/internal/shared"
 	"snail_tool/internal/ui"
 )
 
@@ -131,6 +132,9 @@ func downloadAndInstall(file releaseFile, destination string) error {
 }
 
 func unusedTempPath(root, pattern string) (string, error) {
+	if err := shared.CheckRemovalTree(root); err != nil {
+		return "", err
+	}
 	path, err := os.MkdirTemp(root, pattern)
 	if err != nil {
 		return "", err
@@ -142,7 +146,13 @@ func unusedTempPath(root, pattern string) (string, error) {
 }
 
 func replaceManagedVersion(destination, replacement string) error {
-	if !isManagedVersion(destination) || !isManagedVersion(replacement) {
+	if err := shared.CheckRemovalTree(destination); err != nil {
+		return err
+	}
+	if err := shared.CheckRemovalTree(replacement); err != nil {
+		return err
+	}
+	if !isManagedDirectory(destination) || !isManagedDirectory(replacement) {
 		return errors.New("拒绝替换无效或非托管的 Go 版本目录")
 	}
 	backup, err := unusedTempPath(filepath.Dir(destination), ".backup-"+filepath.Base(destination)+"-*")
@@ -158,7 +168,7 @@ func replaceManagedVersion(destination, replacement string) error {
 		}
 		return fmt.Errorf("替换 Go 版本失败，已恢复原版本: %w", err)
 	}
-	if err := os.RemoveAll(backup); err != nil {
+	if err := shared.RemovePathTree(backup); err != nil {
 		log.Warn("新版本已生效，但清理旧版本备份失败：", backup, "：", err)
 	}
 	return nil
