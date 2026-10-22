@@ -11,6 +11,7 @@ import (
 
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
+	"snail_tool/internal/tempguard"
 )
 
 const (
@@ -23,6 +24,12 @@ const (
 // input chain, leaving other tables and pending edits in the file unloaded.
 // Existing listeners are retained while all newly configured ports are added.
 func EnsureSSHPorts(configured []int) (bool, error) {
+	release, err := tempguard.Use()
+	if err != nil {
+		return false, err
+	}
+	defer release()
+
 	if !commandExists("nft") {
 		return false, nil
 	}

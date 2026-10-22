@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"snail_tool/internal/tempguard"
 )
 
 type Account struct {
@@ -198,6 +200,11 @@ func ValidateSSHPublicKey(pubkey string) error {
 		return errors.New("公钥不能为空")
 	}
 
+	release, err := tempguard.Use()
+	if err != nil {
+		return err
+	}
+	defer release()
 	tmp, err := os.CreateTemp("", "snail-ssh-key-*.pub")
 	if err != nil {
 		return err

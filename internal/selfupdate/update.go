@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"time"
 
+	"snail_tool/internal/tempguard"
 	"snail_tool/internal/ui"
 )
 
@@ -24,6 +25,12 @@ func Run(arguments ...string) error {
 }
 
 func run(client *http.Client, scriptURL string, stdin io.Reader, stdout, stderr io.Writer, arguments ...string) error {
+	release, err := tempguard.Use()
+	if err != nil {
+		return err
+	}
+	defer release()
+
 	response, err := client.Get(scriptURL)
 	if err != nil {
 		return fmt.Errorf("下载程序管理脚本失败: %w", err)

@@ -7,6 +7,7 @@ import (
 
 	"snail_tool/internal/log"
 	"snail_tool/internal/system"
+	"snail_tool/internal/tempguard"
 	"snail_tool/internal/ui"
 )
 
@@ -52,6 +53,11 @@ func (installer *dockerScriptInstaller) install() error {
 		return nil
 	}
 
+	release, err := tempguard.Use()
+	if err != nil {
+		return err
+	}
+	defer release()
 	temp, err := os.CreateTemp(installer.tempDir, "servertool-get-docker-*.sh")
 	if err != nil {
 		return fmt.Errorf("Docker 脚本安装在临时文件创建阶段失败: %w", err)

@@ -37,16 +37,40 @@ func TestGoDeletionRefusesParentSymlinkAndReplacement(t *testing.T) {
 	}
 }
 
-func TestGoArtifactDeletionRejectsWrongTypesAndReplacement(t *testing.T) {
+func TestGoArtifactScanStopsOnAbnormalRecognizedType(t *testing.T) {
 	root := t.TempDir()
-	for _, name := range []string{".install-notes", ".backup-go1.24.1-123", ".current.tmp", ".download-123.tar.gz"} {
-		if err := os.Mkdir(filepath.Join(root, name), 0700); err != nil {
+	if err := os.Mkdir(filepath.Join(root, ".install-notes"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := installArtifacts(root); err != nil || len(got) != 0 {
+		t.Fatalf("unrecognized name stopped the scan: %v %v", got, err)
+	}
+	for _, name := range []string{".backup-go1.24.1-123", ".current.tmp", ".download-123.tar.gz"} {
+		path := filepath.Join(root, name)
+		if err := os.Mkdir(path, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := installArtifacts(root); err == nil {
+			t.Fatalf("abnormal %s was ignored", name)
+		}
+		if err := os.Remove(path); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if got, err := installArtifacts(root); err != nil || len(got) != 0 {
-		t.Fatalf("unrelated entries offered for deletion: %v %v", got, err)
+	link := filepath.Join(root, ".download-9.tar.gz")
+	if err := os.Symlink(filepath.Join(root, ".install-notes"), link); err != nil {
+		t.Fatal(err)
 	}
+	if _, err := installArtifacts(root); err == nil {
+		t.Fatal("symlink download was ignored")
+	}
+	if _, err := os.Lstat(link); err != nil {
+		t.Fatal("symlink download was removed")
+	}
+}
+
+func TestGoArtifactDeletionRejectsWrongTypesAndReplacement(t *testing.T) {
+	root := t.TempDir()
 	path := filepath.Join(root, ".install-123")
 	if err := os.Mkdir(path, 0700); err != nil {
 		t.Fatal(err)

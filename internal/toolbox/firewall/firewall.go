@@ -13,6 +13,7 @@ import (
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
+	"snail_tool/internal/tempguard"
 	"snail_tool/internal/ui"
 )
 
@@ -533,6 +534,12 @@ func portList(ports []int) string {
 }
 
 func writeConfig(content string, versions ...configVersion) error {
+	release, err := tempguard.Use()
+	if err != nil {
+		return err
+	}
+	defer release()
+
 	if info, err := os.Lstat(configPath); err == nil {
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("拒绝覆盖非普通文件或软链接: %s", configPath)

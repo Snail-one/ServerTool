@@ -13,6 +13,7 @@ import (
 	"snail_tool/internal/environment/golang"
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
+	"snail_tool/internal/tempguard"
 	"snail_tool/internal/ui"
 )
 
@@ -39,6 +40,12 @@ type Item struct {
 	Kind kind
 	Info os.FileInfo
 }
+
+var (
+	readDirectory  = os.ReadDir
+	beforeRemove   func(Item)
+	temporaryFiles = tempguard.Default()
+)
 
 var (
 	tempFiles = []*regexp.Regexp{
@@ -82,12 +89,20 @@ func Run(view *ui.UI) error {
 }
 
 func run(view *ui.UI, locations Locations) error {
-	items, err := Scan(locations)
+	items, busy, err := Scan(locations)
 	if err != nil {
 		return err
 	}
+	if len(busy) > 0 {
+		log.Warn("以下临时文件仍被进程使用，已保留：")
+		for _, path := range busy {
+			fmt.Println("- " + path)
+		}
+	}
 	if len(items) == 0 {
-		log.Info("未发现中断留下的临时文件")
+		if len(busy) == 0 {
+			log.Info("未发现中断留下的临时文件")
+		}
 		return nil
 	}
 	containsBackup := false
@@ -130,26 +145,33 @@ func run(view *ui.UI, locations Locations) error {
 }
 
 // Scan lists recognizable leftovers. A matching name with an unexpected type stops the scan.
-func Scan(locations Locations) ([]Item, error) {
+// Files still open or used as a working directory are returned separately and are not deletion candidates.
+func Scan(locations Locations) ([]Item, []string, error) {
+	release, err := temporaryFiles.Cleanup()
+	if err != nil {
+		return nil, nil, err
+	}
+	defer release()
+
 	items := make([]Item, 0)
 	for _, dir := range uniquePaths(locations.TempDirs) {
 		found, err := scanNamed(dir, classifyTempName)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		items = append(items, found...)
 	}
 	for _, dir := range uniquePaths(locations.EtcDirs) {
 		found, err := scanNamed(dir, classifyEtcName)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		items = append(items, found...)
 	}
 	if root := strings.TrimSpace(locations.GoRoot); root != "" {
 		artifacts, err := golang.ListInstallArtifacts(root)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, artifact := range artifacts {
 			items = append(items, Item{
@@ -162,17 +184,44 @@ func Scan(locations Locations) ([]Item, error) {
 		}
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Path < items[j].Path })
-	return items, nil
+	uses, err := currentUses()
+	if err != nil {
+		return nil, nil, err
+	}
+	kept := make([]Item, 0, len(items))
+	busy := make([]string, 0)
+	for _, item := range items {
+		if usesPath(uses, item.Path, item.Info) {
+			busy = append(busy, item.Path)
+			continue
+		}
+		kept = append(kept, item)
+	}
+	return kept, busy, nil
 }
 
-// Delete rechecks every item before removing any of them.
+// Delete rechecks every item before removing any of them, and again immediately
+// before each removal so a later replacement is not deleted.
 func Delete(items []Item) error {
+	release, err := temporaryFiles.Cleanup()
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	uses, err := currentUses()
+	if err != nil {
+		return err
+	}
 	for _, item := range items {
-		if err := validateItem(item); err != nil {
+		if err := validateItem(item, uses); err != nil {
 			return err
 		}
 	}
 	for _, item := range items {
+		if beforeRemove != nil {
+			beforeRemove(item)
+		}
 		if err := removeItem(item); err != nil {
 			return err
 		}
@@ -195,23 +244,26 @@ func scanNamed(dir string, classify func(name string) (kind, bool)) ([]Item, err
 	if !info.IsDir() {
 		return nil, fmt.Errorf("扫描目录不是目录，已停止: %s", dir)
 	}
-	entries, err := os.ReadDir(dir)
+	entries, err := readDirectory(dir)
 	if err != nil {
 		return nil, fmt.Errorf("读取扫描目录失败 %s: %w", dir, err)
 	}
 	items := make([]Item, 0)
 	for _, entry := range entries {
+		itemKind, ok := classify(entry.Name())
+		if !ok {
+			continue
+		}
 		path, err := childPath(dir, entry.Name())
 		if err != nil {
 			return nil, err
 		}
 		itemInfo, err := os.Lstat(path)
+		if os.IsNotExist(err) {
+			continue
+		}
 		if err != nil {
 			return nil, fmt.Errorf("检查临时文件失败 %s: %w", path, err)
-		}
-		itemKind, ok := classify(entry.Name())
-		if !ok {
-			continue
 		}
 		if err := requireKind(path, itemKind, itemInfo); err != nil {
 			return nil, err
@@ -258,10 +310,13 @@ func requireKind(path string, kind kind, info os.FileInfo) error {
 	return fmt.Errorf("临时文件类型异常，已停止清理: %s", path)
 }
 
-func validateItem(item Item) error {
+func validateItem(item Item, uses []openUse) error {
 	latest, err := os.Lstat(item.Path)
 	if err != nil || !sameIdentity(item.Info, latest) {
 		return fmt.Errorf("临时文件在确认期间变化，未删除: %s", item.Path)
+	}
+	if usesPath(uses, item.Path, latest) {
+		return fmt.Errorf("临时文件仍被进程使用，未删除: %s", item.Path)
 	}
 	switch item.Kind {
 	case kindFile:
@@ -282,6 +337,13 @@ func validateItem(item Item) error {
 }
 
 func removeItem(item Item) error {
+	uses, err := currentUses()
+	if err != nil {
+		return err
+	}
+	if err := validateItem(item, uses); err != nil {
+		return err
+	}
 	switch item.Kind {
 	case kindFile:
 		return shared.RemoveRegularFile(item.Path)

@@ -15,6 +15,7 @@ import (
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
+	"snail_tool/internal/tempguard"
 	"snail_tool/internal/ui"
 )
 
@@ -158,6 +159,11 @@ func (installer *dockerInstaller) install() error {
 	}
 
 	keyURL, fingerprint := dockerKeyTrust(plan.Distribution)
+	release, err := tempguard.Use()
+	if err != nil {
+		return err
+	}
+	defer release()
 	temp, err := os.CreateTemp("", "servertool-docker-gpg-*")
 	if err != nil {
 		return fmt.Errorf("Docker 安装在密钥下载阶段失败: %w", err)

@@ -146,6 +146,19 @@ data_directory_identity() {
 	fi
 }
 
+lock_temporary_files() {
+	# Keep the inode after exit; Go uses flock on this same file. Do not use TMPDIR.
+	TEMP_LOCK="${1:-/tmp/.servertool-temps-$(id -u).lock}"
+	if [ ! -e "$TEMP_LOCK" ] && [ ! -L "$TEMP_LOCK" ]; then
+		(umask 077; set -C; : > "$TEMP_LOCK") 2>/dev/null || :
+	fi
+	[ -f "$TEMP_LOCK" ] && [ ! -L "$TEMP_LOCK" ] || fail "临时文件保护锁类型异常，已停止"
+	[ "$(stat -c '%u:%a:%h' "$TEMP_LOCK")" = "$(id -u):600:1" ] || fail "临时文件保护锁权限或属主异常，已停止"
+	exec 9<> "$TEMP_LOCK"
+	flock -sn 9 || fail "正在清理中断临时文件，请稍后重试"
+	# FD 9 stays open across downloads, closed-file gaps, and the cleanup trap.
+}
+
 trap cleanup 0
 trap 'exit 1' HUP INT TERM
 
@@ -251,7 +264,7 @@ esac
 
 [ "$(uname -s)" = "Linux" ] || fail "目前仅支持 Linux"
 
-for REQUIRED_COMMAND in awk chmod install mktemp mv sed uname; do
+for REQUIRED_COMMAND in awk chmod flock install mktemp mv sed stat uname; do
 	command -v "$REQUIRED_COMMAND" >/dev/null 2>&1 || fail "缺少必要命令：$REQUIRED_COMMAND"
 done
 
@@ -335,6 +348,7 @@ else
 	fail "需要 sha256sum 或 shasum 才能校验安装包"
 fi
 
+lock_temporary_files
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/servertool-install.XXXXXX")"
 step "检查发布版本"
 if [ "$RELEASE" = "latest" ]; then

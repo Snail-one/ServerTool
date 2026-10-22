@@ -14,6 +14,7 @@ import (
 	"snail_tool/internal/shared"
 	"snail_tool/internal/ssh/keys"
 	"snail_tool/internal/system"
+	"snail_tool/internal/tempguard"
 	"snail_tool/internal/toolbox/firewall"
 	"snail_tool/internal/ui"
 )
@@ -832,6 +833,11 @@ func joinedSSHDSetting(settings sshdSettings, key string) string {
 }
 
 func validateSSHDConfig(content string) error {
+	release, err := tempguard.Use()
+	if err != nil {
+		return err
+	}
+	defer release()
 	tmp, err := os.CreateTemp("", "snail-sshd-*.conf")
 	if err != nil {
 		return err

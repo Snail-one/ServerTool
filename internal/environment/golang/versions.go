@@ -1,6 +1,7 @@
 package golang
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,7 +11,12 @@ import (
 
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
+	"snail_tool/internal/tempguard"
 )
+
+// errNotInstallArtifact marks a directory entry whose name is not an install leftover.
+// A recognized name with the wrong type is a different error and must stop cleanup.
+var errNotInstallArtifact = errors.New("不是本工具的 Go 安装残留")
 
 const (
 	installRoot = "/opt/go"
@@ -61,6 +67,12 @@ func activeVersion(link string) string {
 }
 
 func activateVersion(root, link, version string) error {
+	release, err := tempguard.Use()
+	if err != nil {
+		return err
+	}
+	defer release()
+
 	if err := shared.CheckRemovalTree(root); err != nil {
 		return err
 	}
@@ -175,9 +187,13 @@ func installArtifacts(root string) ([]string, error) {
 	artifacts := make([]string, 0)
 	for _, entry := range entries {
 		name := entry.Name()
-		if _, err := installArtifactInfo(root, name); err == nil {
-			artifacts = append(artifacts, name)
+		if _, err := installArtifactInfo(root, name); err != nil {
+			if errors.Is(err, errNotInstallArtifact) || errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return nil, err
 		}
+		artifacts = append(artifacts, name)
 	}
 	sort.Strings(artifacts)
 	return artifacts, nil
@@ -187,7 +203,7 @@ var artifactName = regexp.MustCompile(`^(\.(install|repair|current)-[0-9]+|\.dow
 
 func installArtifactInfo(root, name string) (os.FileInfo, error) {
 	if filepath.Base(name) != name || (name != ".current.tmp" && !artifactName.MatchString(name)) {
-		return nil, fmt.Errorf("不是本工具的 Go 安装残留: %s", name)
+		return nil, fmt.Errorf("%w: %s", errNotInstallArtifact, name)
 	}
 	if err := shared.CheckRemovalTree(root); err != nil {
 		return nil, err

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"snail_tool/internal/tempguard"
 )
 
 type FileOwner struct {
@@ -76,6 +78,11 @@ func AtomicWrite(path string, options AtomicWriteOptions, write func(io.Writer) 
 	}
 
 	dir := filepath.Dir(path)
+	release, err := tempguard.Use()
+	if err != nil {
+		return err
+	}
+	defer release()
 	temp, err := os.CreateTemp(dir, ".servertool-atomic-*")
 	if err != nil {
 		return fmt.Errorf("在目标目录创建临时文件失败 %s: %w", dir, err)

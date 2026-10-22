@@ -9,10 +9,17 @@ import (
 
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
+	"snail_tool/internal/tempguard"
 	"snail_tool/internal/ui"
 )
 
 func installRelease(item release) error {
+	releaseLock, err := tempguard.Use()
+	if err != nil {
+		return err
+	}
+	defer releaseLock()
+
 	log.Info("准备安装 Go 版本：", item.Version)
 	fileArch, err := supportedArch(runtime.GOARCH)
 	if err != nil {
@@ -58,6 +65,12 @@ func installRelease(item release) error {
 }
 
 func reinstallRelease(item release) error {
+	releaseLock, err := tempguard.Use()
+	if err != nil {
+		return err
+	}
+	defer releaseLock()
+
 	fileArch, err := supportedArch(runtime.GOARCH)
 	if err != nil {
 		return err
