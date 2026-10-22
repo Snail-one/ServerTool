@@ -32,11 +32,12 @@ func runRuleManager(view *ui.UI) error {
 			ui.CardField{Label: "管理范围", Value: "本页创建的附加放行规则；基础端口和手写规则见完整配置"},
 			ui.CardField{Label: "生效方式", Value: "确认后校验、备份、保存并立即加载"},
 		)
-		printAllowRules(rules)
+		printRuleOrder(rules, "")
 		ui.MenuOption("1", "添加放行规则")
 		ui.MenuOption("2", "按规则 ID 编辑")
 		ui.MenuOption("3", "删除规则")
 		ui.MenuOption("4", "按端口 / 范围查询")
+		ui.MenuOptionHint("5", "调整规则顺序", "预览草稿，统一保存并加载")
 		ui.MenuOption("r", "刷新规则")
 		ui.MenuExit("0/q", "返回防火墙管理")
 		choice, err := view.Ask("请选择：")
@@ -70,6 +71,10 @@ func runRuleManager(view *ui.UI) error {
 			shared.RunAction(view, "查询规则失败，已返回规则管理", func() error {
 				_, err := queryRulesByPort(view, rules)
 				return err
+			})
+		case "5":
+			shared.RunAction(view, "调整规则顺序失败，已返回规则管理", func() error {
+				return reorderAllowRules(view, version, rules)
 			})
 		case "r":
 			continue
