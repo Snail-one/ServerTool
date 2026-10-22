@@ -102,6 +102,26 @@ func ShowStatus() error {
 	return nil
 }
 
+// SummaryFields reads the current sshd configuration once for the SSH menu.
+func SummaryFields() []ui.CardField {
+	settings, _, err := loadSSHDSettings()
+	var fields []ui.CardField
+	for _, row := range buildSSHSecurityRows(settings) {
+		switch row.directive {
+		case "Port", "PubkeyAuthentication", "PasswordAuthentication", "PermitRootLogin":
+			value := row.value
+			if value == "已开启" {
+				value = ui.PrimaryText(value)
+			}
+			fields = append(fields, ui.CardField{Label: row.name, Value: value})
+		}
+	}
+	if err != nil {
+		fields = append(fields, ui.CardField{Label: "配置读取", Value: "失败", Detail: err.Error()})
+	}
+	return fields
+}
+
 func LoadEffectiveConfig() (EffectiveConfig, error) {
 	settings, source, err := loadSSHDSettings()
 	if err != nil {

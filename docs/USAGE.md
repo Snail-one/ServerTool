@@ -6,7 +6,7 @@
 
 - 防火墙管理：主菜单第 1 项，检测并按确认安装 nftables，自动识别 SSH 监听端口，生成 `/etc/nftables.conf`
 - 容器管理：检测 Docker/Podman，并在二者并存时明确优先使用 Docker；容器操作以真实子命令显示，支持 `start`、`stop`、`restart`、`pause`/`unpause`、`inspect`、`logs`、`logs -f`、`exec`、Compose `down` 和非强制 `rm`；Compose 项目支持 `up -d`、`stop`、`restart`、不删除卷的 `down`，以及项目扫描、批量更新和重建；Docker 服务配置支持代理和日志轮转；资源清理按影响展示各类 prune 命令并逐次确认；卸载运行时可选择保留数据，完全卸载则经过强确认后永久删除对应数据
-- SSH 管理：管理当前用户 SSH 公钥（查看、添加、删除）、写入 SSH 随机端口与禁用密码登录等安全配置、查看当前 SSH 生效安全配置。公钥“编辑文件”和一键初始化中的编辑器添加方式均自动依次查找 `vim`、`vi`、`nano` 并直接打开，不再选择编辑器；均未安装时提示安装编辑器
+- SSH 管理：顶部信息卡显示配置用户、SSH 端口、密钥登录、密码登录和 Root 登录策略，端口及认证策略读取自 `sshd -T`，返回菜单时自动更新；读取失败显示原因，仍可进入各项功能。管理当前用户 SSH 公钥（查看、添加、删除）、写入 SSH 随机端口与禁用密码登录等安全配置、查看当前 SSH 生效安全配置。公钥“编辑文件”和一键初始化中的编辑器添加方式均自动依次查找 `vim`、`vi`、`nano` 并直接打开，不再选择编辑器；均未安装时提示安装编辑器
 - 配置管理：主菜单第 3 项，选项 `1 一键初始化` 按顺序完成 SSH 公钥、安全策略、Vim 和 Bash 配置；没有已有 SSH 公钥时，必须成功添加一把公钥才会继续安全加固。选项 2–6 依次管理 Vim `~/.vimrc`、Bash、Bash 自动补全、HTTP/HTTPS 代理环境变量和 tmux `~/.tmux.conf`；普通用户的 Bash 提示符使用紫色用户名，root 使用纯橘色 `#FF7F00`，当前目录均为蓝色。选项 `6 tmux 配置` 写入底部状态栏样式，显示会话名称、窗口、主机名及日期时间，当前窗口使用蓝色背景；仅更新托管区块，保留其他配置，重复执行不会重复追加。配置写入目标用户（sudo 发起用户）的家目录；新建 tmux 服务时自动加载，已有会话执行 `tmux source-file ~/.tmux.conf` 生效。tmux 可从“系统工具 → 常用命令行工具”安装
 - 清理配置：支持按项清理 SSH、Vim、Bash、tmux、代理、防火墙、UPS、Docker 和 Go 环境配置；选项 11 单独按模块或全部清理备份，选项 12 清理全部配置及备份，选项 13 直接删除整个软件数据目录 `/var/lib/snailtool`
 - 系统工具：主菜单第 4 项，依次提供常用命令行工具、Go 语言环境、UPS（NUT）和本次启动信息。Go 语言环境从 Go 官方 API 获取全部稳定版本，在 `/opt/go` 安装、更新、切换和卸载 amd64/arm64 Go，并为目标用户配置 PATH。常用工具按 curl、wget、bash-completion、tmux、btop、unzip、jq、ripgrep（rg）、tree、build-essential 排列；build-essential 提供 C/C++ 编译环境，并按包管理器选择对应编译工具包；bash-completion 提供 Bash 命令自动补全。所有工具均支持单独安装和批量安装
