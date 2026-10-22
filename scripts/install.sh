@@ -21,12 +21,14 @@ RED=""
 
 init_colors() {
 	# NO_COLOR 始终优先；FORCE_COLOR=1 可为保留 ANSI 的日志采集器强制启用颜色。
+	# 关闭颜色必须 return 0。无参数 return 会带回测试命令的失败状态，set -e 会因此中止脚本。
 	if [ "${NO_COLOR+set}" = "set" ]; then
-		return
+		return 0
 	fi
 	if [ "${FORCE_COLOR:-0}" != "1" ]; then
-		[ "${TERM:-}" != "dumb" ] || return
-		[ -t 1 ] || return
+		if [ "${TERM:-}" = "dumb" ] || [ ! -t 1 ]; then
+			return 0
+		fi
 	fi
 	ESC="$(printf '\033')"
 	RESET="${ESC}[0m"

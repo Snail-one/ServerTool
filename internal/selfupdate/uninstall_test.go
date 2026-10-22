@@ -8,6 +8,16 @@ import (
 	"testing"
 )
 
+// scriptCommand 按 CI 的方式启动安装脚本：NO_COLOR 未设置、TERM=dumb、标准输出不是终端。
+func scriptCommand(t *testing.T, args ...string) *exec.Cmd {
+	t.Helper()
+	t.Setenv("NO_COLOR", "")
+	os.Unsetenv("NO_COLOR")
+	t.Setenv("FORCE_COLOR", "0")
+	t.Setenv("TERM", "dumb")
+	return exec.Command("sh", args...)
+}
+
 func TestUninstallScriptHonorsDataChoiceBeforeRemovingProgram(t *testing.T) {
 	for _, scenario := range []struct {
 		name, input                       string
@@ -73,7 +83,7 @@ esac
 				status = "5"
 			}
 			t.Setenv("TEST_DATA_EXIT", status)
-			command := exec.Command("sh", "../../scripts/install.sh", "--uninstall")
+			command := scriptCommand(t, "../../scripts/install.sh", "--uninstall")
 			command.Stdin = strings.NewReader(scenario.input)
 			output, err := command.CombinedOutput()
 			if (err != nil) != scenario.failDelete {
@@ -147,7 +157,7 @@ func TestUninstallRejectsUnknownOrRedirectedProgram(t *testing.T) {
 			}
 			t.Setenv("SERVERTOOL_INSTALL_DIR", installDir)
 			t.Setenv("SERVERTOOL_BINARY_NAME", name)
-			command := exec.Command("sh", "../../scripts/install.sh", "--uninstall")
+			command := scriptCommand(t, "../../scripts/install.sh", "--uninstall")
 			command.Stdin = strings.NewReader("y\n")
 			if out, err := command.CombinedOutput(); err == nil {
 				t.Fatalf("ambiguous program accepted: %s", out)
@@ -181,7 +191,7 @@ esac
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("SERVERTOOL_INSTALL_DIR", dir)
 	t.Setenv("SERVERTOOL_BINARY_NAME", "snail")
-	command := exec.Command("sh", "../../scripts/install.sh", "--uninstall")
+	command := scriptCommand(t, "../../scripts/install.sh", "--uninstall")
 	command.Stdin = strings.NewReader("y\n")
 	if out, err := command.CombinedOutput(); err == nil {
 		t.Fatalf("replacement program deleted: %s", out)
@@ -238,7 +248,7 @@ exec "$TEST_REAL_STAT" "$@"
 	t.Setenv("TEST_REAL_STAT", realStat)
 	marker := filepath.Join(dir, "deletion-called")
 	t.Setenv("TEST_DELETION_MARKER", marker)
-	command := exec.Command("sh", scriptPath, "--uninstall")
+	command := scriptCommand(t, scriptPath, "--uninstall")
 	command.Stdin = strings.NewReader("y\n")
 	output, err := command.CombinedOutput()
 	if err == nil || !strings.Contains(string(output), "软件数据目录在确认期间已变化") {
