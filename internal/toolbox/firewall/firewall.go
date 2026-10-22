@@ -299,7 +299,7 @@ func configure(view *ui.UI) error {
 		return err
 	}
 	var preserved []allowRule
-	pingEnabled, _, err := readPingSetting(string(version.content))
+	pingEnabled, pingFound, err := readPingSetting(string(version.content))
 	if err != nil {
 		return err
 	}
@@ -340,7 +340,11 @@ func configure(view *ui.UI) error {
 		if err != nil {
 			return err
 		}
-		content, err = withPingSetting(content, pingEnabled)
+		if version.exists && !pingFound {
+			content, err = withoutPingSetting(content)
+		} else {
+			content, err = withPingSetting(content, pingEnabled)
+		}
 		if err != nil {
 			return err
 		}
@@ -414,9 +418,13 @@ func confirmConfig(view *ui.UI, content string, ports []int, publicWeb, privateW
 		if err != nil {
 			return false, err
 		}
-		pingEnabled, _, err := readPingSetting(content)
+		pingEnabled, pingFound, err := readPingSetting(content)
 		if err != nil {
 			return false, err
+		}
+		pingState := "沿用原有规则"
+		if pingFound {
+			pingState = pingLabel(pingEnabled)
 		}
 		ui.PrintInfoCard("即将写入的配置",
 			ui.CardField{Label: "公网 TCP", Value: publicPorts, Detail: "IPv4 / IPv6 同时应用"},
@@ -424,7 +432,7 @@ func confirmConfig(view *ui.UI, content string, ports []int, publicWeb, privateW
 			ui.CardField{Label: "局域网 TCP", Value: privatePorts, Detail: "IPv4 私有地址；IPv6 ULA 和链路本地地址"},
 			ui.CardField{Label: "局域网 UDP", Value: privatePorts, Detail: "与 TCP 同时选择，列表独立保留"},
 			ui.CardField{Label: "附加放行规则", Value: fmt.Sprintf("保留 %d 条，可额外放行来源和端口", len(extraRules))},
-			ui.CardField{Label: "ICMP / ICMPv6 回显", Value: pingLabel(pingEnabled)},
+			ui.CardField{Label: "ICMP / ICMPv6 回显", Value: pingState},
 			ui.CardField{Label: "手动修改", Value: "端口列表、来源例外等将由新模板覆盖"},
 			ui.CardField{Label: "内核规则", Value: "重建 inet snail 表，保留其他表"},
 			ui.CardField{Label: "未匹配入站流量", Value: "丢弃；保留已建立连接、回环、指定 IPv6 控制流量及 DHCPv6"},

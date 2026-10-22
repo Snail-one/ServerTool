@@ -65,6 +65,9 @@ func TestPingRefusesDamagedUnreachableAndManuallyChangedBlocks(t *testing.T) {
 		if _, err := withPingSetting(content, true); err == nil {
 			t.Fatal("unsafe or ambiguous Ping configuration accepted")
 		}
+		if _, err := withoutPingSetting(content); err == nil {
+			t.Fatal("damaged Ping configuration must not be deleted")
+		}
 	}
 }
 
@@ -145,7 +148,7 @@ func TestConfigurePingValidationBackupLoadAndConcurrentEdits(t *testing.T) {
 }
 
 func TestPingCancelDoesNotWriteOrConsumeNextInput(t *testing.T) {
-	for _, input := range []string{"q\n", "返回\n", "1\nn\n", "2\n\n", "1\nq\n"} {
+	for _, input := range []string{"q\n", "返回\n", "1\nn\n", "2\n\n", "1\nq\n", "3\nn\n", "3\nq\n"} {
 		t.Run(input, func(t *testing.T) {
 			setupTest(t)
 			version := ruleTestConfig(t, nil)
@@ -165,6 +168,78 @@ func TestPingCancelDoesNotWriteOrConsumeNextInput(t *testing.T) {
 			}
 			if next, err := view.Ask("next"); err != nil || next != "next" {
 				t.Fatal("cancel consumed extra input")
+			}
+		})
+	}
+}
+
+func TestRemovePingConfigurationKeepsOtherRulesAndDoesNotRecreateOnRegeneration(t *testing.T) {
+	for _, scenario := range []string{"allowed", "blocked", "not set"} {
+		t.Run(scenario, func(t *testing.T) {
+			setupTest(t)
+			version := ruleTestConfig(t, orderTestRules())
+			content, err := withPingSetting(string(version.content), scenario == "allowed")
+			if scenario == "not set" {
+				content, err = withoutPingSetting(content)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			content, err = withSSHPorts(content, []int{2222, 3022})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+				t.Fatal(err)
+			}
+			calls := acceptRuleCommands(t)
+			accept := commandOutput
+			commandOutput = func(name string, args ...string) (string, error) {
+				if name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
+					return `{"nftables":[]}`, nil
+				}
+				if name == "ss" {
+					return `LISTEN 0 128 *:2222 *:* users:(("sshd",pid=1,fd=3))`, nil
+				}
+				return accept(name, args...)
+			}
+			input := "3\ny\nnext\n"
+			if scenario == "not set" {
+				input = "3\nnext\n"
+			}
+			view := inputUI(t, input)
+			if err := configurePing(view); err != nil {
+				t.Fatal(err)
+			}
+			if next, err := view.Ask("next"); err != nil || next != "next" {
+				t.Fatal("removal consumed an unexpected confirmation or pause")
+			}
+			saved := shared.ReadFileString(configPath)
+			if strings.Contains(saved, "snail:ping") || strings.Contains(saved, pingBegin) || strings.Contains(saved, pingEnd) {
+				t.Fatal("dedicated Ping rules or markers remain")
+			}
+			// Every other active directive, including SSH, is preserved.
+			without, _ := withoutPingSetting(content)
+			if !sameConfigTokens(saved, without) || !strings.Contains(saved, sshPortsBegin) {
+				t.Fatal("removal changed unrelated rules")
+			}
+			backups, _ := filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))
+			if scenario == "not set" {
+				if len(*calls) != 0 || len(backups) != 0 || saved != content {
+					t.Fatal("absent configuration should not be written, backed up or loaded")
+				}
+			} else if !reflect.DeepEqual(*calls, []string{"check", "load"}) || len(backups) != 1 || shared.ReadFileString(backups[0]) != content {
+				t.Fatal("removal must validate, preserve one original backup, and load once")
+			}
+			if err := configure(inputUI(t, "n\nn\n1\n")); err != nil {
+				t.Fatal(err)
+			}
+			regenerated := shared.ReadFileString(configPath)
+			if _, found, err := readPingSetting(regenerated); err != nil || found {
+				t.Fatal("regeneration recreated the removed setting")
+			}
+			if rules, err := managedRules(regenerated); err != nil || !reflect.DeepEqual(rules, orderTestRules()) {
+				t.Fatal("regeneration lost unrelated allow rules")
 			}
 		})
 	}
