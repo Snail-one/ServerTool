@@ -139,9 +139,35 @@ func sshPortRules(ports []int) []string {
 }
 
 func withSSHPorts(content string, ports []int) (string, error) {
-	tokens, err := configTokens(content)
+	open, close, insertion, err := inputChainBounds(content)
 	if err != nil {
 		return "", err
+	}
+	if _, found, err := readPingSetting(content); err != nil {
+		return "", err
+	} else if found {
+		insertion = strings.Index(content, pingEnd) + len(pingEnd)
+	}
+	block := sshPortsBegin + "\n        " + strings.Join(sshPortRules(ports), "\n        ") + "\n        " + sshPortsEnd
+	begin, end := strings.Index(content, sshPortsBegin), strings.Index(content, sshPortsEnd)
+	if begin >= 0 || end >= 0 {
+		if strings.Count(content, sshPortsBegin) != 1 || strings.Count(content, sshPortsEnd) != 1 || begin < open || end < begin || end+len(sshPortsEnd) > close {
+			return "", fmt.Errorf("SSH 放行区块标记损坏，未修改防火墙配置")
+		}
+		prefix, err := configTokens(content[insertion:begin])
+		if err != nil || len(prefix) > 0 {
+			return "", fmt.Errorf("SSH 放行区块前存在其他规则，请先将该区块移到 input 链规则最前面（Ping 区块之后）")
+		}
+		return content[:begin] + block + content[end+len(sshPortsEnd):], nil
+	}
+	return content[:insertion] + "\n\n        " + block + content[insertion:], nil
+}
+
+// inputChainBounds returns the body and the end of its base-chain declarations.
+func inputChainBounds(content string) (int, int, int, error) {
+	tokens, err := configTokens(content)
+	if err != nil {
+		return 0, 0, 0, err
 	}
 	open, close, insertion := -1, -1, -1
 	for i := 0; i+3 < len(tokens); i++ {
@@ -150,7 +176,7 @@ func withSSHPorts(content string, ports []int) (string, error) {
 		}
 		end, err := closingBrace(tokens, i+3)
 		if err != nil {
-			return "", err
+			return 0, 0, 0, err
 		}
 		for j := i + 4; j+2 < end; j++ {
 			if tokens[j].text != "chain" || tokens[j+2].text != "{" {
@@ -158,15 +184,15 @@ func withSSHPorts(content string, ports []int) (string, error) {
 			}
 			chainEnd, err := closingBrace(tokens, j+2)
 			if err != nil {
-				return "", err
+				return 0, 0, 0, err
 			}
 			if tokens[j+1].text == "input" {
 				if open >= 0 {
-					return "", fmt.Errorf("发现多个 inet snail input 链，未修改 SSH 放行规则")
+					return 0, 0, 0, fmt.Errorf("发现多个 inet snail input 链，未修改规则")
 				}
 				open, close = tokens[j+2].end, tokens[chainEnd].start
 				if j+6 >= chainEnd || tokens[j+3].text != "type" || tokens[j+4].text != "filter" || tokens[j+5].text != "hook" || tokens[j+6].text != "input" {
-					return "", fmt.Errorf("配置中的 inet snail input 链未挂接入站过滤 hook，未修改 SSH 放行规则")
+					return 0, 0, 0, fmt.Errorf("配置中的 inet snail input 链未挂接入站过滤 hook，未修改规则")
 				}
 				// Only declarations may precede the insertion point. This avoids
 				// persisting an allow rule behind an earlier terminal verdict.
@@ -177,7 +203,7 @@ func withSSHPorts(content string, ports []int) (string, error) {
 				for k := j + 3; k+2 < chainEnd; k++ {
 					if tokens[k].text == "policy" && (tokens[k+1].text == "drop" || tokens[k+1].text == "accept") && tokens[k+2].text == ";" {
 						if k != declarationEnd+1 {
-							return "", fmt.Errorf("input 链声明顺序无法安全识别，未修改 SSH 放行规则")
+							return 0, 0, 0, fmt.Errorf("input 链声明顺序无法安全识别，未修改规则")
 						}
 						insertion = tokens[k+2].end
 						break
@@ -189,21 +215,9 @@ func withSSHPorts(content string, ports []int) (string, error) {
 		i = end
 	}
 	if insertion < 0 {
-		return "", fmt.Errorf("配置中未找到 inet snail input 基础链及默认策略，未修改 SSH 放行规则")
+		return 0, 0, 0, fmt.Errorf("配置中未找到 inet snail input 基础链及默认策略，请先生成防火墙配置")
 	}
-	block := sshPortsBegin + "\n        " + strings.Join(sshPortRules(ports), "\n        ") + "\n        " + sshPortsEnd
-	begin, end := strings.Index(content, sshPortsBegin), strings.Index(content, sshPortsEnd)
-	if begin >= 0 || end >= 0 {
-		if strings.Count(content, sshPortsBegin) != 1 || strings.Count(content, sshPortsEnd) != 1 || begin < open || end < begin || end+len(sshPortsEnd) > close {
-			return "", fmt.Errorf("SSH 放行区块标记损坏，未修改防火墙配置")
-		}
-		prefix, err := configTokens(content[insertion:begin])
-		if err != nil || len(prefix) > 0 {
-			return "", fmt.Errorf("SSH 放行区块前存在其他规则，请先将该区块移到 input 链规则最前面")
-		}
-		return content[:begin] + block + content[end+len(sshPortsEnd):], nil
-	}
-	return content[:insertion] + "\n\n        " + block + content[insertion:], nil
+	return open, close, insertion, nil
 }
 
 func sshRuleHandles(output string) ([]uint64, error) {

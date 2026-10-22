@@ -43,7 +43,7 @@ func checkConfigVersion(expected configVersion) error {
 		return err
 	}
 	if latest.exists != expected.exists || !bytes.Equal(latest.content, expected.content) {
-		return fmt.Errorf("配置文件已被其他操作修改，未覆盖，请重新进入规则管理后重试")
+		return fmt.Errorf("配置文件已被其他操作修改，未覆盖，请返回后重新操作")
 	}
 	return nil
 }

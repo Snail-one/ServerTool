@@ -11,7 +11,7 @@ func showMenu(autostart autostartStatus) {
 	fmt.Println()
 	ui.MenuOptionHint("1", "查看端口策略", "公网 / 内网 · TCP / UDP")
 	ui.MenuOptionHint("2", "查看全部规则", "当前已加载的完整规则")
-	ui.MenuOptionHint("3", "放行规则管理", "添加 / 查询 / 编辑 / 删除")
+	ui.MenuOptionHint("3", "放行规则管理", "添加 / 编辑 / 删除 / 排序")
 	fmt.Println()
 	ui.MenuOptionHint("4", "查看配置文件", configPath)
 	ui.MenuOptionHint("5", "编辑配置文件", "保存后校验，可立即加载")
@@ -29,6 +29,7 @@ func showMenu(autostart autostartStatus) {
 	default:
 		ui.MenuOptionHint("7", "开启开机自启", "下次开机自动加载配置")
 	}
+	ui.MenuOptionHint("8", "ICMP 回显（Ping）", "允许 / 禁止 IPv4 / IPv6 回显请求")
 	fmt.Println()
 	ui.MenuShortcutHint("r", "校验加载配置", "使当前配置文件立即生效")
 	ui.MenuExit("0/q", "返回主菜单")

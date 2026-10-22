@@ -183,7 +183,7 @@ func toolOwnershipField(data []byte, fileErr error) ui.CardField {
 	}
 	content := string(data)
 	mainStart, mainEnd := -1, -1
-	for _, markers := range [][2]string{{configBegin, configEnd}, {rulesBegin, rulesEnd}, {sshPortsBegin, sshPortsEnd}} {
+	for _, markers := range [][2]string{{configBegin, configEnd}, {rulesBegin, rulesEnd}, {sshPortsBegin, sshPortsEnd}, {pingBegin, pingEnd}} {
 		begins, ends := strings.Count(content, markers[0]), strings.Count(content, markers[1])
 		if begins == 0 && ends == 0 {
 			continue

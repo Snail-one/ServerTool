@@ -38,7 +38,7 @@ func prepareFirewallCleanup() (*firewallCleanup, error) {
 	content := string(version.content)
 	plan.managed = hasManagedConfig(content)
 	// Validate all nested markers before removing the outer configuration block.
-	for _, markers := range [][2]string{{configBegin, configEnd}, {rulesBegin, rulesEnd}, {sshPortsBegin, sshPortsEnd}} {
+	for _, markers := range [][2]string{{configBegin, configEnd}, {rulesBegin, rulesEnd}, {sshPortsBegin, sshPortsEnd}, {pingBegin, pingEnd}} {
 		begins, ends := strings.Count(content, markers[0]), strings.Count(content, markers[1])
 		if begins == 0 && ends == 0 {
 			continue
@@ -60,7 +60,7 @@ func prepareFirewallCleanup() (*firewallCleanup, error) {
 		return nil, fmt.Errorf("inet snail 表缺少本工具托管配置及首次快照，无法确认归属，未删除")
 	}
 	cleaned := content
-	for _, markers := range [][2]string{{configBegin, configEnd}, {rulesBegin, rulesEnd}, {sshPortsBegin, sshPortsEnd}} {
+	for _, markers := range [][2]string{{configBegin, configEnd}, {rulesBegin, rulesEnd}, {sshPortsBegin, sshPortsEnd}, {pingBegin, pingEnd}} {
 		cleaned = shared.RemoveManagedBlock(cleaned, markers[0], markers[1])
 	}
 	plan.cleaned = []byte(shared.NormalizeCleanedContent(cleaned))
