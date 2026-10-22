@@ -40,6 +40,21 @@ func runFeatureSettings(view *ui.UI) error {
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理", "功能设置")
 		autostart := inspectAutostart()
+		installed := commandExists("nft")
+		live := liveRules{}
+		if installed {
+			live = inspectLiveRules()
+		}
+		fields := echoStateFields(installed, live)
+		autostartLabel := autostart.label
+		if autostartLabel == "已开启" || autostart.state == "enabled-runtime" {
+			autostartLabel = ui.PrimaryText(autostartLabel)
+		}
+		fields = append(fields,
+			packetCounterStateField(installed, live),
+			ui.CardField{Label: "开机自启", Value: autostartLabel},
+		)
+		ui.PrintInfoCard("功能状态", fields...)
 		ui.MenuOptionHint("1", "ICMP 回显（Ping）", "允许 / 禁止 IPv4 / IPv6 回显请求")
 		ui.MenuOptionHint("2", "数据包统计", "开启 / 关闭规则中的 counter")
 		switch {
