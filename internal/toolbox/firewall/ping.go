@@ -127,7 +127,7 @@ func configurePing(view *ui.UI) error {
 		return err
 	}
 	if !version.exists || !hasManagedConfig(string(version.content)) {
-		return fmt.Errorf("请先选择 6 生成本工具防火墙配置，再设置 ICMP 回显")
+		return fmt.Errorf("请先返回防火墙管理，选择 6 生成本工具防火墙配置，再设置 ICMP 回显")
 	}
 	enabled, found, err := readPingSetting(string(version.content))
 	if err != nil {
@@ -137,7 +137,7 @@ func configurePing(view *ui.UI) error {
 		return err
 	}
 	ui.ClearScreen()
-	ui.MenuTitle("防火墙管理", "ICMP 回显（Ping）")
+	ui.MenuTitle("防火墙管理", "功能设置", "ICMP 回显（Ping）")
 	state := "未设置"
 	if found {
 		state = pingLabel(enabled)
@@ -162,7 +162,7 @@ func configurePing(view *ui.UI) error {
 	ui.MenuOption("1", "允许 ICMP 回显")
 	ui.MenuOption("2", "禁止 ICMP 回显")
 	ui.MenuOptionHint("3", "移除回显配置", "删除专用规则，沿用原有规则")
-	ui.MenuExit("0/q", "返回防火墙管理")
+	ui.MenuExit("0/q", "返回功能设置")
 	choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "on", "2": "off", "3": "remove"})
 	if err != nil {
 		return err

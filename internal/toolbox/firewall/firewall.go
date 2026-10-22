@@ -84,16 +84,12 @@ func Run(view *ui.UI) error {
 				return toggleAutostart(view)
 			})
 		case "8":
-			shared.RunAction(view, "设置 ICMP 回显失败，已返回防火墙管理", func() error {
-				return configurePing(view)
+			shared.RunAction(view, "功能设置失败，已返回防火墙管理", func() error {
+				return runFeatureSettings(view)
 			})
 		case "9":
 			shared.RunAction(view, "实时查看规则失败，已返回防火墙管理", func() error {
 				return monitorTraffic(view, time.Second)
-			})
-		case "10":
-			shared.RunAction(view, "设置数据包统计失败，已返回防火墙管理", func() error {
-				return configurePacketCounters(view)
 			})
 		default:
 			ui.InvalidChoice()
