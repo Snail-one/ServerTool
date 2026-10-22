@@ -31,13 +31,13 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 		"[版本 v9.8.7]",
 		"容器管理",
 		"[未安装]",
-		"开发环境",
 		"1   防火墙管理",
 		"2   一键配置",
 		"3   SSH 管理",
 		"4   通用配置",
-		"清理配置",
-		"系统工具",
+		"5   系统工具",
+		"6   容器管理",
+		"7   清理配置",
 		"0/q 退出",
 	} {
 		if !strings.Contains(output, expected) {
@@ -49,12 +49,15 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 	}
 	if toolbox := strings.Index(output, "5   系统工具"); toolbox < 0 {
 		t.Fatalf("系统工具应在第 5 项：\n%s", output)
-	} else if cleanup := strings.Index(output, "8   清理配置"); cleanup < 0 || cleanup < toolbox {
+	} else if cleanup := strings.Index(output, "7   清理配置"); cleanup < 0 || cleanup < toolbox {
 		t.Fatalf("清理配置应在系统工具之后：\n%s", output)
+	}
+	if strings.Contains(output, "开发环境") {
+		t.Fatalf("主菜单不应保留独立的开发环境入口：\n%s", output)
 	}
 	badgeColumn := -1
 	for _, line := range strings.Split(output, "\n") {
-		for _, label := range []string{"1   防火墙管理", "4   通用配置", "5   系统工具", "6   开发环境"} {
+		for _, label := range []string{"1   防火墙管理", "4   通用配置", "5   系统工具"} {
 			if strings.Contains(line, label) && strings.Contains(line, "[") {
 				t.Fatalf("主菜单 %s 不应显示状态徽标：%q", label, line)
 			}
@@ -76,7 +79,7 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 }
 
 func isMainStatusRow(line string) bool {
-	for _, label := range []string{"2   一键配置", "3   SSH 管理", "7   容器管理"} {
+	for _, label := range []string{"2   一键配置", "3   SSH 管理", "6   容器管理"} {
 		if strings.Contains(line, label) {
 			return true
 		}

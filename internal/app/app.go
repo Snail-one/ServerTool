@@ -9,7 +9,6 @@ import (
 	"snail_tool/internal/cleanup"
 	"snail_tool/internal/common"
 	"snail_tool/internal/container"
-	"snail_tool/internal/environment"
 	"snail_tool/internal/quicksetup"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/ssh"
@@ -80,14 +79,10 @@ func (a *App) Run() error {
 				return toolbox.Run(a.ui, a.startup)
 			})
 		case "6":
-			shared.RunAction(a.ui, "开发环境管理失败，已返回菜单", func() error {
-				return environment.Run(a.ui)
-			})
-		case "7":
 			shared.RunAction(a.ui, "容器管理失败，已返回菜单", func() error {
 				return container.Run(a.ui)
 			})
-		case "8":
+		case "7":
 			shared.RunAction(a.ui, "清理配置失败，已返回菜单", func() error {
 				return cleanup.Run(a.ui)
 			})
@@ -127,9 +122,8 @@ func showMenu(status status.Status) {
 	ui.MenuOptionStatus("3", "SSH 管理", ui.ConfiguredBadge(status.SSH))
 	ui.MenuOption("4", "通用配置")
 	ui.MenuOption("5", "系统工具")
-	ui.MenuOption("6", "开发环境")
-	ui.MenuOptionStatus("7", "容器管理", ui.SoftwareBadge(defaultStatus(status.Runtime, "未安装"), runtimeConfigured))
-	ui.MenuOption("8", "清理配置")
+	ui.MenuOptionStatus("6", "容器管理", ui.SoftwareBadge(defaultStatus(status.Runtime, "未安装"), runtimeConfigured))
+	ui.MenuOption("7", "清理配置")
 	ui.MenuExit("0/q", "退出")
 }
 

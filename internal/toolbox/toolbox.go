@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	commonups "snail_tool/internal/common/ups"
+	"snail_tool/internal/environment/golang"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/startup"
 	toolpackages "snail_tool/internal/toolbox/packages"
@@ -12,8 +13,7 @@ import (
 	"snail_tool/internal/ui"
 )
 
-// Run displays standalone server tools that do not belong to user or
-// development-environment configuration.
+// Run displays system tools and Go environment management.
 func Run(view *ui.UI, report *startup.Report) error {
 	tools := toolpackages.NewInventory()
 	for {
@@ -25,8 +25,14 @@ func Run(view *ui.UI, report *startup.Report) error {
 			toolStatus = ui.SoftwareBadge("检测失败", false)
 		}
 		ui.MenuOptionStatus("1", "常用命令行工具", toolStatus)
-		ui.MenuOptionStatus("2", "UPS（NUT）", ui.ConfiguredBadge(commonups.IsUPSConfigured()))
-		ui.MenuOption("3", "查看本次启动信息")
+		goVersion := golang.CurrentVersion()
+		goStatus := "未安装"
+		if goVersion != "" {
+			goStatus = "已安装 " + goVersion
+		}
+		ui.MenuOptionStatus("2", "Go 语言环境", ui.SoftwareBadge(goStatus, goVersion != ""))
+		ui.MenuOptionStatus("3", "UPS（NUT）", ui.ConfiguredBadge(commonups.IsUPSConfigured()))
+		ui.MenuOption("4", "查看本次启动信息")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -45,10 +51,14 @@ func Run(view *ui.UI, report *startup.Report) error {
 				return tools.Run(view)
 			})
 		case "2":
+			shared.RunAction(view, "Go 语言环境管理失败，已返回系统工具菜单", func() error {
+				return golang.Run(view)
+			})
+		case "3":
 			shared.RunAction(view, "UPS 配置失败，已返回系统工具菜单", func() error {
 				return commonups.Run(view)
 			})
-		case "3":
+		case "4":
 			shared.RunAction(view, "查看启动信息失败，已返回系统工具菜单", func() error {
 				return startupinfo.Show(report)
 			})

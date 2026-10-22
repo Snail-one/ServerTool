@@ -24,7 +24,7 @@ func Run(view *ui.UI) error {
 			return err
 		}
 		active := activeVersion(currentLink)
-		ui.MenuTitle("开发环境管理", "Go 语言")
+		ui.MenuTitle("系统工具", "Go 语言环境")
 		ui.PrintInfoCard("Go 环境状态", goStatusFields(active, len(installed), officialMigrationDetected())...)
 		fmt.Println()
 		ui.MenuOption("1", "安装 Go")
