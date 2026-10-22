@@ -3,7 +3,7 @@ package shared
 import "testing"
 
 func TestIsReturnChoice(t *testing.T) {
-	for _, choice := range []string{"0", "q", "Q", "exit", " EXIT "} {
+	for _, choice := range []string{"0", "q", "Q", "exit", " EXIT ", "返回", " 返回 "} {
 		if !IsReturnChoice(choice) {
 			t.Fatalf("IsReturnChoice(%q) = false", choice)
 		}

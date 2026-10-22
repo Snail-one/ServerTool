@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -50,10 +51,16 @@ func Ensure(view *ui.UI) error {
 		switch strings.ToLower(strings.TrimSpace(choice)) {
 		case "1":
 			if err := installDockerRuntime(view); err != nil {
+				if errors.Is(err, shared.ErrReturnToMenu) {
+					continue
+				}
 				return err
 			}
 		case "2":
 			if err := installDockerScriptRuntime(view); err != nil {
+				if errors.Is(err, shared.ErrReturnToMenu) {
+					continue
+				}
 				return err
 			}
 		case "3":

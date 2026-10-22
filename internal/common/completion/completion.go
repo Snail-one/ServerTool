@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"snail_tool/internal/log"
+	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
 )
@@ -49,7 +50,7 @@ func Configure(view *ui.UI) error {
 	}
 	if !confirmed {
 		fmt.Println("已取消安装")
-		return nil
+		return shared.ErrReturnToMenu
 	}
 
 	if err := installBashCompletion(); err != nil {

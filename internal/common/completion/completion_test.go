@@ -1,10 +1,12 @@
 package completion
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
+	"snail_tool/internal/shared"
 	"snail_tool/internal/ui"
 )
 
@@ -59,7 +61,7 @@ func TestConfigureCancelsInstall(t *testing.T) {
 		return nil
 	}
 
-	if err := Configure(newUIWithInput(t, "n\n")); err != nil {
+	if err := Configure(newUIWithInput(t, "n\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 }

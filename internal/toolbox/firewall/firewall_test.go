@@ -358,7 +358,7 @@ func TestEditConfigUsesFirstAvailableEditorAndBacksUp(t *testing.T) {
 				}
 				return
 			}
-			if err != nil || launched != available[0] || validations != 1 || len(backups) != 1 || shared.ReadFileString(backups[0]) != original {
+			if !errors.Is(err, shared.ErrReturnToMenu) || launched != available[0] || validations != 1 || len(backups) != 1 || shared.ReadFileString(backups[0]) != original {
 				t.Fatalf("editor or backup incorrect: err=%v editor=%s backups=%v", err, launched, backups)
 			}
 		})
@@ -539,7 +539,7 @@ func TestLoadConfigChecksAndConfirmsBeforeApplying(t *testing.T) {
 			}
 			err := loadConfig(inputUI(t, input))
 			wantErr := scenario != "success" && scenario != "cancel"
-			if (err != nil) != wantErr {
+			if scenario == "cancel" && !errors.Is(err, shared.ErrReturnToMenu) || scenario != "cancel" && (err != nil) != wantErr {
 				t.Fatalf("err=%v, wantErr=%v", err, wantErr)
 			}
 			var want []string

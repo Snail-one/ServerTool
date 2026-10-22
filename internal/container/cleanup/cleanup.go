@@ -1,6 +1,7 @@
 package cleanup
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -119,6 +120,9 @@ func runDockerCleanup(view *ui.UI, rt runtime.Runtime) error {
 		)
 		executed, err := executeDockerCleanupPlan(plan, view.Confirm, system.Run, rt.Name)
 		if err != nil {
+			if errors.Is(err, shared.ErrReturnToMenu) {
+				continue
+			}
 			if executed {
 				return fmt.Errorf("%s 清理失败: %w", rt.Display, err)
 			}
@@ -126,7 +130,6 @@ func runDockerCleanup(view *ui.UI, rt runtime.Runtime) error {
 		}
 		if !executed {
 			fmt.Println("已取消容器清理")
-			view.Pause()
 			continue
 		}
 		fmt.Println()

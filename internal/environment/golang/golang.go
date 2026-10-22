@@ -315,7 +315,7 @@ func uninstallSelected(view *ui.UI) error {
 	}
 	if !confirmed {
 		log.Info("已取消卸载")
-		return nil
+		return shared.ErrReturnToMenu
 	}
 
 	wasActive := activeVersion(currentLink) == selected
@@ -363,7 +363,7 @@ func uninstallOfficialGo(view *ui.UI) error {
 	}
 	if !confirmed {
 		log.Info("已取消卸载")
-		return nil
+		return shared.ErrReturnToMenu
 	}
 	return removeOfficialGoAndEnv()
 }
@@ -379,7 +379,7 @@ func repairCurrent(view *ui.UI) error {
 	}
 	if !confirmed {
 		log.Info("已取消修复")
-		return nil
+		return shared.ErrReturnToMenu
 	}
 	removeOfficial, err := confirmOfficialInstallRemoval(view)
 	if err != nil {
@@ -439,7 +439,7 @@ func cleanupInstallArtifacts(view *ui.UI) error {
 	}
 	if !confirmed {
 		log.Info("已取消清理")
-		return nil
+		return shared.ErrReturnToMenu
 	}
 	for _, name := range artifacts {
 		path := filepath.Join(installRoot, name)

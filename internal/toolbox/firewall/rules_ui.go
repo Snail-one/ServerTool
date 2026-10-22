@@ -280,8 +280,11 @@ func changeAllowRule(view *ui.UI, version configVersion, rules []allowRule, id s
 		)
 	}
 	confirmed, err := view.Confirm("确认保存此规则并立即加载？(y/N)：")
-	if err != nil || !confirmed {
+	if err != nil {
 		return err
+	}
+	if !confirmed {
+		return shared.ErrReturnToMenu
 	}
 	updated := append([]allowRule(nil), rules...)
 	if id == "" {
@@ -367,8 +370,11 @@ func deleteAllowRule(view *ui.UI, version configVersion, rules []allowRule) erro
 		}
 	}
 	confirmed, err := view.Confirm("确认仅删除规则 " + id + " 并立即加载？(y/N)：")
-	if err != nil || !confirmed {
+	if err != nil {
 		return err
+	}
+	if !confirmed {
+		return shared.ErrReturnToMenu
 	}
 	if err := saveManagedRules(version, updated); err != nil {
 		return err

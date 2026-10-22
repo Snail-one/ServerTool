@@ -107,11 +107,11 @@ func ConfigureUPS(view *ui.UI) error {
 		}
 		switch strings.ToLower(choice) {
 		case "1":
-			return configureUPS(view)
+			shared.RunAction(view, "UPS 配置失败，已返回 UPS 菜单", func() error { return configureUPS(view) })
 		case "2":
-			return restoreUPSBackup(view)
+			shared.RunAction(view, "UPS 恢复失败，已返回 UPS 菜单", func() error { return restoreUPSBackup(view) })
 		case "3":
-			return deleteUPSBackups(view)
+			shared.RunAction(view, "UPS 备份删除失败，已返回 UPS 菜单", func() error { return deleteUPSBackups(view) })
 		default:
 			ui.InvalidChoice()
 			fmt.Println()
@@ -181,7 +181,7 @@ func ensureNUTInstalled(view *ui.UI) (bool, error) {
 		}
 		fmt.Println()
 		if shared.IsReturnChoice(choice) {
-			return false, nil
+			return false, shared.ErrReturnToMenu
 		}
 
 		switch strings.ToLower(choice) {
@@ -318,6 +318,9 @@ func askUPSDeviceConfig(view *ui.UI) (upsDeviceConfig, error) {
 	if err != nil {
 		return upsDeviceConfig{}, err
 	}
+	if shared.IsReturnChoice(desc) {
+		return upsDeviceConfig{}, shared.ErrReturnToMenu
+	}
 	desc = normalizeUPSDescription(desc)
 	if desc == "" {
 		return upsDeviceConfig{}, fmt.Errorf("desc 不能为空")
@@ -336,6 +339,9 @@ func askUSBID(view *ui.UI, prompt string) (string, error) {
 		return "", err
 	}
 	value = strings.TrimSpace(value)
+	if shared.IsReturnChoice(value) {
+		return "", shared.ErrReturnToMenu
+	}
 	if !usbIDLine.MatchString(value) {
 		return "", fmt.Errorf("USB ID 必须是 4 位十六进制字符")
 	}
@@ -630,7 +636,7 @@ func restoreUPSBackup(view *ui.UI) error {
 	}
 	if !confirmed {
 		fmt.Println("已取消恢复")
-		return nil
+		return shared.ErrReturnToMenu
 	}
 
 	for _, file := range backups {
@@ -670,7 +676,7 @@ func deleteUPSBackups(view *ui.UI) error {
 	}
 	if !confirmed {
 		fmt.Println("已取消删除")
-		return nil
+		return shared.ErrReturnToMenu
 	}
 
 	for _, file := range backups {

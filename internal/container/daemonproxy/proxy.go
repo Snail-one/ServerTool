@@ -51,6 +51,9 @@ func ConfigureDockerDaemonProxy(view *ui.UI) error {
 		return err
 	}
 
+	if shared.IsReturnChoice(raw) {
+		return shared.ErrReturnToMenu
+	}
 	proxyURL, err := commonproxy.NormalizeProxy(raw)
 	if err != nil {
 		return err

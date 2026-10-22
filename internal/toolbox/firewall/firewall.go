@@ -183,7 +183,7 @@ func loadConfig(view *ui.UI) error {
 	}
 	if !confirmed {
 		log.Info("配置文件已保留，未加载；可稍后输入 r 校验加载配置")
-		return nil
+		return shared.ErrReturnToMenu
 	}
 	if err := applyConfig(content); err != nil {
 		return err
@@ -282,8 +282,11 @@ func configure(view *ui.UI) error {
 		return fmt.Errorf("防火墙配置需要 root 权限，请使用 sudo 运行本工具")
 	}
 	installed, err := ensureNftables(view)
-	if err != nil || !installed {
+	if err != nil {
 		return err
+	}
+	if !installed {
+		return shared.ErrReturnToMenu
 	}
 	ui.ClearScreen()
 	ui.MenuTitle("防火墙管理", "生成配置")

@@ -62,7 +62,11 @@ func Run(view *ui.UI) error {
 			return shared.ErrReturnToMenu
 		}
 		if key, err := strconv.Atoi(choice); err == nil && key >= 1 && key <= len(steps) {
-			return runCleanupStepWithConfirm(view, account, steps[key-1])
+			err := runCleanupStepWithConfirm(view, account, steps[key-1])
+			if errors.Is(err, shared.ErrReturnToMenu) {
+				continue
+			}
+			return err
 		}
 		switch choice {
 		case allChoice:
@@ -83,11 +87,13 @@ func Run(view *ui.UI) error {
 			)
 			confirmed, err := view.Confirm("确认清理全部本工具配置及备份？请输入 y 确认，默认取消 (y/N)：")
 			if err != nil {
+				if errors.Is(err, shared.ErrReturnToMenu) {
+					continue
+				}
 				return err
 			}
 			if !confirmed {
 				fmt.Println("已取消清理")
-				view.Pause()
 				continue
 			}
 			return runAllCleanupSteps(account, steps, plan.Delete)
@@ -136,7 +142,7 @@ func runCleanupStepWithConfirm(view *ui.UI, account *system.Account, step cleanu
 	}
 	if !confirmed {
 		fmt.Println("已取消清理")
-		return nil
+		return shared.ErrReturnToMenu
 	}
 	return runCleanupSteps(account, []cleanupStep{step})
 }

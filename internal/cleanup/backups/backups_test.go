@@ -1,6 +1,7 @@
 package backups
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -55,14 +56,16 @@ func seed(t *testing.T, name string) string {
 }
 
 func TestBackupCleanupConfirmationAndCancellation(t *testing.T) {
-	for _, input := range []string{"y\n", "n\n", "\n", ""} {
+	for _, input := range []string{"y\n", "n\n", "\n", "", "0\n", "q\n", "返回\n"} {
 		t.Run(input, func(t *testing.T) {
 			setup(t)
 			backup := seed(t, "firewall")
-			if err := ConfirmAll(testView(t, input)); err != nil {
-				t.Fatal(err)
+			err := ConfirmAll(testView(t, input))
+			cancelled := input != "y\n" && input != ""
+			if cancelled && !errors.Is(err, shared.ErrReturnToMenu) || !cancelled && err != nil {
+				t.Fatalf("confirmation result: %v", err)
 			}
-			_, err := os.Stat(backup)
+			_, err = os.Stat(backup)
 			if input == "y\n" {
 				if !os.IsNotExist(err) {
 					t.Fatal("confirmed backup was not deleted")

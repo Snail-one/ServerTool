@@ -184,7 +184,7 @@ func (inventory *Inventory) confirmAndInstall(view *ui.UI, tools []commandLineTo
 	}
 	if !confirmed {
 		log.Info("已取消安装")
-		return nil
+		return shared.ErrReturnToMenu
 	}
 
 	installErr := installPackages(manager, tools)

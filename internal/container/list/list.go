@@ -2,6 +2,7 @@ package list
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -448,11 +449,13 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 			}
 			confirmed, err := view.Confirm(fmt.Sprintf("项目目录：%s\n确认对项目 %s 执行 down（不会删除卷）？(y/N)：", dir, project))
 			if err != nil {
+				if errors.Is(err, shared.ErrReturnToMenu) {
+					continue
+				}
 				return err
 			}
 			if !confirmed {
 				fmt.Println("已取消")
-				view.PauseWithPrompt("按回车返回容器操作...")
 				continue
 			}
 			if err := update.RunCompose(compose, dir, "down"); err != nil {
@@ -468,10 +471,15 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 				c,
 			)
 			if err != nil {
+				if errors.Is(err, shared.ErrReturnToMenu) {
+					continue
+				}
 				log.Error("删除容器失败: ", err)
 			}
 			if !executed {
-				view.PauseWithPrompt("按回车返回容器操作...")
+				if err != nil {
+					view.PauseWithPrompt("按回车返回容器操作...")
+				}
 				continue
 			}
 		}
@@ -1115,6 +1123,9 @@ func manageComposeProjects(view *ui.UI, rt runtime.Runtime, useLS bool) error {
 
 		project := projects[idx-1]
 		if err := manageSingleProject(view, compose, project.Dir); err != nil {
+			if errors.Is(err, shared.ErrReturnToMenu) {
+				continue
+			}
 			return err
 		}
 		// no auto refresh for projects list, return
@@ -1158,11 +1169,13 @@ func manageSingleProject(view *ui.UI, compose update.ComposeCommand, dir string)
 		}
 		confirmed, err := view.Confirm(prompt)
 		if err != nil {
+			if errors.Is(err, shared.ErrReturnToMenu) {
+				continue
+			}
 			return err
 		}
 		if !confirmed {
 			fmt.Println("已取消")
-			view.Pause()
 			continue
 		}
 
@@ -1172,7 +1185,7 @@ func manageSingleProject(view *ui.UI, compose update.ComposeCommand, dir string)
 			log.Info("已执行 compose ", action.Name, " 于 ", dir)
 		}
 		view.Pause()
-		return shared.ErrReturnToMenu
+		return nil
 	}
 }
 

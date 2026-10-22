@@ -150,7 +150,7 @@ func configureSSHDHardening(view *ui.UI, account *system.Account) error {
 			return err
 		}
 		if !confirmed {
-			return nil
+			return shared.ErrReturnToMenu
 		}
 	}
 
@@ -159,7 +159,7 @@ func configureSSHDHardening(view *ui.UI, account *system.Account) error {
 		return err
 	}
 	if !authorizedKeysConfirmed {
-		return nil
+		return shared.ErrReturnToMenu
 	}
 
 	shouldWriteConfig, err := confirmSSHDConfigOverwrite(view)
@@ -169,13 +169,16 @@ func configureSSHDHardening(view *ui.UI, account *system.Account) error {
 	if !shouldWriteConfig {
 		fmt.Println()
 		log.Info("已取消 SSH 服务安全配置写入")
-		return nil
+		return shared.ErrReturnToMenu
 	}
 
 	fmt.Println()
 	rawPort, err := view.Ask("请输入一个 SSH 端口（直接回车随机生成）：")
 	if err != nil {
 		return err
+	}
+	if rawPort != "0" && shared.IsReturnChoice(rawPort) {
+		return shared.ErrReturnToMenu
 	}
 	port, err := chooseSSHPort(rawPort)
 	if err != nil {
@@ -354,6 +357,9 @@ func confirmDefaultYes(view *ui.UI, prompt string) (bool, error) {
 		value, err := view.Ask(prompt)
 		if err != nil {
 			return false, err
+		}
+		if shared.IsReturnChoice(value) {
+			return false, shared.ErrReturnToMenu
 		}
 
 		switch strings.ToLower(strings.TrimSpace(value)) {

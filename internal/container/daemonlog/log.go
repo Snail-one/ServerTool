@@ -96,8 +96,7 @@ func configureDockerLogRotation(
 		return err
 	}
 	if skip {
-		fmt.Println("已返回容器管理")
-		return nil
+		return shared.ErrReturnToMenu
 	}
 
 	result, err := writeDockerDaemonLogConfig(daemonPath, rotation, func(status dockerLogStatus) (bool, error) {
@@ -112,7 +111,7 @@ func configureDockerLogRotation(
 	}
 	if result.canceled {
 		fmt.Println("已取消 Docker 日志轮转配置")
-		return nil
+		return shared.ErrReturnToMenu
 	}
 
 	log.Info("重启 Docker 服务...")
@@ -177,6 +176,9 @@ func promptLogRotationConfig(view promptReader) (logRotationConfig, bool, error)
 	if err != nil {
 		return logRotationConfig{}, false, err
 	}
+	if strings.TrimSpace(maxSize) != "0" && shared.IsReturnChoice(maxSize) {
+		return logRotationConfig{}, true, nil
+	}
 	maxSize, err = normalizeMaxSize(maxSize)
 	if err != nil {
 		return logRotationConfig{}, false, err
@@ -185,6 +187,9 @@ func promptLogRotationConfig(view promptReader) (logRotationConfig, bool, error)
 	maxFile, err := view.Ask("请输入 max-file（正整数，建议 1-99）：")
 	if err != nil {
 		return logRotationConfig{}, false, err
+	}
+	if strings.TrimSpace(maxFile) != "0" && shared.IsReturnChoice(maxFile) {
+		return logRotationConfig{}, true, nil
 	}
 	maxFile, err = normalizeMaxFile(maxFile)
 	if err != nil {

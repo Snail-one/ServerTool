@@ -2,21 +2,15 @@ package shared
 
 import (
 	"errors"
-	"strings"
 
 	"snail_tool/internal/log"
 	"snail_tool/internal/ui"
 )
 
-var ErrReturnToMenu = errors.New("return to menu")
+var ErrReturnToMenu = ui.ErrReturnToMenu
 
 func IsReturnChoice(choice string) bool {
-	switch strings.ToLower(strings.TrimSpace(choice)) {
-	case "0", "q", "exit":
-		return true
-	default:
-		return false
-	}
+	return ui.IsReturnChoice(choice)
 }
 
 func RunAction(view *ui.UI, failureMessage string, action func() error) {

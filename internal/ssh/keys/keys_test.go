@@ -89,8 +89,12 @@ func TestOpenAuthorizedKeysWithEditorWarnsInvalidLines(t *testing.T) {
 		return os.WriteFile(args[0], []byte("123123\n"), 0600)
 	})
 
-	if err := openAuthorizedKeysWithEditor(newUIWithInput(t, "\n"), account, "vi"); err != nil {
-		t.Fatal(err)
+	view := newUIWithInput(t, "\nnext\n")
+	shared.RunAction(view, "编辑失败", func() error {
+		return openAuthorizedKeysWithEditor(view, account, "vi")
+	})
+	if next, err := view.Ask("下一项："); err != nil || next != "next" {
+		t.Fatalf("编辑器返回后重复等待输入：next=%q err=%v", next, err)
 	}
 	if got := readTestFile(t, filepath.Join(home, ".ssh", "authorized_keys")); !strings.Contains(got, "123123") {
 		t.Fatalf("编辑器保存的内容应保留：\n%s", got)
@@ -137,8 +141,8 @@ func TestAddSSHAuthorizedKeysRetriesInvalidKey(t *testing.T) {
 	validKey := generateTestPublicKey(t)
 	view := newUIWithInput(t, "not-a-key\n"+validKey+"\n\n")
 
-	if err := addSSHAuthorizedKeys(view, account); err != nil {
-		t.Fatalf("无效公钥应提示后重试，不应返回错误：%v", err)
+	if err := addSSHAuthorizedKeys(view, account); !errors.Is(err, shared.ErrReturnToMenu) {
+		t.Fatalf("公钥添加后回车应直接返回菜单：%v", err)
 	}
 
 	content := readTestFile(t, filepath.Join(home, ".ssh", "authorized_keys"))
@@ -150,12 +154,12 @@ func TestAddSSHAuthorizedKeysRetriesInvalidKey(t *testing.T) {
 	}
 }
 
-func TestAddSSHAuthorizedKeysEmptyInputReturnsWithoutError(t *testing.T) {
+func TestAddSSHAuthorizedKeysEmptyInputReturnsToMenu(t *testing.T) {
 	home := t.TempDir()
 	account := &system.Account{Name: "test", Home: home}
 	view := newUIWithInput(t, "bad-key\n\n")
 
-	if err := addSSHAuthorizedKeys(view, account); err != nil {
+	if err := addSSHAuthorizedKeys(view, account); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatalf("无效公钥后回车结束应留在当前菜单，得到：%v", err)
 	}
 	if system.DirExists(filepath.Join(home, ".ssh")) {

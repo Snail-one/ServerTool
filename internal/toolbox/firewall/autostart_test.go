@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"snail_tool/internal/shared"
 )
 
 func autostartProperties(state string) string {
@@ -130,7 +132,7 @@ func TestAutostartStopsBeforeMutationOnUnsafeOrUnconfirmedChanges(t *testing.T) 
 			}
 			err := toggleAutostart(inputUI(t, input))
 			if scenario == "decline" || scenario == "enter" {
-				if err != nil {
+				if !errors.Is(err, shared.ErrReturnToMenu) {
 					t.Fatal(err)
 				}
 			} else if err == nil {

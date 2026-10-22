@@ -72,7 +72,7 @@ func ConfigureProxy(view *ui.UI) error {
 		return err
 	}
 	if !replaceUnmanagedProxy {
-		return nil
+		return shared.ErrReturnToMenu
 	}
 
 	log.Info("支持 ip:port 或 username:password@ip:port 格式")
@@ -83,6 +83,9 @@ func ConfigureProxy(view *ui.UI) error {
 		return err
 	}
 
+	if shared.IsReturnChoice(raw) {
+		return shared.ErrReturnToMenu
+	}
 	proxyURL, err := normalizeProxy(raw)
 	if err != nil {
 		return err

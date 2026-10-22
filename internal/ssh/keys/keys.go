@@ -235,8 +235,8 @@ func replaceSSHAuthorizedKey(view *ui.UI, account *system.Account) error {
 		if err != nil {
 			return err
 		}
-		if strings.TrimSpace(rawSelection) == "" {
-			return nil
+		if strings.TrimSpace(rawSelection) == "" || shared.IsReturnChoice(rawSelection) {
+			return shared.ErrReturnToMenu
 		}
 
 		index, err := parseSingleAuthorizedKeyIndex(rawSelection, len(entries))
@@ -256,8 +256,8 @@ func replaceSSHAuthorizedKey(view *ui.UI, account *system.Account) error {
 			if err != nil {
 				return err
 			}
-			if strings.TrimSpace(pubkey) == "" {
-				return nil
+			if strings.TrimSpace(pubkey) == "" || shared.IsReturnChoice(pubkey) {
+				return shared.ErrReturnToMenu
 			}
 			if err := system.ValidateSSHPublicKey(pubkey); err != nil {
 				log.Warn(err)
@@ -285,7 +285,7 @@ func replaceSSHAuthorizedKey(view *ui.UI, account *system.Account) error {
 			}
 			if !confirmed {
 				fmt.Println("已取消修改")
-				return nil
+				return shared.ErrReturnToMenu
 			}
 
 			updated := replaceAuthorizedKeyIndex(content, index, pubkey)
@@ -310,8 +310,8 @@ func addSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		if err != nil {
 			return err
 		}
-		if strings.TrimSpace(pubkey) == "" {
-			return nil
+		if strings.TrimSpace(pubkey) == "" || shared.IsReturnChoice(pubkey) {
+			return shared.ErrReturnToMenu
 		}
 		if err := system.ValidateSSHPublicKey(pubkey); err != nil {
 			log.Warn(err)
@@ -350,8 +350,8 @@ func deleteSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		if err != nil {
 			return err
 		}
-		if strings.TrimSpace(rawSelection) == "" {
-			return nil
+		if strings.TrimSpace(rawSelection) == "" || shared.IsReturnChoice(rawSelection) {
+			return shared.ErrReturnToMenu
 		}
 
 		indexes, err := parseAuthorizedKeySelection(rawSelection, len(entries))
@@ -374,7 +374,7 @@ func deleteSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		}
 		if !confirmed {
 			fmt.Println("已取消删除")
-			return nil
+			return shared.ErrReturnToMenu
 		}
 
 		selected := make(map[int]struct{}, len(indexes))
@@ -441,7 +441,7 @@ func openAuthorizedKeysWithEditor(view *ui.UI, account *system.Account, editor s
 	if err := runEditor(editor, authKeys); err != nil {
 		if system.IsInterrupted(err) {
 			log.Info("已取消编辑")
-			return nil
+			return shared.ErrReturnToMenu
 		}
 		log.Warn("打开 ", editor, " 失败：", err)
 		return nil
@@ -462,7 +462,6 @@ func openAuthorizedKeysWithEditor(view *ui.UI, account *system.Account, editor s
 	for _, line := range invalid {
 		log.Warn("无效 SSH 公钥：", truncateString(line, 80))
 	}
-	view.Pause()
 	return nil
 }
 

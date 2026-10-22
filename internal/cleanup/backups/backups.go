@@ -115,7 +115,7 @@ func (plan *Plan) confirm(view *ui.UI) error {
 	}
 	if !confirmed {
 		log.Info("已取消清理备份")
-		return nil
+		return shared.ErrReturnToMenu
 	}
 	return plan.Delete()
 }

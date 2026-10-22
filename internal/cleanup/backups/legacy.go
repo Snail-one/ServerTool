@@ -43,7 +43,7 @@ func cleanLegacy(view *ui.UI) error {
 	}
 	if !confirmed {
 		log.Info("已取消清理旧备份")
-		return nil
+		return shared.ErrReturnToMenu
 	}
 	deleted, err := legacyStore.Delete(entries)
 	if err != nil {

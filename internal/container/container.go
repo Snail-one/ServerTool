@@ -1,6 +1,7 @@
 package container
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -86,12 +87,14 @@ func Run(view *ui.UI) error {
 		case "5":
 			uninstalled, err := runtime.Uninstall(view)
 			if err != nil {
+				if errors.Is(err, shared.ErrReturnToMenu) {
+					continue
+				}
 				return err
 			}
 			if uninstalled {
 				return shared.ErrReturnToMenu
 			}
-			view.Pause()
 		default:
 			ui.InvalidChoice()
 			view.Pause()

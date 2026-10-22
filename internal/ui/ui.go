@@ -51,6 +51,9 @@ func (u *UI) Confirm(prompt string) (bool, error) {
 		return false, err
 	}
 	value = strings.TrimSpace(value)
+	if IsReturnChoice(value) {
+		return false, ErrReturnToMenu
+	}
 	return strings.EqualFold(value, "y") || strings.EqualFold(value, "yes"), nil
 }
 

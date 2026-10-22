@@ -51,7 +51,7 @@ func captureOutput(t *testing.T, run func()) string {
 func TestLegacyCleanupListsEveryFileBeforeConfirmation(t *testing.T) {
 	_, paths := setupLegacy(t)
 	output := captureOutput(t, func() {
-		if err := cleanLegacy(testView(t, "n\n")); err != nil {
+		if err := cleanLegacy(testView(t, "n\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 			t.Fatal(err)
 		}
 	})
@@ -71,12 +71,14 @@ func TestLegacyCleanupListsEveryFileBeforeConfirmation(t *testing.T) {
 }
 
 func TestLegacyCleanupRequiresExplicitConfirmation(t *testing.T) {
-	for _, input := range []string{"y\n", "\n", "", "n\n"} {
+	for _, input := range []string{"y\n", "\n", "", "n\n", "0\n", "q\n", "返回\n"} {
 		t.Run(input, func(t *testing.T) {
 			_, paths := setupLegacy(t)
 			newBackup := seed(t, "firewall")
-			if err := cleanLegacy(testView(t, input)); err != nil {
-				t.Fatal(err)
+			err := cleanLegacy(testView(t, input))
+			cancelled := input != "y\n" && input != ""
+			if cancelled && !errors.Is(err, shared.ErrReturnToMenu) || !cancelled && err != nil {
+				t.Fatalf("confirmation result: %v", err)
 			}
 			for _, path := range paths {
 				_, err := os.Stat(path)

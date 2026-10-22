@@ -94,7 +94,6 @@ func updateDockerComposeApps(view *ui.UI, mode int) error {
 		}
 		if len(dirs) == 0 {
 			log.Warn("未通过 compose ls 发现运行中的项目")
-			view.Pause()
 			return nil
 		}
 	case 2:
@@ -129,7 +128,7 @@ func updateDockerComposeApps(view *ui.UI, mode int) error {
 	}
 	if !confirmed {
 		fmt.Println("已取消更新")
-		return nil
+		return shared.ErrReturnToMenu
 	}
 
 	updated, skipped := 0, 0
@@ -296,7 +295,10 @@ func RebuildRunningComposeProjectsWithPrompt(confirmer ComposeRebuildConfirmer, 
 		return err
 	}
 
-	_, err = rebuildRunningComposeProjects(confirmer, compose, dirs, RunCompose, confirmPrompt)
+	result, err := rebuildRunningComposeProjects(confirmer, compose, dirs, RunCompose, confirmPrompt)
+	if err == nil && result.Canceled {
+		return shared.ErrReturnToMenu
+	}
 	return err
 }
 

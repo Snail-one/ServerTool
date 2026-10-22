@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"snail_tool/internal/log"
+	"snail_tool/internal/shared"
 	"snail_tool/internal/ui"
 )
 
@@ -112,8 +113,11 @@ func toggleAutostart(view *ui.UI) error {
 		ui.CardField{Label: "影响", Value: "仅修改开机自启，当前已加载规则保持生效"},
 	)
 	confirmed, err := view.Confirm("是否" + target + "防火墙开机自启？(y/N)：")
-	if err != nil || !confirmed {
+	if err != nil {
 		return err
+	}
+	if !confirmed {
+		return shared.ErrReturnToMenu
 	}
 	latest := inspectAutostart()
 	if latest.err != nil {

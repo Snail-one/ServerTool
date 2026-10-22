@@ -122,7 +122,7 @@ func TestDeleteByIDRequiresConfirmation(t *testing.T) {
 	setupTest(t)
 	rules := []allowRule{{ID: "aaaaaaaa", Kind: "port", Ports: "443", Protocol: "tcp"}}
 	version := ruleTestConfig(t, rules)
-	if err := deleteAllowRule(inputUI(t, "1\naaaaaaaa\nn\n"), version, rules); err != nil {
+	if err := deleteAllowRule(inputUI(t, "1\naaaaaaaa\nn\n"), version, rules); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if shared.ReadFileString(configPath) != string(version.content) {

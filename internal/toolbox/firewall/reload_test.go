@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"snail_tool/internal/shared"
 )
 
 func TestReloadSkipsSyncedRulesAndConfirmsChangesOrUnknownState(t *testing.T) {
@@ -74,7 +76,8 @@ func TestReloadSkipsSyncedRulesAndConfirmsChangesOrUnknownState(t *testing.T) {
 			}
 			var loadErr error
 			output := capturePortOutput(t, func() { loadErr = loadConfig(inputUI(t, scenario.input)) })
-			if (loadErr != nil) != scenario.wantErr || loads != scenario.loads || checks != 1 {
+			cancelled := scenario.input == "n\n"
+			if cancelled && !errors.Is(loadErr, shared.ErrReturnToMenu) || !cancelled && (loadErr != nil) != scenario.wantErr || loads != scenario.loads || checks != 1 {
 				t.Fatalf("err=%v checks=%d loads=%d, wantErr=%v wantLoads=%d", loadErr, checks, loads, scenario.wantErr, scenario.loads)
 			}
 			if !strings.Contains(output, scenario.message) {
