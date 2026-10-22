@@ -34,11 +34,18 @@ const trafficRawRules = `table inet snail { # handle 9
 }
 `
 
-func setTrafficQuery(t *testing.T, query func(context.Context) (string, error)) {
+func setTrafficQuery(t *testing.T, query func(context.Context, trafficTable) (string, error)) {
 	t.Helper()
 	previous := queryTrafficRules
 	queryTrafficRules = query
 	t.Cleanup(func() { queryTrafficRules = previous })
+}
+
+func setTrafficTablesQuery(t *testing.T, query func(context.Context) ([]trafficTable, error)) {
+	t.Helper()
+	previous := queryTrafficTables
+	queryTrafficTables = query
+	t.Cleanup(func() { queryTrafficTables = previous })
 }
 
 func TestTrafficQueryUsesTheRequestedNativeTableCommand(t *testing.T) {
@@ -48,9 +55,92 @@ func TestTrafficQueryUsesTheRequestedNativeTableCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir)
-	output, err := queryTrafficRules(context.Background())
+	output, err := queryTrafficRules(context.Background(), defaultTrafficTable)
 	if err != nil || output != "<-a>\n<list>\n<table>\n<inet>\n<snail>\n" {
 		t.Fatalf("unexpected native query arguments: output=%q err=%v", output, err)
+	}
+	output, err = queryTrafficRules(context.Background(), trafficTable{family: "ip", name: "filter"})
+	if err != nil || output != "<-a>\n<list>\n<table>\n<ip>\n<filter>\n" {
+		t.Fatalf("selected family/table was lost: output=%q err=%v", output, err)
+	}
+	output, err = queryTrafficRules(context.Background(), trafficTable{family: "inet", name: `audit"; flush ruleset; #`})
+	if err != nil || output != "<-a>\n<list>\n<table>\n<inet>\n<\"audit\\\"; flush ruleset; #\">\n" {
+		t.Fatalf("table name was not quoted as nft data: output=%q err=%v", output, err)
+	}
+	if _, err := queryTrafficRules(context.Background(), trafficTable{family: "inet; flush ruleset", name: "filter"}); err == nil {
+		t.Fatal("invalid family was accepted as command text")
+	}
+}
+
+func TestTrafficMonitorSwitchesTablesAndDefaultsToProjectTableOnEntry(t *testing.T) {
+	setupTest(t)
+	var queried []trafficTable
+	setTrafficQuery(t, func(_ context.Context, table trafficTable) (string, error) {
+		queried = append(queried, table)
+		return strings.Replace(trafficRawRules, "table inet snail", "table "+table.label(), 1), nil
+	})
+	listQueries := 0
+	setTrafficTablesQuery(t, func(context.Context) ([]trafficTable, error) {
+		listQueries++
+		return parseTrafficTables(`{"nftables":[
+		 {"metainfo":{"version":"1.1.3"}},
+		 {"table":{"family":"ip","name":"filter"}},
+		 {"table":{"family":"inet","name":"snail"}},
+		 {"table":{"family":"ip6","name":"filter"}},
+		 {"table":{"family":"ip","name":"filter"}}
+		]}`)
+	})
+	// Switch to IPv6 filter, cancel a later picker, then Enter selects the
+	// project default again. A new monitor entry also starts at the default.
+	view := inputUI(t, "t\n3\nt\nq\nt\n\nq\nq\nnext\n")
+	output := capturePortOutput(t, func() {
+		for i := 0; i < 2; i++ {
+			if err := monitorTraffic(view, time.Hour); !errors.Is(err, shared.ErrReturnToMenu) {
+				t.Fatal(err)
+			}
+		}
+	})
+	want := []trafficTable{defaultTrafficTable, {family: "ip6", name: "filter"}, {family: "ip6", name: "filter"}, defaultTrafficTable, defaultTrafficTable}
+	if !reflect.DeepEqual(queried, want) || listQueries != 3 {
+		t.Fatalf("wrong targets or unexpected refreshes: queried=%v listQueries=%d", queried, listQueries)
+	}
+	for _, text := range []string{"本工具 · 默认", "ip filter", "ip6 filter", "nft -a list table ip6 filter", "table ip6 filter"} {
+		if !strings.Contains(output, text) {
+			t.Fatalf("missing table selection detail %q", text)
+		}
+	}
+	if next, err := view.ReadLine(); err != nil || next != "next" {
+		t.Fatal("table switching consumed another menu response")
+	}
+	if _, err := os.Stat(dataDir); !os.IsNotExist(err) {
+		t.Fatal("table observation created backup/configuration data")
+	}
+}
+
+func TestTrafficMonitorCanSwitchWhenProjectTableIsAbsent(t *testing.T) {
+	setupTest(t)
+	var queried []trafficTable
+	setTrafficQuery(t, func(_ context.Context, table trafficTable) (string, error) {
+		queried = append(queried, table)
+		if table == defaultTrafficTable {
+			return "", errors.New("table does not exist")
+		}
+		return "table ip filter { }\n", nil
+	})
+	setTrafficTablesQuery(t, func(context.Context) ([]trafficTable, error) {
+		return []trafficTable{{family: "ip", name: "filter"}}, nil
+	})
+	view := inputUI(t, "t\n2\nq\nnext\n")
+	output := capturePortOutput(t, func() {
+		if err := monitorTraffic(view, time.Hour); !errors.Is(err, shared.ErrReturnToMenu) {
+			t.Fatal(err)
+		}
+	})
+	if !reflect.DeepEqual(queried, []trafficTable{defaultTrafficTable, {family: "ip", name: "filter"}}) || !strings.Contains(output, "未加载") || !strings.Contains(output, "table ip filter { }") {
+		t.Fatalf("missing default prevented switching: queried=%v output=%s", queried, output)
+	}
+	if next, err := view.ReadLine(); err != nil || next != "next" {
+		t.Fatal("table selection consumed extra input")
 	}
 }
 
@@ -58,7 +148,7 @@ func TestTrafficMonitorMenuReturnsWithoutPauseOrConfigurationWrites(t *testing.T
 	setupTest(t)
 	version := ruleTestConfig(t, nil)
 	queries := 0
-	setTrafficQuery(t, func(context.Context) (string, error) {
+	setTrafficQuery(t, func(context.Context, trafficTable) (string, error) {
 		queries++
 		return trafficRawRules, nil
 	})
@@ -98,7 +188,7 @@ func TestTrafficMonitorRetriesAndCancelsItsWorkerBeforeReturning(t *testing.T) {
 	_ = os.Unsetenv("NO_COLOR")
 	queries := 0
 	blocked, cancelled := make(chan struct{}), make(chan struct{})
-	setTrafficQuery(t, func(ctx context.Context) (string, error) {
+	setTrafficQuery(t, func(ctx context.Context, _ trafficTable) (string, error) {
 		queries++
 		switch queries {
 		case 1:
