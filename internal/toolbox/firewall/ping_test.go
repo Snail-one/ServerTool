@@ -35,7 +35,7 @@ func TestPingSwitchPreservesOtherRulesAndPrecedesConnectionTracking(t *testing.T
 		if !sameConfigTokens(shared.RemoveManagedBlock(updated, pingBegin, pingEnd), legacy) {
 			t.Fatal("Ping switch changed SSH, ports, control traffic or manual rules")
 		}
-		if strings.Index(updated, pingBegin) > strings.Index(updated, "ct state established,related") || strings.Index(updated, pingBegin) > strings.Index(updated, sshPortsBegin) {
+		if strings.Index(updated, pingBegin) > strings.Index(updated, "ct state established,related") {
 			t.Fatal("Ping must precede rules that could bypass its setting")
 		}
 		// Repeated SSH port changes must remain compatible with the Ping block.
@@ -46,7 +46,8 @@ func TestPingSwitchPreservesOtherRulesAndPrecedesConnectionTracking(t *testing.T
 			}
 		}
 		state, _, err = readPingSetting(updated)
-		if err != nil || state != enabled || strings.Count(updated, pingBegin) != 1 || strings.Count(updated, sshPortsBegin) != 1 {
+		if err != nil || state != enabled || strings.Count(updated, pingBegin) != 1 ||
+			!strings.Contains(updated, "define snail_ssh_port_2 = 4022") || strings.Contains(updated, sshPortsBegin) {
 			t.Fatal("SSH updates damaged or duplicated Ping settings")
 		}
 	}
@@ -220,7 +221,7 @@ func TestRemovePingConfigurationKeepsOtherRulesAndDoesNotRecreateOnRegeneration(
 			}
 			// Every other active directive, including SSH, is preserved.
 			without, _ := withoutPingSetting(content)
-			if !sameConfigTokens(saved, without) || !strings.Contains(saved, sshPortsBegin) {
+			if !sameConfigTokens(saved, without) || !strings.Contains(saved, "define snail_ssh_port_2 = 3022") {
 				t.Fatal("removal changed unrelated rules")
 			}
 			backups, _ := filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))

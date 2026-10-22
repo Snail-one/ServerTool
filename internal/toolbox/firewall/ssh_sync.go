@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"snail_tool/internal/log"
@@ -22,7 +24,8 @@ const (
 
 // EnsureSSHPorts runs before SSH reload. It only changes this tool's active
 // input chain, leaving other tables and pending edits in the file unloaded.
-// Existing listeners are retained while all newly configured ports are added.
+// Definitions persist the configured ports; current listeners are also allowed
+// in the live transaction so switching SSH ports keeps the current connection reachable.
 func EnsureSSHPorts(configured []int) (bool, error) {
 	release, err := tempguard.Use()
 	if err != nil {
@@ -59,7 +62,11 @@ func EnsureSSHPorts(configured []int) (bool, error) {
 	if !version.exists {
 		return false, fmt.Errorf("防火墙已开启，但缺少 %s，无法持久保存 SSH 放行规则，未重载 SSH", configPath)
 	}
-	updated, err := withSSHPorts(string(version.content), ports)
+	configured, err = mergeSSHPorts(configured)
+	if err != nil {
+		return false, err
+	}
+	updated, err := withSSHPorts(string(version.content), configured)
 	if err != nil {
 		return false, err
 	}
@@ -116,7 +123,8 @@ func EnsureSSHPorts(configured []int) (bool, error) {
 		}
 		return false, loadErr
 	}
-	log.Info("防火墙已自动放行 SSH 端口：", portList(ports), "（TCP / UDP、IPv4 / IPv6，保留当前监听端口）")
+	log.Info("防火墙 SSH 端口定义已更新：", portList(configured))
+	log.Info("当前规则已放行：", portList(ports), "（TCP / UDP、IPv4 / IPv6，保留当前监听端口；重新加载配置后以端口定义为准）")
 	return true, nil
 }
 
@@ -153,33 +161,83 @@ func sshPortRules(ports []int, counters bool) []string {
 	return rules
 }
 
+var sshDefinitionLine = regexp.MustCompile(`(?m)^[\t ]*define[\t ]+(snail_ssh_port(?:_[0-9]+)?)[\t ]*=[\t ]*([0-9]+)[\t ]*(?:#[^\n]*)?\r?$`)
+var sshPortListLine = regexp.MustCompile(`(?m)^([\t ]*define[\t ]+(snail_(?:public|private)_ipv[46]_(?:tcp|udp)_ports)[\t ]*=[\t ]*\{)([^{}\n]*)(\}[\t ]*(?:#[^\n]*)?\r?)$`)
+
+// withSSHPorts updates the generated scalar definitions and their references in
+// the eight port lists. Business ports and all other rules remain in place.
+// Older standalone SSH allow blocks must be replaced by regenerating the config.
 func withSSHPorts(content string, ports []int) (string, error) {
-	open, close, insertion, err := inputChainBounds(content)
+	ports, err := mergeSSHPorts(ports)
 	if err != nil {
 		return "", err
 	}
-	if _, found, err := readPingSetting(content); err != nil {
-		return "", err
-	} else if found {
-		insertion = strings.Index(content, pingEnd) + len(pingEnd)
+	if strings.Contains(content, sshPortsBegin) || strings.Contains(content, sshPortsEnd) {
+		return "", fmt.Errorf("防火墙配置含旧 SSH 放行区块，请先重新生成防火墙配置")
 	}
-	counters, err := packetCountersEnabled(content)
-	if err != nil {
+	if _, _, _, err := inputChainBounds(content); err != nil {
 		return "", err
 	}
-	block := sshPortsBegin + "\n        " + strings.Join(sshPortRules(ports, counters), "\n        ") + "\n        " + sshPortsEnd
-	begin, end := strings.Index(content, sshPortsBegin), strings.Index(content, sshPortsEnd)
-	if begin >= 0 || end >= 0 {
-		if strings.Count(content, sshPortsBegin) != 1 || strings.Count(content, sshPortsEnd) != 1 || begin < open || end < begin || end+len(sshPortsEnd) > close {
-			return "", fmt.Errorf("SSH 放行区块标记损坏，未修改防火墙配置")
-		}
-		prefix, err := configTokens(content[insertion:begin])
-		if err != nil || len(prefix) > 0 {
-			return "", fmt.Errorf("SSH 放行区块前存在其他规则，请先将该区块移到 input 链规则最前面（Ping 区块之后）")
-		}
-		return content[:begin] + block + content[end+len(sshPortsEnd):], nil
+	if _, _, err := readPingSetting(content); err != nil {
+		return "", err
 	}
-	return content[:insertion] + "\n\n        " + block + content[insertion:], nil
+	definitions := sshDefinitionLine.FindAllStringSubmatchIndex(content, -1)
+	oldNames := make(map[string]bool)
+	for i, match := range definitions {
+		name := content[match[2]:match[3]]
+		if name != sshPortName(i) || oldNames[name] || (i > 0 && strings.TrimSpace(content[definitions[i-1][1]:match[0]]) != "") {
+			return "", fmt.Errorf("SSH 端口定义重复或格式异常，请重新生成防火墙配置")
+		}
+		oldNames[name] = true
+	}
+	if len(definitions) == 0 {
+		return "", fmt.Errorf("未找到 snail_ssh_port 端口定义，请重新生成防火墙配置")
+	}
+	var newDefinitions, references []string
+	for i, port := range ports {
+		name := sshPortName(i)
+		newDefinitions = append(newDefinitions, fmt.Sprintf("define %s = %d", name, port))
+		references = append(references, "$"+name)
+	}
+	first, last := definitions[0][0], definitions[len(definitions)-1][1]
+	content = content[:first] + strings.Join(newDefinitions, "\n") + content[last:]
+	lists := make(map[string]bool)
+	var listErr error
+	content = sshPortListLine.ReplaceAllStringFunc(content, func(line string) string {
+		parts := sshPortListLine.FindStringSubmatch(line)
+		if lists[parts[2]] {
+			listErr = fmt.Errorf("业务端口列表重复，请重新生成防火墙配置")
+		}
+		lists[parts[2]] = true
+		values := append([]string(nil), references...)
+		for _, raw := range strings.Split(parts[3], ",") {
+			value := strings.TrimSpace(raw)
+			if oldNames[strings.TrimPrefix(value, "$")] && strings.HasPrefix(value, "$") {
+				continue
+			}
+			if strings.Contains(value, "$snail_ssh_port") {
+				listErr = fmt.Errorf("SSH 端口引用无法识别，请重新生成防火墙配置")
+			}
+			if value != "" {
+				values = append(values, value)
+			}
+		}
+		return parts[1] + " " + strings.Join(values, ", ") + " " + parts[4]
+	})
+	if listErr != nil {
+		return "", listErr
+	}
+	if len(lists) != 8 {
+		return "", fmt.Errorf("缺少完整的公网、内网 TCP / UDP 端口列表，请重新生成防火墙配置")
+	}
+	return content, nil
+}
+
+func sshPortName(index int) string {
+	if index == 0 {
+		return "snail_ssh_port"
+	}
+	return "snail_ssh_port_" + strconv.Itoa(index+1)
 }
 
 // inputChainBounds returns the body and the end of its base-chain declarations.

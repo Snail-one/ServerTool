@@ -497,10 +497,7 @@ func buildConfig(ports []int, publicWeb, privateWeb bool) (string, error) {
 		if port < 1 || port > 65535 {
 			return "", fmt.Errorf("SSH 端口无效: %d", port)
 		}
-		name := "snail_ssh_port"
-		if i > 0 {
-			name += "_" + strconv.Itoa(i+1)
-		}
+		name := sshPortName(i)
 		definitions = append(definitions, fmt.Sprintf("define %s = %d", name, port))
 		references = append(references, "$"+name)
 	}

@@ -54,7 +54,7 @@ func TestEnsureSSHPortsPreservesMultipleListenersAndUnrelatedRules(t *testing.T)
 			return "", nil
 		}
 	}
-	// Repeated updates replace the dedicated block, rather than appending rules.
+	// Repeated updates change scalar definitions without appending persistent rules.
 	for i := 0; i < 2; i++ {
 		active, err := EnsureSSHPorts([]int{3022, 4022, 3022})
 		if err != nil || !active {
@@ -74,13 +74,13 @@ func TestEnsureSSHPortsPreservesMultipleListenersAndUnrelatedRules(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(string(updated), sshPortsBegin) != 1 || strings.Count(string(updated), sshPortsEnd) != 1 {
-		t.Fatal("SSH block duplicated")
+	expected := strings.Replace(original, "define snail_ssh_port = 22\n", "define snail_ssh_port = 3022\n", 1)
+	expected = strings.Replace(expected, "define snail_ssh_port_2 = 2200\n", "define snail_ssh_port_2 = 4022\n", 1)
+	if string(updated) != expected {
+		t.Fatalf("port definitions not updated, or unrelated persistent configuration changed: %s", updated)
 	}
-	begin := strings.Index(string(updated), "\n\n        "+sshPortsBegin)
-	end := strings.Index(string(updated), sshPortsEnd) + len(sshPortsEnd)
-	if begin < 0 || string(updated[:begin])+string(updated[end:]) != original {
-		t.Fatal("unrelated persistent configuration changed")
+	if strings.Contains(string(updated), sshPortsBegin) || strings.Contains(string(updated), sshPortsTag) {
+		t.Fatal("transitional old listeners must not be persisted as separate rules")
 	}
 	backups, err := filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))
 	if err != nil || len(backups) != 1 {
@@ -183,7 +183,7 @@ func TestEnsureSSHPortsStopsOnFailuresAndRestoresFile(t *testing.T) {
 	}
 }
 
-func TestSSHPortBlockRejectsAmbiguousMarkersAndUnreachablePosition(t *testing.T) {
+func TestSSHDefinitionsRejectIncompleteConfigurations(t *testing.T) {
 	content, _ := buildConfig([]int{22}, false, false)
 	updated, err := withSSHPorts(content, []int{22, 3022})
 	if err != nil {
@@ -191,14 +191,54 @@ func TestSSHPortBlockRejectsAmbiguousMarkersAndUnreachablePosition(t *testing.T)
 	}
 	for _, bad := range []string{
 		updated + "\n" + sshPortsBegin,
-		strings.Replace(updated, sshPortsEnd, "", 1),
-		strings.Replace(updated, sshPortsBegin, "drop\n        "+sshPortsBegin, 1),
+		updated + "\n" + sshPortsEnd,
+		strings.Replace(content, "define snail_ssh_port = 22", "# missing SSH definition", 1),
+		strings.Replace(content, "define snail_private_ipv6_udp_ports", "define another_list", 1),
+		content + "\ndefine snail_ssh_port = 3022\n",
 		strings.Replace(content, "chain input {", "chain other {", 1),
 		strings.Replace(content, "hook input", "hook output", 1),
 		strings.Replace(content, "; policy drop;", "; drop; policy drop;", 1),
 	} {
 		if _, err := withSSHPorts(bad, []int{4022}); err == nil {
-			t.Fatal("ambiguous SSH block must not be overwritten")
+			t.Fatal("incomplete configuration must not be overwritten")
 		}
+	}
+}
+
+func TestSSHDefinitionsReplaceOldPortsAndPreserveBusinessPorts(t *testing.T) {
+	content, err := buildConfig([]int{21069}, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Keep independently edited business ports and unrelated references intact.
+	content = strings.Replace(content,
+		"define snail_private_ipv6_udp_ports = { $snail_ssh_port }",
+		"define snail_private_ipv6_udp_ports = { $snail_ssh_port, 51820 } # VPN", 1)
+	content += "\n# manual note: keep this text\n"
+	for _, ports := range [][]int{{35678}, {4022, 3022, 4022}, {22333}} {
+		updated, err := withSSHPorts(content, ports)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(updated, "21069") || strings.Contains(updated, sshPortsBegin) {
+			t.Fatal("old SSH definition or standalone rules retained")
+		}
+		for _, kept := range []string{", 80, 443 }", ", 51820 } # VPN", "# manual note: keep this text"} {
+			if !strings.Contains(updated, kept) {
+				t.Fatalf("business configuration lost: %s", kept)
+			}
+		}
+		if again, err := withSSHPorts(updated, ports); err != nil || again != updated {
+			t.Fatalf("repeated update changed configuration: %v", err)
+		}
+		if len(ports) == 3 {
+			if !strings.Contains(updated, "define snail_ssh_port = 3022\ndefine snail_ssh_port_2 = 4022") ||
+				strings.Count(updated, "$snail_ssh_port, $snail_ssh_port_2") != 8 {
+				t.Fatal("multiple SSH ports were not referenced by all eight lists")
+			}
+		} else if !strings.Contains(updated, "define snail_ssh_port = "+portList(ports)) || strings.Contains(updated, "snail_ssh_port_2") {
+			t.Fatal("single-port update retained obsolete definitions or references")
+		}
+		content = updated
 	}
 }
