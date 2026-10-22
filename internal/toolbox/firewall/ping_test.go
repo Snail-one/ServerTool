@@ -270,7 +270,7 @@ func TestRegenerationKeepsPingEnabledAndMenuEntryWorks(t *testing.T) {
 	if err != nil || !state {
 		t.Fatal("regeneration lost enabled Ping")
 	}
-	if err := Run(inputUI(t, "7\n1\n2\ny\n\nq\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := Run(inputUI(t, "7\n2\n2\ny\n\nq\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	state, _, err = readPingSetting(shared.ReadFileString(configPath))
