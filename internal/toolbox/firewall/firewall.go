@@ -88,7 +88,7 @@ func Run(view *ui.UI) error {
 				return configurePing(view)
 			})
 		case "9":
-			shared.RunAction(view, "查看实时拦截统计失败，已返回防火墙管理", func() error {
+			shared.RunAction(view, "实时查看规则失败，已返回防火墙管理", func() error {
 				return monitorTraffic(view, time.Second)
 			})
 		default:
