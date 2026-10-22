@@ -34,7 +34,7 @@ func runRuleManager(view *ui.UI) error {
 		)
 		printRuleOrder(rules, "")
 		ui.MenuOption("1", "添加放行规则")
-		ui.MenuOption("2", "按规则 ID 编辑")
+		ui.MenuOptionHint("2", "编辑放行规则", "按规则 ID 修改来源、端口和协议")
 		ui.MenuOption("3", "删除规则")
 		ui.MenuOptionHint("4", "调整规则顺序", "预览草稿，统一保存并加载")
 		ui.MenuExit("0/q", "返回防火墙管理")
