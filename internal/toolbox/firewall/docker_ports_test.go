@@ -37,13 +37,16 @@ func TestLoadedPortsSeparatesDockerMappingsFromInputPolicy(t *testing.T) {
 		t.Fatalf("expected only nft read, docker ps and inspect: %v", queries)
 	}
 	parts := strings.SplitN(output, "Docker 已发布端口", 2)
-	if len(parts) != 2 || !strings.Contains(parts[0], "443, 2222, 8000-8002, 8443") || strings.Contains(parts[0], "0.0.0.0:22") {
+	if len(parts) != 2 || !strings.Contains(parts[0], "443, 2222, 8000-8002, 8443") || strings.Contains(parts[0], "22 → 22 / TCP") {
 		t.Fatalf("Docker mappings must stay separate from native policy: %s", output)
 	}
-	for _, want := range []string{"web", "0.0.0.0:22 → 22 / TCP · IPv4 全部地址", "[::]:22 → 22 / TCP · IPv6 全部地址", "127.0.0.1:8080 → 80 / TCP · IPv4 回环地址", "192.168.1.10:5353 → 53 / UDP · IPv4", "host-app", "需查看服务实际监听端口", "不代表外网一定可达"} {
+	for _, want := range []string{"web", "├─ 22 → 22 / TCP · 全部地址（IPv4 / IPv6）", "└─ 8080 → 80 / TCP · 回环地址（127.0.0.1）", "5353 → 53 / UDP · 指定地址（192.168.1.10）", "host-app", "需查看服务实际监听端口", "不代表公网一定可达"} {
 		if !strings.Contains(parts[1], want) {
 			t.Fatalf("missing %q in %s", want, parts[1])
 		}
+	}
+	if strings.Count(parts[1], "web") != 1 || strings.Count(parts[1], "22 → 22 / TCP") != 1 {
+		t.Fatalf("container header or dual-stack mapping repeated: %s", parts[1])
 	}
 	for _, absent := range []string{"9999", "9000", "stopped"} {
 		if strings.Contains(parts[1], absent) {
@@ -135,8 +138,61 @@ func TestDockerRoutedPortDoesNotInventHostMapping(t *testing.T) {
 	fields, err := dockerPortFields([]dockerPortContainer{{Name: "/routed", Ports: map[string][]dockerPortBinding{
 		"80/tcp": {{HostIP: "::", HostPort: ""}},
 	}}})
-	if err != nil || len(fields) != 1 || fields[0].Value != "直接路由（无宿主机映射端口） → 80 / TCP · IPv6 全部地址" {
+	if err != nil || len(fields) != 2 || fields[1].Value != "└─ 80 / TCP · 直接路由（IPv6，无宿主机映射端口）" {
 		t.Fatalf("routed publication misrepresented: %+v %v", fields, err)
+	}
+}
+
+func TestDockerPortGroupingPreservesBindingsProtocolsAndTargets(t *testing.T) {
+	rows, err := dockerContainerPortRows(dockerPortContainer{Name: "/app", Ports: map[string][]dockerPortBinding{
+		"80/tcp": {
+			{HostIP: "0.0.0.0", HostPort: "8080"},
+			{HostIP: "::", HostPort: "8080"},
+			{HostIP: "0.0.0.0", HostPort: "8080"}, // Duplicate binding.
+			{HostIP: "127.0.0.1", HostPort: "8080"},
+			{HostIP: "::1", HostPort: "8080"},
+			{HostIP: "192.0.2.1", HostPort: "8080"},
+			{HostIP: "2001:db8::1", HostPort: "8080"},
+			{HostIP: "", HostPort: "8080"},
+			{HostIP: "::", HostPort: "8081"},
+			{HostIP: "::", HostPort: ""}, // Direct routing, not port 8080.
+		},
+		"80/udp": {{HostIP: "0.0.0.0", HostPort: "8080"}},
+		"81/tcp": {{HostIP: "::", HostPort: "8080"}},
+		"443/tcp": {
+			{HostIP: "0.0.0.0", HostPort: "9000"},
+			{HostIP: "::", HostPort: "10000"},
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"8080 → 80 / TCP · 全部地址（IPv4 / IPv6）",
+		"8080 → 80 / TCP · 回环地址（127.0.0.1、::1）",
+		"8080 → 80 / TCP · 指定地址（192.0.2.1、2001:db8::1）",
+		"8080 → 80 / TCP · 地址未指定",
+		"8080 → 80 / UDP · 全部地址（IPv4）",
+		"8080 → 81 / TCP · 全部地址（IPv6）",
+		"8081 → 80 / TCP · 全部地址（IPv6）",
+		"9000 → 443 / TCP · 全部地址（IPv4）",
+		"10000 → 443 / TCP · 全部地址（IPv6）",
+		"80 / TCP · 直接路由（IPv6，无宿主机映射端口）",
+	}
+	if len(rows) != len(want) {
+		t.Fatalf("bindings incorrectly combined or duplicated: %v", rows)
+	}
+	got := make(map[string]int)
+	for _, row := range rows {
+		got[row]++
+	}
+	for _, row := range want {
+		if got[row] != 1 {
+			t.Fatalf("expected mapping exactly once: %s; got %v", row, rows)
+		}
+	}
+	if !reflect.DeepEqual(rows[len(rows)-4:], want[len(want)-4:]) {
+		t.Fatalf("ports must sort numerically, with routed ports last: %v", rows)
 	}
 }
 

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/netip"
 	"sort"
 	"strconv"
@@ -79,74 +78,140 @@ func inspectDockerPorts() ([]dockerPortContainer, error) {
 func dockerPortFields(containers []dockerPortContainer) ([]ui.CardField, error) {
 	var fields []ui.CardField
 	for _, container := range containers {
-		name := strings.TrimPrefix(container.Name, "/")
-		if container.NetworkMode == "host" {
-			fields = append(fields, ui.CardField{Label: name, Value: "host 网络：共用宿主机网络，需查看服务实际监听端口"})
+		rows, err := dockerContainerPortRows(container)
+		if err != nil {
+			return nil, err
+		}
+		if len(rows) == 0 {
 			continue
 		}
-		keys := make([]string, 0, len(container.Ports))
-		for port, bindings := range container.Ports {
-			if len(bindings) == 0 {
-				continue // EXPOSE without a published binding is not a host port.
+		name := strings.TrimPrefix(container.Name, "/")
+		fields = append(fields, ui.CardField{Value: ui.PrimaryBoldText(name)})
+		for i, row := range rows {
+			branch := "├─ "
+			if i == len(rows)-1 {
+				branch = "└─ "
 			}
-			parts := strings.Split(port, "/")
-			if len(parts) != 2 {
-				return nil, fmt.Errorf("容器 %s 的端口信息无效", name)
-			}
-			if _, err := system.ValidatePort(parts[0]); err != nil || (parts[1] != "tcp" && parts[1] != "udp" && parts[1] != "sctp") {
-				return nil, fmt.Errorf("容器 %s 的端口信息无效", name)
-			}
-			keys = append(keys, port)
-		}
-		sort.Slice(keys, func(i, j int) bool {
-			a, _, _ := strings.Cut(keys[i], "/")
-			b, _, _ := strings.Cut(keys[j], "/")
-			ai, _ := strconv.Atoi(a)
-			bi, _ := strconv.Atoi(b)
-			if ai != bi {
-				return ai < bi
-			}
-			return keys[i] < keys[j]
-		})
-		for _, port := range keys {
-			bindings := container.Ports[port]
-			sort.Slice(bindings, func(i, j int) bool {
-				if bindings[i].HostIP != bindings[j].HostIP {
-					return bindings[i].HostIP < bindings[j].HostIP
-				}
-				return bindings[i].HostPort < bindings[j].HostPort
-			})
-			target, protocol, _ := strings.Cut(port, "/")
-			for _, binding := range bindings {
-				address := binding.HostIP
-				scope := "绑定地址未指定"
-				if address != "" {
-					ip, err := netip.ParseAddr(address)
-					if err != nil {
-						return nil, fmt.Errorf("容器 %s 的绑定地址无效", name)
-					}
-					scope = "IPv6"
-					if ip.Is4() {
-						scope = "IPv4"
-					}
-					if ip.IsUnspecified() {
-						scope += " 全部地址"
-					} else if ip.IsLoopback() {
-						scope += " 回环地址"
-					}
-				}
-				value := "直接路由（无宿主机映射端口）"
-				if binding.HostPort != "" {
-					if _, err := system.ValidatePort(binding.HostPort); err != nil {
-						return nil, fmt.Errorf("容器 %s 的宿主机端口无效", name)
-					}
-					value = net.JoinHostPort(address, binding.HostPort)
-				}
-				fields = append(fields, ui.CardField{Label: name, Value: fmt.Sprintf("%s → %s / %s · %s", value, target, strings.ToUpper(protocol), scope)})
-			}
+			fields = append(fields, ui.CardField{Value: branch + row})
 		}
 	}
 	return fields, nil
+}
+
+type dockerPortGroupKey struct {
+	hostPort, target int
+	protocol, scope  string
+}
+
+type dockerPortGroup struct {
+	families  int
+	addresses map[string]bool
+}
+
+func dockerContainerPortRows(container dockerPortContainer) ([]string, error) {
+	if container.NetworkMode == "host" {
+		return []string{"host 网络 · 共用宿主机网络，需查看服务实际监听端口"}, nil
+	}
+	name := strings.TrimPrefix(container.Name, "/")
+	groups := make(map[dockerPortGroupKey]*dockerPortGroup)
+	for port, bindings := range container.Ports {
+		if len(bindings) == 0 {
+			continue // EXPOSE without a published binding is not a host port.
+		}
+		target, protocol, _ := strings.Cut(port, "/")
+		targetPort, err := system.ValidatePort(target)
+		if err != nil || (protocol != "tcp" && protocol != "udp" && protocol != "sctp") {
+			return nil, fmt.Errorf("容器 %s 的端口信息无效", name)
+		}
+		for _, binding := range bindings {
+			hostPort := 0 // No host port in routed gateway mode.
+			if binding.HostPort != "" {
+				hostPort, err = system.ValidatePort(binding.HostPort)
+				if err != nil {
+					return nil, fmt.Errorf("容器 %s 的宿主机端口无效", name)
+				}
+			}
+			scope, family := "地址未指定", 0
+			address := binding.HostIP
+			if address != "" {
+				ip, err := netip.ParseAddr(address)
+				if err != nil {
+					return nil, fmt.Errorf("容器 %s 的绑定地址无效", name)
+				}
+				address = ip.String()
+				family = 2
+				if ip.Is4() {
+					family = 1
+				}
+				switch {
+				case ip.IsUnspecified():
+					scope = "全部地址"
+				case ip.IsLoopback():
+					scope = "回环地址"
+				default:
+					scope = "指定地址"
+				}
+			}
+			key := dockerPortGroupKey{hostPort: hostPort, target: targetPort, protocol: strings.ToUpper(protocol), scope: scope}
+			group := groups[key]
+			if group == nil {
+				group = &dockerPortGroup{addresses: make(map[string]bool)}
+				groups[key] = group
+			}
+			group.families |= family
+			if address != "" {
+				group.addresses[address] = true
+			}
+		}
+	}
+	keys := make([]dockerPortGroupKey, 0, len(groups))
+	for key := range groups {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		a, b := keys[i], keys[j]
+		if a.hostPort != b.hostPort {
+			if a.hostPort == 0 || b.hostPort == 0 {
+				return b.hostPort == 0 // List routed entries after host mappings.
+			}
+			return a.hostPort < b.hostPort
+		}
+		if a.target != b.target {
+			return a.target < b.target
+		}
+		if a.protocol != b.protocol {
+			return a.protocol < b.protocol
+		}
+		return a.scope < b.scope
+	})
+	var rows []string
+	for _, key := range keys {
+		group := groups[key]
+		families := []string{"地址族未指定", "IPv4", "IPv6", "IPv4 / IPv6"}[group.families]
+		scope := key.scope
+		if key.scope == "全部地址" {
+			scope += "（" + families + "）"
+		} else if len(group.addresses) > 0 {
+			addresses := make([]string, 0, len(group.addresses))
+			for address := range group.addresses {
+				addresses = append(addresses, address)
+			}
+			sort.Strings(addresses)
+			scope += "（" + strings.Join(addresses, "、") + "）"
+		}
+		value := fmt.Sprintf("%d / %s", key.target, key.protocol)
+		if key.hostPort == 0 {
+			routeScope := families
+			if key.scope != "全部地址" {
+				routeScope = scope
+			}
+			value += " · 直接路由（" + routeScope + "，无宿主机映射端口）"
+		} else {
+			value = ui.PrimaryText(strconv.Itoa(key.hostPort)) + " → " + value + " · " + scope
+		}
+		rows = append(rows, value)
+	}
+	return rows, nil
 }
 
 func showDockerPorts() {
@@ -162,10 +227,13 @@ func showDockerPorts() {
 		ui.PrintInfoCard("Docker 已发布端口", ui.CardField{Label: "无法读取", Value: err.Error()})
 		return
 	}
-	fields = append([]ui.CardField{{Label: "数据来源", Value: "Docker 当前连接的 daemon；运行中容器的端口映射"}}, fields...)
-	if len(fields) == 1 {
+	fields = append([]ui.CardField{
+		{Label: "数据来源", Value: "当前 Docker 服务 · 运行中容器"},
+		{Label: "映射格式", Value: "宿主机端口 → 容器端口 / 协议"},
+	}, fields...)
+	if len(fields) == 2 {
 		fields = append(fields, ui.CardField{Label: "端口映射", Value: "未发现运行中容器的已发布端口"})
 	}
-	fields = append(fields, ui.CardField{Label: "说明", Value: "宿主机绑定地址:端口 → 容器端口 / 协议；不包含仅 EXPOSE 的端口", Detail: "Docker 映射通常经过转发规则，与上方 input 放行范围分别显示；映射不代表外网一定可达"})
+	fields = append(fields, ui.CardField{Label: "提示", Value: "发布映射不代表公网一定可达；仅 EXPOSE 的端口不显示"})
 	ui.PrintInfoCard("Docker 已发布端口", fields...)
 }
