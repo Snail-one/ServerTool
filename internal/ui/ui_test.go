@@ -9,6 +9,7 @@ import (
 )
 
 func TestMenuRowsAlignAndHintUsesGray(t *testing.T) {
+	t.Setenv("TERM", "xterm")
 	t.Setenv("CLICOLOR_FORCE", "1")
 	t.Setenv("NO_COLOR", "")
 	os.Unsetenv("NO_COLOR")
@@ -131,6 +132,7 @@ func TestNormalizePromptAndConfirmYes(t *testing.T) {
 }
 
 func TestPrimaryColorAndRecoverableInputStyle(t *testing.T) {
+	t.Setenv("TERM", "xterm")
 	t.Setenv("CLICOLOR_FORCE", "1")
 	t.Setenv("NO_COLOR", "")
 	os.Unsetenv("NO_COLOR")
@@ -147,6 +149,7 @@ func TestPrimaryColorAndRecoverableInputStyle(t *testing.T) {
 }
 
 func TestHomeSubtitleUsesPrimaryColor(t *testing.T) {
+	t.Setenv("TERM", "xterm")
 	t.Setenv("CLICOLOR_FORCE", "1")
 	t.Setenv("NO_COLOR", "")
 	os.Unsetenv("NO_COLOR")
@@ -159,6 +162,7 @@ func TestHomeSubtitleUsesPrimaryColor(t *testing.T) {
 }
 
 func TestReportPaletteUsesSemanticColors(t *testing.T) {
+	t.Setenv("TERM", "xterm")
 	t.Setenv("CLICOLOR_FORCE", "1")
 	t.Setenv("NO_COLOR", "")
 	os.Unsetenv("NO_COLOR")
@@ -190,6 +194,7 @@ func TestReportPaletteUsesSemanticColors(t *testing.T) {
 }
 
 func TestInstallationBadgeUsesOrangeAndGray(t *testing.T) {
+	t.Setenv("TERM", "xterm")
 	t.Setenv("CLICOLOR_FORCE", "1")
 	t.Setenv("NO_COLOR", "")
 	os.Unsetenv("NO_COLOR")
@@ -218,6 +223,7 @@ func TestInstallationBadgeUsesOrangeAndGray(t *testing.T) {
 }
 
 func TestSemanticCardsUseSharedLayoutAndColors(t *testing.T) {
+	t.Setenv("TERM", "xterm")
 	t.Setenv("CLICOLOR_FORCE", "1")
 	t.Setenv("NO_COLOR", "")
 	os.Unsetenv("NO_COLOR")
@@ -244,6 +250,7 @@ func TestSemanticCardsUseSharedLayoutAndColors(t *testing.T) {
 }
 
 func TestTableCellPadsColoredTextByVisibleWidth(t *testing.T) {
+	t.Setenv("TERM", "xterm")
 	t.Setenv("CLICOLOR_FORCE", "1")
 	t.Setenv("NO_COLOR", "")
 	os.Unsetenv("NO_COLOR")
