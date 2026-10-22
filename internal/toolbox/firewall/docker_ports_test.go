@@ -40,13 +40,28 @@ func TestLoadedPortsSeparatesDockerMappingsFromInputPolicy(t *testing.T) {
 	if len(parts) != 2 || !strings.Contains(parts[0], "443, 2222, 8000-8002, 8443") || strings.Contains(parts[0], "22 → 22 / TCP") {
 		t.Fatalf("Docker mappings must stay separate from native policy: %s", output)
 	}
-	for _, want := range []string{"web", "├─ 22 → 22 / TCP · 全部地址（IPv4 / IPv6）", "└─ 8080 → 80 / TCP · 回环地址（127.0.0.1）", "5353 → 53 / UDP · 指定地址（192.168.1.10）", "host-app", "需查看服务实际监听端口", "不代表公网一定可达"} {
+	for _, want := range []string{"web", "└─ 22 → 22 / TCP · 全部地址（IPv4 / IPv6）", "└─ 8080 → 80 / TCP · 回环地址（127.0.0.1）", "5353 → 53 / UDP · 指定地址（192.168.1.10）", "host-app", "需查看服务实际监听端口", "不代表公网一定可达"} {
 		if !strings.Contains(parts[1], want) {
 			t.Fatalf("missing %q in %s", want, parts[1])
 		}
 	}
-	if strings.Count(parts[1], "web") != 1 || strings.Count(parts[1], "22 → 22 / TCP") != 1 {
-		t.Fatalf("container header or dual-stack mapping repeated: %s", parts[1])
+	if strings.Count(parts[1], "web") != 3 || strings.Count(parts[1], "22 → 22 / TCP") != 1 {
+		t.Fatalf("container must appear once per scope, with dual-stack mapping merged: %s", parts[1])
+	}
+	var starts []int
+	for _, heading := range []string{"Docker 已发布端口 · 全部地址", "Docker 已发布端口 · 回环地址", "Docker 已发布端口 · 指定地址", "Docker host 网络容器"} {
+		index := strings.Index(output, heading)
+		if index < 0 || (len(starts) > 0 && index <= starts[len(starts)-1]) {
+			t.Fatalf("Docker scopes must be separate and ordered: %s", output)
+		}
+		starts = append(starts, index)
+	}
+	all, loopback := output[starts[0]:starts[1]], output[starts[1]:starts[2]]
+	if !strings.Contains(all, "22 → 22 / TCP") || strings.Contains(all, "8080 →") || strings.Contains(all, "5353 →") || strings.Contains(all, "host-app") {
+		t.Fatalf("all-address card contains another binding scope: %s", all)
+	}
+	if !strings.Contains(loopback, "8080 → 80 / TCP") || strings.Contains(loopback, "22 →") || strings.Contains(loopback, "5353 →") {
+		t.Fatalf("loopback card contains another binding scope: %s", loopback)
 	}
 	for _, absent := range []string{"9999", "9000", "stopped"} {
 		if strings.Contains(parts[1], absent) {
@@ -135,11 +150,11 @@ func TestDockerQueryFailureDoesNotHideInputPolicyOrClaimNoPorts(t *testing.T) {
 }
 
 func TestDockerRoutedPortDoesNotInventHostMapping(t *testing.T) {
-	fields, err := dockerPortFields([]dockerPortContainer{{Name: "/routed", Ports: map[string][]dockerPortBinding{
+	sections, err := dockerPortSections([]dockerPortContainer{{Name: "/routed", Ports: map[string][]dockerPortBinding{
 		"80/tcp": {{HostIP: "::", HostPort: ""}},
 	}}})
-	if err != nil || len(fields) != 2 || fields[1].Value != "└─ 80 / TCP · 直接路由（IPv6，无宿主机映射端口）" {
-		t.Fatalf("routed publication misrepresented: %+v %v", fields, err)
+	if err != nil || len(sections) != 1 || sections[0].scope != "直接路由" || len(sections[0].fields) != 2 || sections[0].fields[1].Value != "└─ 80 / TCP · 直接路由（IPv6，无宿主机映射端口）" {
+		t.Fatalf("routed publication misrepresented: %+v %v", sections, err)
 	}
 }
 
@@ -179,20 +194,22 @@ func TestDockerPortGroupingPreservesBindingsProtocolsAndTargets(t *testing.T) {
 		"10000 → 443 / TCP · 全部地址（IPv6）",
 		"80 / TCP · 直接路由（IPv6，无宿主机映射端口）",
 	}
-	if len(rows) != len(want) {
-		t.Fatalf("bindings incorrectly combined or duplicated: %v", rows)
-	}
 	got := make(map[string]int)
-	for _, row := range rows {
-		got[row]++
+	for _, values := range rows {
+		for _, row := range values {
+			got[row]++
+		}
+	}
+	if len(got) != len(want) {
+		t.Fatalf("bindings incorrectly combined or duplicated: %v", rows)
 	}
 	for _, row := range want {
 		if got[row] != 1 {
 			t.Fatalf("expected mapping exactly once: %s; got %v", row, rows)
 		}
 	}
-	if !reflect.DeepEqual(rows[len(rows)-4:], want[len(want)-4:]) {
-		t.Fatalf("ports must sort numerically, with routed ports last: %v", rows)
+	if !reflect.DeepEqual(rows["全部地址"], []string{want[0], want[4], want[5], want[6], want[7], want[8]}) || !reflect.DeepEqual(rows["直接路由"], []string{want[9]}) {
+		t.Fatalf("ports must sort numerically within scope, with routed ports separate: %v", rows)
 	}
 }
 

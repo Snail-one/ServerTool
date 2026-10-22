@@ -75,27 +75,38 @@ func inspectDockerPorts() ([]dockerPortContainer, error) {
 	return containers, nil
 }
 
-func dockerPortFields(containers []dockerPortContainer) ([]ui.CardField, error) {
-	var fields []ui.CardField
+type dockerPortSection struct {
+	scope  string
+	fields []ui.CardField
+}
+
+func dockerPortSections(containers []dockerPortContainer) ([]dockerPortSection, error) {
+	fieldsByScope := make(map[string][]ui.CardField)
 	for _, container := range containers {
 		rows, err := dockerContainerPortRows(container)
 		if err != nil {
 			return nil, err
 		}
-		if len(rows) == 0 {
-			continue
-		}
 		name := strings.TrimPrefix(container.Name, "/")
-		fields = append(fields, ui.CardField{Value: ui.PrimaryBoldText(name)})
-		for i, row := range rows {
-			branch := "├─ "
-			if i == len(rows)-1 {
-				branch = "└─ "
+		for scope, values := range rows {
+			fields := append(fieldsByScope[scope], ui.CardField{Value: ui.PrimaryBoldText(name)})
+			for i, value := range values {
+				branch := "├─ "
+				if i == len(values)-1 {
+					branch = "└─ "
+				}
+				fields = append(fields, ui.CardField{Value: branch + value})
 			}
-			fields = append(fields, ui.CardField{Value: branch + row})
+			fieldsByScope[scope] = fields
 		}
 	}
-	return fields, nil
+	var sections []dockerPortSection
+	for _, scope := range []string{"全部地址", "回环地址", "指定地址", "地址未指定", "直接路由", "host 网络"} {
+		if fields := fieldsByScope[scope]; len(fields) > 0 {
+			sections = append(sections, dockerPortSection{scope: scope, fields: fields})
+		}
+	}
+	return sections, nil
 }
 
 type dockerPortGroupKey struct {
@@ -108,9 +119,9 @@ type dockerPortGroup struct {
 	addresses map[string]bool
 }
 
-func dockerContainerPortRows(container dockerPortContainer) ([]string, error) {
+func dockerContainerPortRows(container dockerPortContainer) (map[string][]string, error) {
 	if container.NetworkMode == "host" {
-		return []string{"host 网络 · 共用宿主机网络，需查看服务实际监听端口"}, nil
+		return map[string][]string{"host 网络": {"共用宿主机网络，需查看服务实际监听端口"}}, nil
 	}
 	name := strings.TrimPrefix(container.Name, "/")
 	groups := make(map[dockerPortGroupKey]*dockerPortGroup)
@@ -184,7 +195,7 @@ func dockerContainerPortRows(container dockerPortContainer) ([]string, error) {
 		}
 		return a.scope < b.scope
 	})
-	var rows []string
+	rows := make(map[string][]string)
 	for _, key := range keys {
 		group := groups[key]
 		families := []string{"地址族未指定", "IPv4", "IPv6", "IPv4 / IPv6"}[group.families]
@@ -200,7 +211,9 @@ func dockerContainerPortRows(container dockerPortContainer) ([]string, error) {
 			scope += "（" + strings.Join(addresses, "、") + "）"
 		}
 		value := fmt.Sprintf("%d / %s", key.target, key.protocol)
+		section := key.scope
 		if key.hostPort == 0 {
+			section = "直接路由"
 			routeScope := families
 			if key.scope != "全部地址" {
 				routeScope = scope
@@ -209,7 +222,7 @@ func dockerContainerPortRows(container dockerPortContainer) ([]string, error) {
 		} else {
 			value = ui.PrimaryText(strconv.Itoa(key.hostPort)) + " → " + value + " · " + scope
 		}
-		rows = append(rows, value)
+		rows[section] = append(rows[section], value)
 	}
 	return rows, nil
 }
@@ -219,21 +232,36 @@ func showDockerPorts() {
 		return
 	}
 	containers, err := inspectDockerPorts()
-	var fields []ui.CardField
+	var sections []dockerPortSection
 	if err == nil {
-		fields, err = dockerPortFields(containers)
+		sections, err = dockerPortSections(containers)
 	}
 	if err != nil {
 		ui.PrintInfoCard("Docker 已发布端口", ui.CardField{Label: "无法读取", Value: err.Error()})
 		return
 	}
-	fields = append([]ui.CardField{
+	metadata := []ui.CardField{
 		{Label: "数据来源", Value: "当前 Docker 服务 · 运行中容器"},
 		{Label: "映射格式", Value: "宿主机端口 → 容器端口 / 协议"},
-	}, fields...)
-	if len(fields) == 2 {
-		fields = append(fields, ui.CardField{Label: "端口映射", Value: "未发现运行中容器的已发布端口"})
 	}
-	fields = append(fields, ui.CardField{Label: "提示", Value: "发布映射不代表公网一定可达；仅 EXPOSE 的端口不显示"})
-	ui.PrintInfoCard("Docker 已发布端口", fields...)
+	if len(sections) == 0 {
+		ui.PrintInfoCard("Docker 已发布端口", append(metadata, ui.CardField{Label: "端口映射", Value: "未发现运行中容器的已发布端口"})...)
+		return
+	}
+	for i, section := range sections {
+		fields := section.fields
+		if i == 0 {
+			fields = append(metadata, fields...)
+		}
+		if i == len(sections)-1 {
+			fields = append(fields, ui.CardField{Label: "提示", Value: "发布映射不代表公网一定可达；仅 EXPOSE 的端口不显示"})
+		}
+		title := "Docker 已发布端口 · " + section.scope
+		if section.scope == "host 网络" {
+			title = "Docker host 网络容器"
+		} else if section.scope == "直接路由" {
+			title = "Docker 直接路由端口"
+		}
+		ui.PrintInfoCard(title, fields...)
+	}
 }
