@@ -21,9 +21,10 @@ snail <command>
 | `snail help` | `--help`、`-h` | 否 | 显示命令行用法 |
 | `snail version` | `--version`、`-v` | 否 | 显示版本、提交、构建时间、Go 版本和目标平台 |
 | `snail update` | 无 | 是 | 下载仓库安装脚本并安装或更新到最新正式版 |
-| `snail uninstall` | `--uninstall` | 是 | 下载仓库安装脚本，默认清理全部备份并卸载主程序 |
+| `snail uninstall` | `--uninstall` | 是 | 下载仓库安装脚本，询问是否删除数据目录（默认保留），然后卸载主程序 |
 | `snail clean-backups` | 无 | 是 | 显示备份数量与大小，确认后清理全部模块备份 |
-| `snail clean-backups --yes` | 无 | 是 | 直接清理全部模块备份，供卸载流程调用 |
+| `snail clean-backups --yes` | 无 | 是 | 直接清理全部模块备份 |
+| `snail clean-data --yes` | 无 | 是 | 永久删除整个 `/var/lib/snailtool`，也供卸载时确认删除后调用 |
 
 未知命令会显示错误和用法，并以状态码 `2` 退出。
 
@@ -97,7 +98,7 @@ sudo snail uninstall
 sudo snail --uninstall
 ```
 
-卸载默认先清理 `/var/lib/snailtool/backups/` 中全部模块的备份，再删除主程序文件（默认 `/usr/local/sbin/snail`），不另行确认。备份清理失败时停止卸载并保留程序。通过 ServerTool 配置的 SSH、容器服务、用户环境和 UPS 配置仍保留。
+卸载先询问是否删除整个 `/var/lib/snailtool` 数据目录。输入 `y` 后调用已安装程序的 `clean-data --yes`，删除整个目录及全部备份、首次快照、锁文件、隐藏文件和子目录，成功后再删除主程序（默认 `/usr/local/sbin/snail`）；目录删除失败时停止并保留程序。输入 `n`、直接回车或未收到回答时，保留整个数据目录及备份，只删除程序；输入 `0/q` 取消整个卸载。完成卡显示实际选择的数据处理结果。系统和用户配置、已加载防火墙规则、开机自启设置、已安装软件及容器数据保持原状。
 
 也可单独执行 `sudo snail clean-backups`，确认后清理备份；加 `--yes` 跳过确认。备份清理包含 UPS 首次备份，只操作当前数据目录中的备份文件，不兼容旧备份位置。
 

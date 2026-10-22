@@ -12,6 +12,20 @@ import (
 	"snail_tool/internal/ui"
 )
 
+// DeleteSoftwareData is used after the uninstall script receives explicit consent.
+// Keep its target fixed; callers cannot supply an arbitrary directory to delete.
+func DeleteSoftwareData() error {
+	info, err := inspectSoftwareData(shared.DataDir)
+	if err != nil {
+		return err
+	}
+	if info == nil {
+		ui.PrintInfoCard("软件数据目录不存在", ui.CardField{Label: "目录", Value: shared.DataDir})
+		return nil
+	}
+	return deleteSoftwareData(shared.DataDir, info)
+}
+
 // The menu always supplies shared.DataDir; the argument isolates filesystem tests.
 func cleanupSoftwareData(view *ui.UI, root string) error {
 	info, err := inspectSoftwareData(root)
@@ -38,11 +52,15 @@ func cleanupSoftwareData(view *ui.UI, root string) error {
 		log.Info("已取消删除软件数据目录")
 		return shared.ErrReturnToMenu
 	}
+	return deleteSoftwareData(root, info)
+}
+
+func deleteSoftwareData(root string, expected os.FileInfo) error {
 	latest, err := inspectSoftwareData(root)
 	if err != nil {
 		return err
 	}
-	if latest == nil || !os.SameFile(info, latest) {
+	if latest == nil || expected == nil || !os.SameFile(expected, latest) {
 		return fmt.Errorf("软件数据目录在确认期间发生变化，未删除，请重新操作")
 	}
 	unlock, err := lockSoftwareData(root)
@@ -54,7 +72,7 @@ func cleanupSoftwareData(view *ui.UI, root string) error {
 	if err != nil {
 		return err
 	}
-	if latest == nil || !os.SameFile(info, latest) {
+	if latest == nil || !os.SameFile(expected, latest) {
 		return fmt.Errorf("软件数据目录在清理准备期间发生变化，未删除，请重新操作")
 	}
 	if err := shared.RemovePathTree(root); err != nil {

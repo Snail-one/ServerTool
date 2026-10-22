@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"snail_tool/internal/app"
+	"snail_tool/internal/cleanup"
 	cleanupbackups "snail_tool/internal/cleanup/backups"
 	"snail_tool/internal/log"
 	"snail_tool/internal/selfupdate"
@@ -74,6 +75,20 @@ func handleArgs(args []string) bool {
 			os.Exit(1)
 		}
 		return true
+	case "clean-data":
+		if len(args) != 2 || args[1] != "--yes" {
+			log.Error("用法：snail clean-data --yes（永久删除整个 /var/lib/snailtool）")
+			os.Exit(2)
+		}
+		if !system.IsRoot() {
+			log.Error("删除软件数据目录需要 root 权限，请使用 sudo snail clean-data --yes")
+			os.Exit(1)
+		}
+		if err := cleanup.DeleteSoftwareData(); err != nil {
+			log.Error(err)
+			os.Exit(1)
+		}
+		return true
 	case "clean-backups":
 		if len(args) > 2 || (len(args) == 2 && args[1] != "--yes") {
 			log.Error("用法：snail clean-backups [--yes]")
@@ -103,5 +118,5 @@ func handleArgs(args []string) bool {
 }
 
 func printUsage() {
-	fmt.Println("用法：snail [update|uninstall|clean-backups [--yes]|--version|-v|version]")
+	fmt.Println("用法：snail [update|uninstall|clean-backups [--yes]|clean-data --yes|--version|-v|version]")
 }

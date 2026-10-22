@@ -68,7 +68,7 @@ print_uninstall_completion_card() {
 	print_card "$GREEN" "卸载完成" \
 		"版本" "$1" \
 		"已删除" "$2" \
-		"备份" "已清理全部模块备份" \
+		"数据目录" "$3" \
 		"已保留" "系统服务和用户配置"
 }
 
@@ -112,7 +112,7 @@ usage() {
   sudo sh scripts/install.sh uninstall
 
 不指定版本时安装或更新到最新版本；也可以指定发布标签，例如 v1.2.0。
-使用 uninstall 或 --uninstall 默认清理全部模块备份并删除程序文件，保留系统服务和用户配置。
+使用 uninstall 或 --uninstall 删除程序文件，并询问是否删除整个 /var/lib/snailtool 数据目录（默认保留，包含全部备份）。系统服务和用户配置保持原状。
 
 可选环境变量：
   SERVERTOOL_VERSION       要安装的发布标签，默认为 latest
@@ -190,13 +190,38 @@ if [ "$MODE" = "uninstall" ]; then
 	info "程序路径：${TARGET}"
 
 	printf '\n'
-	step "清理全部模块备份"
-	[ -x "$TARGET" ] || fail "程序无法运行，不能清理备份，已停止卸载：${TARGET}"
-	"$TARGET" clean-backups --yes || fail "备份清理失败，已停止卸载并保留程序"
+	step "选择是否删除软件数据"
+	info "数据目录：/var/lib/snailtool（全部备份、首次快照、锁文件、隐藏文件及子目录）"
+	DATA_STATUS="已保留 /var/lib/snailtool（含全部备份）"
+	while :; do
+		printf '是否同时删除整个 /var/lib/snailtool 数据目录？[y/N，0/q 取消卸载]：'
+		DATA_ANSWER=""
+		if ! IFS= read -r DATA_ANSWER; then
+			DATA_ANSWER=""
+		fi
+		case "$DATA_ANSWER" in
+			y|Y|[yY][eE][sS])
+				step "删除软件数据目录"
+				[ -x "$TARGET" ] || fail "程序无法运行，不能安全删除数据目录，已停止卸载：${TARGET}"
+				"$TARGET" clean-data --yes || fail "数据目录删除失败，已停止卸载并保留程序"
+				DATA_STATUS="已清理 /var/lib/snailtool（整个目录）"
+				break
+				;;
+			""|n|N|[nN][oO])
+				info "已保留软件数据目录及全部备份"
+				break
+				;;
+			0|q|Q|exit|EXIT|返回)
+				info "已取消卸载，程序和数据均保留"
+				exit 0
+				;;
+			*) warn "请输入 y 或 n，或输入 0/q 取消卸载" ;;
+		esac
+	done
 	step "卸载程序"
 	rm -f "$TARGET"
 	[ ! -e "$TARGET" ] && [ ! -L "$TARGET" ] || fail "无法删除程序文件：${TARGET}"
-	print_uninstall_completion_card "${CURRENT_RELEASE:-未知}" "$TARGET"
+	print_uninstall_completion_card "${CURRENT_RELEASE:-未知}" "$TARGET" "$DATA_STATUS"
 	exit 0
 fi
 

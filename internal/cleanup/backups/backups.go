@@ -120,7 +120,7 @@ func (plan *Plan) confirm(view *ui.UI) error {
 	return plan.Delete()
 }
 
-// ConfirmAll is shared by the command-line uninstall flow and the menu.
+// ConfirmAll is shared by the clean-backups command and the menu.
 func ConfirmAll(view *ui.UI) error {
 	plan, err := PrepareAll()
 	if err != nil {
@@ -129,7 +129,7 @@ func ConfirmAll(view *ui.UI) error {
 	return plan.confirm(view)
 }
 
-// DeleteAll is used when uninstalling: uninstall explicitly includes backups.
+// DeleteAll is used by clean-backups --yes after explicit consent.
 func DeleteAll() error {
 	plan, err := PrepareAll()
 	if err != nil {
