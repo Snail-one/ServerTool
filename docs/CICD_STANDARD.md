@@ -34,7 +34,8 @@ GitHub Actions Artifact 是流水线内部的临时传递文件；GitHub Release
 
 ```mermaid
 flowchart TD
-    A[推送 v* 标签] --> T[Test]
+    D[普通分支推送 / PR / 手动 CI] --> C0[独立 ci.yml 测试]
+    A[推送 v* 标签] --> T[调用 ci.yml 测试]
     M[手动输入 tag_name] --> T
     T -->|go test ./... 通过| B1[Build linux/amd64]
     T -->|go test ./... 通过| B2[Build linux/arm64]
@@ -52,7 +53,7 @@ flowchart TD
 Job 依赖关系：
 
 ```text
-test
+test（调用独立 ci.yml）
   └── build (amd64、arm64 并行)
         └── release
 ```
@@ -147,9 +148,21 @@ release:
 - 不得在整个工作流顶层授予写权限。
 - 不得把长期 Personal Access Token 写入代码或日志；同仓库发布优先使用 GitHub 自动提供的 token。
 
-## 7. Test Job
+## 7. 独立 CI 与 Test Job
 
 ### 7.1 当前质量门禁
+
+测试步骤统一维护在 `.github/workflows/ci.yml`。它支持普通分支推送、Pull Request、手动触发和 `workflow_call` 复用；发布工作流通过同一提交中的本地工作流引用调用，保留测试失败阻止构建的约束：
+
+```yaml
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+  build:
+    needs: test
+```
+
+独立 CI 中的测试步骤：
 
 ```yaml
 - uses: actions/checkout@v7
@@ -187,17 +200,19 @@ govulncheck ./...
 
 `-race` 只需要在一个原生平台运行，不需要在每个交叉构建架构重复执行。
 
-### 7.3 日常 CI 建议
+### 7.3 日常 CI 触发与复用
 
-当前 ServerTool 的 Release 工作流只在发布时运行测试。所有项目建议额外建立 `.github/workflows/ci.yml`，在日常推送和 PR 时提前发现问题：
+ServerTool 的 `.github/workflows/ci.yml` 在所有分支推送和 PR 时独立测试，也支持手动运行。标签推送由发布工作流调用测试，避免同一次标签发布额外触发独立 CI：
 
 ```yaml
 name: ci
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
+  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -212,10 +227,9 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: go test ./...
-      - run: go vet ./...
 ```
 
-日常 CI 不能替代正式发布前的 Test Job；Release 工作流仍应独立验证一次。
+测试逻辑只在 CI 文件中维护。日常 CI 不能替代发布前验证；Release 的 `test` Job 调用该工作流，再由 `build` 的 `needs: test` 等待结果。独立 CI 的并发组包含 `github.workflow`，与发布及其调用的测试分开，普通代码推送不会取消发布测试。
 
 ## 8. Build Job
 
@@ -418,10 +432,10 @@ ServerTool 使用两层说明：
 以发布 `v1.2.0` 为例：
 
 1. 维护者完成代码并推送到 `main`。
-2. 日常 CI 验证测试和静态检查。
+2. 独立 CI 验证测试。
 3. 维护者创建并推送 `v1.2.0` 标签。
 4. Release 工作流启动。
-5. Test Job 执行 `go test ./...`。
+5. Test Job 调用 `ci.yml`，执行 `go test ./...`。
 6. amd64、arm64 Build Job 并行构建。
 7. 构建时注入 `v1.2.0`、提交 SHA 和 UTC 构建时间。
 8. 两个二进制作为内部 Artifact 上传。
@@ -552,7 +566,8 @@ sudo <COMMAND> update
 
 ## 16. ServerTool 参考文件
 
-- 流水线：`.github/workflows/release.yml`
+- 独立测试：`.github/workflows/ci.yml`
+- 发布流水线：`.github/workflows/release.yml`
 - Release Notes：`scripts/generate_release_notes.sh`
 - 本地构建：`scripts/build_linux.sh`，固定输出 `dist/snail`
 - 安装更新：`scripts/install.sh`

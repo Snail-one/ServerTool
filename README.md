@@ -130,7 +130,9 @@ go test ./...
 
 ### 自动发布
 
-推送 `v*` 标签后，GitHub Actions 会先运行测试，再构建 Linux amd64/arm64 二进制并发布到 GitHub Releases，同时提供 `checksums.txt`。
+测试独立在 [CI 工作流](.github/workflows/ci.yml) 中，所有分支推送和 Pull Request 会自动执行 `go test ./...`，也可手动运行。
+
+推送 `v*` 标签后，[发布工作流](.github/workflows/release.yml) 会调用同一 CI 工作流，测试通过后再构建 Linux amd64/arm64 二进制并发布到 GitHub Releases，同时提供 `checksums.txt`。
 
 ```bash
 git tag v1.0.0

@@ -21,20 +21,7 @@ concurrency:
 jobs:
   test:
     name: test
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Test
-        run: go test ./...
+    uses: ./.github/workflows/ci.yml
 
   build:
     name: build (${{ matrix.goos }}/${{ matrix.goarch }})
