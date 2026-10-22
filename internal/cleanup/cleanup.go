@@ -38,6 +38,7 @@ func Run(view *ui.UI) error {
 	steps := allCleanupSteps()
 	backupChoice := strconv.Itoa(len(steps) + 1)
 	allChoice := strconv.Itoa(len(steps) + 2)
+	dataChoice := strconv.Itoa(len(steps) + 3)
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("清理本工具配置")
@@ -49,6 +50,7 @@ func Run(view *ui.UI) error {
 		fmt.Println()
 		ui.MenuOptionHint(backupChoice, "清理备份", "按模块 / 全部")
 		ui.MenuOption(allChoice, "清理全部本工具配置")
+		ui.MenuOptionHint(dataChoice, "删除软件数据目录", shared.DataDir+"，包含全部备份和隐藏文件")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -99,6 +101,12 @@ func Run(view *ui.UI) error {
 			return runAllCleanupSteps(account, steps, plan.Delete)
 		case backupChoice:
 			shared.RunAction(view, "备份清理失败，已返回清理配置", func() error { return cleanupbackups.Run(view) })
+		case dataChoice:
+			err := cleanupSoftwareData(view, shared.DataDir)
+			if errors.Is(err, shared.ErrReturnToMenu) {
+				continue
+			}
+			return err
 		default:
 			ui.InvalidChoice()
 			view.Pause()
