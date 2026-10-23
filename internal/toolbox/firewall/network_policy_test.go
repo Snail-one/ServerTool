@@ -130,9 +130,9 @@ func TestPolicyManagerBatchesDraftAndSavesOnce(t *testing.T) {
 	version := ruleTestConfig(t, nil)
 	calls := acceptRuleCommands(t)
 	// Both private families and both protocols; add, subtract, edit both address lists.
-	input := "2\n3\n3\n1\n443,8000-8100\n" +
-		"2\n1\n1\n2\n8050-8060\n3\n1\n3\n10.20.1.1/16\n" +
-		"3\n2\n5\n2\n2001:db8:1::123/64\ns\ny\n"
+	input := "1\n2\n3\n3\n1\n443,8000-8100\n" +
+		"3\n1\n1\n2\n8050-8060\n4\n1\n3\n10.20.1.1/16\n" +
+		"4\n2\n5\n2\n2001:db8:1::123/64\ns\ny\n"
 	if err := runRuleManager(inputUI(t, input)); err != nil {
 		t.Fatal(err)
 	}
@@ -167,12 +167,14 @@ func TestPolicyManagerBatchesDraftAndSavesOnce(t *testing.T) {
 
 func TestPolicyManagerCancellationAndRestoreNeverWrite(t *testing.T) {
 	for _, input := range []string{
-		"2\n1\n1\n1\n8443\nq\n",
-		"2\n1\n1\n1\n8443\ns\nn\nq\n",
-		"2\n1\n1\n1\n8443\nr\ns\nq\n",
-		"2\n3\nq\nq\n",
-		"3\n2\n5\nq\nq\n",
-		"2\n1\n1\n1\n8443\n", // EOF also discards the draft.
+		"1\nq\nq\n",
+		"1\n3\nq\nq\n",
+		"3\n1\n1\n1\n8443\nq\n",
+		"3\n1\n1\n1\n8443\ns\nn\nq\n",
+		"3\n1\n1\n1\n8443\nr\ns\nq\n",
+		"3\n3\nq\nq\n",
+		"4\n2\n5\nq\nq\n",
+		"3\n1\n1\n1\n8443\n", // EOF also discards the draft.
 	} {
 		t.Run(input, func(t *testing.T) {
 			setupTest(t)
@@ -201,7 +203,7 @@ func TestPolicyBatchSelectorsTargetOnlyChosenLists(t *testing.T) {
 		{"2\n\n\n", []int{4, 5, 6, 7}},
 		{"1\n1\nb\n2\n\n", []int{2, 3}},
 	} {
-		got, err := choosePolicyPortScope(inputUI(t, tc.input[2:]), tc.input[:1])
+		got, err := choosePolicyPortLists(inputUI(t, tc.input))
 		if err != nil || !reflect.DeepEqual(got, tc.want) {
 			t.Fatalf("%q: got=%v want=%v err=%v", tc.input, got, tc.want, err)
 		}
@@ -212,7 +214,7 @@ func TestPolicyEditorRetriesInvalidInputsWithoutChangingOtherLists(t *testing.T)
 	setupTest(t)
 	version := ruleTestConfig(t, nil)
 	acceptRuleCommands(t)
-	input := "2\n1\n1\n1\n65536\n443,,80\n8443\n3\n1\n3\n::1\n10.42.1.1/16\ns\ny\n"
+	input := "3\n1\n1\n1\n65536\n443,,80\n8443\n4\n1\n3\n::1\n10.42.1.1/16\ns\ny\n"
 	if err := runRuleManager(inputUI(t, input)); err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +255,7 @@ func TestPolicyManagerStopsOnValidationConflictOrLoadFailure(t *testing.T) {
 				t.Fatalf("unexpected args: %v", args)
 				return "", nil
 			}
-			err := runRuleManager(inputUI(t, "2\n1\n1\n1\n8443\ns\ny\n"))
+			err := runRuleManager(inputUI(t, "3\n1\n1\n1\n8443\ns\ny\n"))
 			if err == nil {
 				t.Fatal("expected failure")
 			}
@@ -290,7 +292,7 @@ func TestInitialGenerationSupportsAdvancedPolicyDraft(t *testing.T) {
 		return "", nil
 	}
 	// First generation -> custom private IPv6 UDP -> return to final confirmation -> save.
-	if err := configure(inputUI(t, "n\nn\n4\n2\n2\n2\n1\n51820\n3\n2\n3\nfd12::/48\ns\ny\n1\n")); err != nil {
+	if err := configure(inputUI(t, "n\nn\n4\n3\n2\n2\n1\n51820\n4\n2\n3\nfd12::/48\ns\ny\n1\n")); err != nil {
 		t.Fatal(err)
 	}
 	content := shared.ReadFileString(configPath)

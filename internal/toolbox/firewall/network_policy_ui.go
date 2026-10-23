@@ -80,18 +80,18 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理", "访问规则管理")
 		ui.PrintInfoCard("访问规则草稿（尚未保存）", accessSummaryFields(draft)...)
-		ui.MenuOption("1", "公网端口")
-		ui.MenuOption("2", "内网端口")
-		ui.MenuOptionHint("3", "内网 IP 范围", "指定使用内网端口策略的 IP / 网段")
-		ui.MenuOptionHint("4", "来源 IP 放行", "指定 IP / 网段可访问的端口与协议")
-		ui.MenuOptionHint("5", "公网与内网同时设置", "批量修改所选 IP 版本和协议的端口")
+		ui.MenuOptionHint("1", "端口放行", "选择公网 / 内网，批量增删端口")
+		ui.MenuOptionHint("2", "公网端口", "单独设置公网开放端口")
+		ui.MenuOptionHint("3", "内网端口", "单独设置内网开放端口")
+		ui.MenuOptionHint("4", "内网 IP 范围", "设置哪些 IP / 网段按内网处理")
+		ui.MenuOptionHint("5", "来源 IP 放行", "为指定 IP / 网段额外放行端口")
 		fmt.Println()
-		ui.MenuOption("p", "预览完整配置")
-		ui.MenuOption("r", "还原本次草稿")
+		ui.MenuOptionHint("p", "预览完整配置", "查看本次修改后的完整配置")
+		ui.MenuOptionHint("r", "还原本次草稿", "撤销本次全部修改")
 		if generating {
-			ui.MenuShortcutHint("s", "采用草稿并返回", "返回生成配置的最终确认页")
+			ui.MenuShortcutHint("s", "采用草稿并返回", "进入最终确认，暂不写入配置")
 		} else {
-			ui.MenuShortcutHint("s", "保存并立即加载", "显示变更，确认后校验并备份当前配置")
+			ui.MenuShortcutHint("s", "保存并立即加载", "确认后备份并应用全部修改")
 		}
 		fmt.Println()
 		ui.MenuExit("0/q", "放弃草稿并返回")
@@ -143,19 +143,23 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 		default:
 			var updated string
 			switch choice {
-			case "1", "2", "5":
+			case "1", "2", "3":
 				if err = validatePolicyConfig(draft); err != nil {
 					log.Warn(err)
 					view.PauseWithPrompt("按回车返回访问规则草稿…")
 					continue
 				}
-				scope := map[string]string{"1": "1", "2": "2", "5": "3"}[choice]
 				var indices []int
-				indices, err = choosePolicyPortScope(view, scope)
+				if choice == "1" {
+					indices, err = choosePolicyPortLists(view)
+				} else {
+					scope := map[string]string{"2": "1", "3": "2"}[choice]
+					indices, err = choosePolicyPortScope(view, scope)
+				}
 				if err == nil {
 					updated, err = changePolicyLists(view, draft, indices)
 				}
-			case "3":
+			case "4":
 				ui.ClearScreen()
 				ui.MenuTitle("防火墙管理", "访问规则管理", "内网 IP 范围")
 				ui.PrintInfoCard("按来源地址划分内网",
@@ -174,7 +178,7 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 					}
 					updated, err = changePolicyLists(view, draft, []int{index})
 				}
-			case "4":
+			case "5":
 				updated, err = editSourceRulesDraft(view, draft)
 			default:
 				ui.InvalidChoice()
@@ -194,6 +198,20 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 			draft = updated
 		}
 	}
+}
+
+func choosePolicyPortLists(view *ui.UI) ([]int, error) {
+	ui.ClearScreen()
+	ui.MenuTitle("防火墙管理", "访问规则管理", "端口放行", "选择访问范围")
+	ui.MenuOptionHint("1", "公网", "内网 IP 范围以外的来源")
+	ui.MenuOptionHint("2", "内网", "内网 IP 范围以内的来源")
+	ui.MenuOptionHint("3", "公网和内网", "两边执行相同的端口操作")
+	ui.MenuExit("0/q", "取消本次操作，返回访问规则草稿")
+	scope, err := askRuleChoice(view, "请选择访问范围", "", map[string]string{"1": "1", "2": "2", "3": "3"})
+	if err != nil {
+		return nil, err
+	}
+	return choosePolicyPortScope(view, scope)
 }
 
 func choosePolicyPortScope(view *ui.UI, scope string) ([]int, error) {
