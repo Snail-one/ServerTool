@@ -93,7 +93,9 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 		fmt.Println()
 		ui.MenuExit("0/q", "放弃草稿并返回")
 		if notice != "" {
-			ui.PrintField("提示", notice)
+			fmt.Println()
+			ui.PrintSectionCard("提示", ui.CardField{Value: notice})
+			fmt.Println()
 			notice = ""
 		}
 		choice, err := view.Ask("请选择：")
