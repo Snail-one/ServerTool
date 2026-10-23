@@ -73,7 +73,9 @@ func showLoadedPorts() error {
 		}
 	}
 	if len(exceptions) > 0 {
-		ui.PrintSectionCard("附加放行（来源规则可绕过普通端口列表）", exceptions...)
+		fields := []ui.CardField{{Label: "匹配方式", Value: "优先于公网 / 内网基础端口放行"}}
+		fields = append(fields, exceptions...)
+		ui.PrintSectionCard("来源 IP 放行规则", fields...)
 	}
 	if len(summary.system) > 0 {
 		system = append(system, ui.CardField{Label: "其他系统流量", Value: strings.Join(summary.system, "、"), Detail: "具体条件见完整已加载规则"})
