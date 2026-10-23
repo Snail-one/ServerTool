@@ -21,6 +21,9 @@ func printRuleOrder(rules []allowRule, selected string) {
 	fmt.Println(ui.InfoText("   " + ui.TableCell("顺序", 6) + ui.TableCell("规则 ID", 11) + ui.TableCell("IP 版本", 12) + ui.TableCell("协议", 10) + ui.TableCell("来源", 43) + "端口"))
 	for index, rule := range rules {
 		source, ports := rule.sourceLabel(), rule.Ports
+		if rule.Kind == "port" {
+			source = "任意来源（旧规则）"
+		}
 		if ports == "" {
 			ports = "全部端口"
 		}
@@ -49,7 +52,7 @@ func reorderAllowRulesWithEditor(view *ui.UI, rules []allowRule, editor ruleEdit
 	notice := ""
 	for {
 		ui.ClearScreen()
-		ui.MenuTitle("防火墙管理", "访问规则管理", "来源例外", "调整规则顺序")
+		ui.MenuTitle("防火墙管理", "访问规则管理", "来源 IP 放行", "调整规则顺序")
 		state := "与已保存顺序一致"
 		impact := "仅调整本页附加规则，移动后保存才生效"
 		if editor.pending {

@@ -4,12 +4,12 @@ import "snail_tool/internal/ui"
 
 func sourceRulePage(stage string, rule allowRule) {
 	ui.ClearScreen()
-	ui.MenuTitle("防火墙管理", "访问规则管理", "来源例外", stage)
+	ui.MenuTitle("防火墙管理", "访问规则管理", "来源 IP 放行", stage)
 	var fields []ui.CardField
 	if rule.ID != "" {
 		fields = append(fields, ui.CardField{Label: "规则 ID", Value: rule.ID})
 	}
-	if label := map[string]string{"port": "已有全来源端口例外", "source": "来源 IP 放行", "source_port": "来源 IP + 端口"}[rule.Kind]; label != "" {
+	if label := map[string]string{"port": "任意来源（旧规则）", "source": "全部端口（按协议）", "source_port": "指定端口"}[rule.Kind]; label != "" {
 		fields = append(fields, ui.CardField{Label: "放行类型", Value: label})
 	}
 	if rule.Family != "" {

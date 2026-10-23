@@ -158,7 +158,7 @@ func (summary *loadedPortSummary) readInput(parser livePortParser, chains map[st
 			for _, extra := range rules["source_allow"] {
 				parsed, err := parser.rule(extra)
 				if err != nil {
-					return fmt.Errorf("来源例外含无法归纳的条件（句柄 %v）: %w", extra["handle"], err)
+					return fmt.Errorf("来源 IP 放行含无法归纳的条件（句柄 %v）: %w", extra["handle"], err)
 				}
 				if parsed.verdict == "return" && parsed.unconditional() {
 					break
@@ -167,7 +167,7 @@ func (summary *loadedPortSummary) readInput(parser livePortParser, chains map[st
 					continue
 				}
 				if parsed.verdict != "accept" {
-					return fmt.Errorf("来源例外含丢弃、条件返回或其他跳转，无法完整归纳")
+					return fmt.Errorf("来源 IP 放行含丢弃、条件返回或其他跳转，无法完整归纳")
 				}
 				if parsed.canMatchBusiness() {
 					summary.exceptions = append(summary.exceptions, parsed)

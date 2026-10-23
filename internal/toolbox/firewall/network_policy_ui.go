@@ -83,8 +83,9 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 		ui.MenuOption("1", "公网端口")
 		ui.MenuOption("2", "内网端口")
 		ui.MenuOptionHint("3", "内网来源名单", "IPv4 / IPv6 地址及网段")
-		ui.MenuOptionHint("4", "来源例外", "添加 / 编辑 / 删除 / 排序，优先于基础端口")
+		ui.MenuOptionHint("4", "来源 IP 放行", "指定 IP / 网段可访问的端口与协议")
 		ui.MenuOptionHint("5", "公网与内网同时设置", "批量修改所选 IP 版本和协议的端口")
+		fmt.Println()
 		ui.MenuOption("p", "预览完整配置")
 		ui.MenuOption("r", "还原本次草稿")
 		if generating {
@@ -92,6 +93,7 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 		} else {
 			ui.MenuShortcutHint("s", "保存并立即加载", "显示变更，确认后校验并备份当前配置")
 		}
+		fmt.Println()
 		ui.MenuExit("0/q", "放弃草稿并返回")
 		if notice != "" {
 			ui.PrintField("提示", notice)

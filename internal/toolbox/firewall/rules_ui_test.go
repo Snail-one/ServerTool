@@ -38,7 +38,7 @@ func TestRuleManagerAddsSourceExceptionForBothProtocols(t *testing.T) {
 	ruleTestConfig(t, nil)
 	calls := acceptRuleCommands(t)
 	// Unified draft -> source exceptions -> add -> both IP versions and protocols.
-	if err := runRuleManager(inputUI(t, "4\n1\n1\n3\n192.168.1.0/24\nfd12::/48\n8000-8100\n3\n\nq\ns\ny\n")); err != nil {
+	if err := runRuleManager(inputUI(t, "4\n1\n3\n192.168.1.0/24\nfd12::/48\n1\n8000-8100\n3\n\nq\ns\ny\n")); err != nil {
 		t.Fatal(err)
 	}
 	rules, err := managedRules(shared.ReadFileString(configPath))

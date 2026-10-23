@@ -53,7 +53,7 @@ func TestAccessManagerSharesOneDraftAndOneSaveAcrossPortsAndSources(t *testing.T
 		}
 		return query(name, args...)
 	}
-	input := "3\n2\n1\n1\n1\n8443\n4\n1\n1\n1\n192.168.1.10\n3306\n1\n\nq\ns\ny\n\nq\n"
+	input := "3\n2\n1\n1\n1\n8443\n4\n1\n1\n192.168.1.10\n1\n3306\n1\n\nq\ns\ny\n\nq\n"
 	output := capturePortOutput(t, func() {
 		if err := Run(inputUI(t, input)); !errors.Is(err, shared.ErrReturnToMenu) {
 			t.Fatal(err)
@@ -76,7 +76,7 @@ func TestAccessDraftDiscardAndRestoreIncludeSourceChanges(t *testing.T) {
 		t.Run(ending, func(t *testing.T) {
 			setupTest(t)
 			version := ruleTestConfig(t, nil)
-			input := "2\n\n\n1\n8443\n4\n1\n1\n1\n192.168.1.10\n3306\n1\n\nq\n" + ending
+			input := "2\n\n\n1\n8443\n4\n1\n1\n192.168.1.10\n1\n3306\n1\n\nq\n" + ending
 			if err := runRuleManager(inputUI(t, input)); !errors.Is(err, shared.ErrReturnToMenu) {
 				t.Fatal(err)
 			}
@@ -88,17 +88,25 @@ func TestAccessDraftDiscardAndRestoreIncludeSourceChanges(t *testing.T) {
 }
 
 func TestNewSourceExceptionsDoNotOfferGlobalPortCreation(t *testing.T) {
-	var rule allowRule
-	output := capturePortOutput(t, func() {
-		var err error
-		// New rules always require a source; ordinary ports use the base policy.
-		rule, err = askAllowRuleType(inputUI(t, "1\n1\n192.168.1.10\n3306\n1\n"), allowRule{ID: "aaaaaaaa"}, true)
-		if err != nil {
-			t.Fatal(err)
+	for _, tc := range []struct {
+		input string
+		want  allowRule
+	}{
+		{"1\n192.168.1.10\n1\n3306\n1\n", allowRule{ID: "aaaaaaaa", Kind: "source_port", Family: "ipv4", Source: "192.168.1.10", Ports: "3306", Protocol: "tcp"}},
+		{"2\n2001:db8::123/32\n2\n3\n", allowRule{ID: "aaaaaaaa", Kind: "source", Family: "ipv6", Source: "2001:db8::/32", Protocol: "both"}},
+	} {
+		var rule allowRule
+		output := capturePortOutput(t, func() {
+			var err error
+			// Both permissions must remain limited to the source entered first.
+			rule, err = askAllowRuleType(inputUI(t, tc.input), allowRule{ID: "aaaaaaaa"}, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+		if rule != tc.want || strings.Contains(output, "全来源端口例外") {
+			t.Fatalf("source permission was not preserved: got=%+v want=%+v", rule, tc.want)
 		}
-	})
-	if rule.Kind != "source_port" || rule.Source != "192.168.1.10" || strings.Contains(output, "全来源端口例外") {
-		t.Fatalf("new global port rule could still be created: %+v", rule)
 	}
 }
 
@@ -156,7 +164,7 @@ func TestMigrationIsVisibleAndOnlySavedWithTheParentDraft(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	if !strings.Contains(output, "全来源例外") || !strings.Contains(output, "删除例外 aaaaaaaa") ||
+	if !strings.Contains(output, "旧任意来源规则") || !strings.Contains(output, "删除放行规则 aaaaaaaa") ||
 		!strings.Contains(output, "公网 IPv6 UDP") || !strings.Contains(output, "内网 IPv6 UDP") || !reflect.DeepEqual(*calls, []string{"check", "load"}) {
 		t.Fatal("legacy conversion was not reviewable or saved atomically")
 	}
@@ -173,7 +181,7 @@ func TestSourceEditingStillWorksWithCustomBusinessPortExpressions(t *testing.T) 
 		t.Fatal(err)
 	}
 	acceptRuleCommands(t)
-	if err := runRuleManager(inputUI(t, "4\n1\n1\n1\n192.168.1.10\n3306\n1\n\nq\ns\ny\n")); err != nil {
+	if err := runRuleManager(inputUI(t, "4\n1\n1\n192.168.1.10\n1\n3306\n1\n\nq\ns\ny\n")); err != nil {
 		t.Fatal(err)
 	}
 	updated := shared.ReadFileString(configPath)

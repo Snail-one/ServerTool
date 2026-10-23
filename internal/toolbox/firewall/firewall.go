@@ -498,7 +498,7 @@ func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, er
 		ui.MenuOption("1", "校验、写入并立即加载")
 		ui.MenuOption("2", "预览完整配置")
 		ui.MenuOption("3", "重新选择公网 / 局域网 Web 端口")
-		ui.MenuOptionHint("4", "自定义访问规则", "端口 / 内网名单 / 来源例外，先调整草稿")
+		ui.MenuOptionHint("4", "自定义访问规则", "端口 / 内网名单 / 来源 IP 放行，先调整草稿")
 		ui.MenuExit("0/q", "取消并返回")
 		fmt.Println()
 		choice, err := view.Ask("请选择：")
