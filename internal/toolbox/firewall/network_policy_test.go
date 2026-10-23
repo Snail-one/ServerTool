@@ -198,6 +198,8 @@ func TestPolicyBatchSelectorsTargetOnlyChosenLists(t *testing.T) {
 		{"2\n3\n3\n", []int{4, 5, 6, 7}},
 		{"3\n1\n2\n", []int{1, 5}},
 		{"3\n3\n3\n", []int{0, 1, 2, 3, 4, 5, 6, 7}},
+		{"2\n\n\n", []int{4, 5, 6, 7}},
+		{"1\n1\nb\n2\n\n", []int{2, 3}},
 	} {
 		got, err := choosePolicyPortScope(inputUI(t, tc.input[2:]), tc.input[:1])
 		if err != nil || !reflect.DeepEqual(got, tc.want) {

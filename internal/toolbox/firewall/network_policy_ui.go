@@ -75,6 +75,7 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 		return "", err
 	}
 	draft := original
+	notice := ""
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理", "访问规则管理")
@@ -92,6 +93,10 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 			ui.MenuShortcutHint("s", "保存并立即加载", "显示变更，确认后校验并备份当前配置")
 		}
 		ui.MenuExit("0/q", "放弃草稿并返回")
+		if notice != "" {
+			ui.PrintField("提示", notice)
+			notice = ""
+		}
 		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return "", err
@@ -105,13 +110,14 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 			view.PauseWithPrompt("按回车返回草稿…")
 		case "r":
 			draft = original
+			notice = "已还原本次全部修改"
 		case "s":
 			fields := policyChangeFields(original, draft)
 			if len(fields) == 0 {
 				if generating {
 					return original, nil
 				}
-				log.Info("设置未变化，无需保存")
+				notice = "设置未变化，无需保存"
 				continue
 			}
 			ui.PrintInfoCard("待应用的变更", fields...)
@@ -143,6 +149,8 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 					updated, err = changePolicyLists(view, draft, indices)
 				}
 			case "3":
+				ui.ClearScreen()
+				ui.MenuTitle("防火墙管理", "访问规则管理", "内网来源名单")
 				ui.MenuOption("1", "IPv4 内网来源名单")
 				ui.MenuOption("2", "IPv6 内网来源名单")
 				ui.MenuExit("0/q", "返回访问规则草稿")
@@ -169,26 +177,55 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 				view.PauseWithPrompt("按回车返回访问规则草稿…")
 				continue
 			}
+			if updated != draft {
+				notice = "已更新草稿；输入 s 统一保存并加载，输入 r 还原全部修改"
+			}
 			draft = updated
 		}
 	}
 }
 
 func choosePolicyPortScope(view *ui.UI, scope string) ([]int, error) {
-	selections := []string{scope}
-	for _, options := range []struct{ title, a, b string }{
-		{"IP 版本", "IPv4", "IPv6"}, {"协议", "TCP", "UDP"},
-	} {
-		ui.MenuSection(options.title)
-		ui.MenuOption("1", options.a)
-		ui.MenuOption("2", options.b)
-		ui.MenuOption("3", "两者同时")
-		ui.MenuExit("0/q", "取消并返回草稿")
-		choice, err := askRuleChoice(view, "请选择（回车默认两者同时）", "3", map[string]string{"1": "1", "2": "2", "3": "3"})
+	selections := []string{scope, "3", "3"}
+	title := policyScopeTitle(scope)
+	options := []struct{ title, a, b, both string }{
+		{"选择 IP 版本", "IPv4", "IPv6", "IPv4 + IPv6"},
+		{"选择协议", "TCP", "UDP", "TCP + UDP"},
+	}
+	for step := 0; step < len(options); {
+		option := options[step]
+		ui.ClearScreen()
+		ui.MenuTitle("防火墙管理", "访问规则管理", title, option.title)
+		fields := []ui.CardField{{Label: "当前步骤", Value: fmt.Sprintf("%d / 3 · %s", step+1, option.title)}}
+		if step == 1 {
+			fields = append(fields, ui.CardField{Label: "IP 版本", Value: map[string]string{"1": "IPv4", "2": "IPv6", "3": "IPv4 + IPv6"}[selections[1]]})
+		}
+		ui.PrintInfoCard(title, fields...)
+		labels := []string{option.a, option.b, option.both}
+		for i, label := range labels {
+			hint := ""
+			if strconv.Itoa(i+1) == selections[step+1] {
+				hint = "默认，直接回车选择"
+			}
+			ui.MenuOptionHint(strconv.Itoa(i+1), label, hint)
+		}
+		if step > 0 {
+			ui.MenuOption("b", "上一步：选择 IP 版本")
+		}
+		ui.MenuExit("0/q", "取消本次操作，返回访问规则草稿")
+		choice, err := askRuleChoice(view, fmt.Sprintf("请选择 [1-3，默认 %s]：", selections[step+1]), selections[step+1],
+			map[string]string{"1": "1", "2": "2", "3": "3", "b": "back"})
 		if err != nil {
 			return nil, err
 		}
-		selections = append(selections, choice)
+		if choice == "back" {
+			if step > 0 {
+				step--
+			}
+			continue
+		}
+		selections[step+1] = choice
+		step++
 	}
 	var indices []int
 	for i := 0; i < 8; i++ {
@@ -201,8 +238,24 @@ func choosePolicyPortScope(view *ui.UI, scope string) ([]int, error) {
 	return indices, nil
 }
 
+func policyScopeTitle(scope string) string {
+	return map[string]string{"1": "公网端口", "2": "内网端口", "3": "公网与内网端口"}[scope]
+}
+
 func changePolicyLists(view *ui.UI, content string, indices []int) (string, error) {
 	list := policyLists[indices[0]]
+	ui.ClearScreen()
+	title := list.label
+	if list.family == 0 {
+		scope := "1"
+		if indices[0] >= 4 {
+			scope = "2"
+		} else if indices[len(indices)-1] >= 4 {
+			scope = "3"
+		}
+		title = policyScopeTitle(scope)
+	}
+	ui.MenuTitle("防火墙管理", "访问规则管理", title, "选择操作")
 	var fields []ui.CardField
 	for _, index := range indices {
 		value, err := readPolicyValue(content, policyLists[index])
@@ -213,6 +266,37 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 			value = "无附加业务端口，仅 SSH 端口"
 		}
 		fields = append(fields, ui.CardField{Label: policyLists[index].label, Value: value})
+	}
+	if list.family == 0 {
+		allEqual := true
+		for _, field := range fields[1:] {
+			allEqual = allEqual && field.Value == fields[0].Value
+		}
+		if allEqual {
+			families, protocols := "IPv4", "TCP"
+			var ipv4, ipv6, tcp, udp bool
+			for _, index := range indices {
+				ipv4 = ipv4 || index%4 < 2
+				ipv6 = ipv6 || index%4 >= 2
+				tcp = tcp || index%2 == 0
+				udp = udp || index%2 == 1
+			}
+			if ipv4 && ipv6 {
+				families = "IPv4 + IPv6"
+			} else if ipv6 {
+				families = "IPv6"
+			}
+			if tcp && udp {
+				protocols = "TCP + UDP"
+			} else if udp {
+				protocols = "UDP"
+			}
+			fields = []ui.CardField{
+				{Label: "编辑范围", Value: families + " · " + protocols},
+				{Label: "当前业务端口", Value: fields[0].Value},
+			}
+		}
+		fields = append([]ui.CardField{{Label: "当前步骤", Value: "3 / 3 · 选择操作"}}, fields...)
 	}
 	ui.PrintInfoCard("编辑所选列表", fields...)
 	ui.MenuOption("1", "添加")
