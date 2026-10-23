@@ -271,6 +271,13 @@ func PrintInfoCard(title string, fields ...CardField) {
 	printCard(PrimaryBoldText(strings.TrimSpace(title)), fields)
 }
 
+// PrintSectionCard places the section title in the border of an information
+// card, for reports that already have a page-level ServerTool heading.
+func PrintSectionCard(title string, fields ...CardField) {
+	fmt.Println(PrimaryBoldText("╭─ " + strings.TrimSpace(title)))
+	printCardFields(fields)
+}
+
 func PrintSuccessCard(title string, fields ...CardField) {
 	printCard(SuccessBoldText(strings.TrimSpace(title)), fields)
 }
@@ -286,6 +293,10 @@ func PrintDangerCard(title string, fields ...CardField) {
 func printCard(title string, fields []CardField) {
 	fmt.Println(PrimaryBoldText("╭─ ServerTool"))
 	fmt.Println(PrimaryText("│") + " " + title)
+	printCardFields(fields)
+}
+
+func printCardFields(fields []CardField) {
 	for _, field := range fields {
 		label := strings.TrimSpace(field.Label)
 		value := strings.TrimSpace(field.Value)

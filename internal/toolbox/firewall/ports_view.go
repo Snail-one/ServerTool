@@ -20,7 +20,7 @@ func showLoadedPorts() error {
 	}
 	defer showDockerPorts()
 	if !summary.found {
-		ui.PrintInfoCard("未加载本工具防火墙规则", ui.CardField{Label: "本工具表", Value: "未找到 inet snail；不能据此判断服务器端口全部开放或关闭"})
+		ui.PrintSectionCard("未加载本工具防火墙规则", ui.CardField{Label: "本工具表", Value: "未找到 inet snail；不能据此判断服务器端口全部开放或关闭"})
 		return nil
 	}
 	policy := "无法识别"
@@ -38,9 +38,9 @@ func showLoadedPorts() error {
 	if len(summary.otherInput) > 0 {
 		fields = append(fields, ui.CardField{Label: "其他入站链", Value: strings.Join(summary.otherInput, "；"), Detail: "这些链仍可能进一步限制访问"})
 	}
-	ui.PrintInfoCard("已加载端口策略", fields...)
+	ui.PrintSectionCard("已加载端口策略", fields...)
 	if summary.problem != "" {
-		ui.PrintInfoCard("无法完整汇总端口",
+		ui.PrintSectionCard("无法完整汇总端口",
 			ui.CardField{Label: "原因", Value: summary.problem},
 			ui.CardField{Label: "查看详情", Value: "返回后选择 2 查看全部已加载规则"},
 		)
@@ -58,8 +58,8 @@ func showLoadedPorts() error {
 			}
 		}
 	}
-	ui.PrintInfoCard("普通来源放行端口", ports...)
-	ui.PrintInfoCard("来源划分",
+	ui.PrintSectionCard("普通来源放行端口", ports...)
+	ui.PrintSectionCard("来源划分",
 		ui.CardField{Label: "内网 IPv4", Value: strings.Join(summary.private[0], ", ")},
 		ui.CardField{Label: "内网 IPv6", Value: strings.Join(summary.private[1], ", ")},
 		ui.CardField{Label: "公网", Value: "上述内网来源之外的地址"},
@@ -73,13 +73,13 @@ func showLoadedPorts() error {
 		}
 	}
 	if len(exceptions) > 0 {
-		ui.PrintInfoCard("附加放行（来源规则可绕过普通端口列表）", exceptions...)
+		ui.PrintSectionCard("附加放行（来源规则可绕过普通端口列表）", exceptions...)
 	}
 	if len(summary.system) > 0 {
 		system = append(system, ui.CardField{Label: "其他系统流量", Value: strings.Join(summary.system, "、"), Detail: "具体条件见完整已加载规则"})
 	}
 	if len(system) > 0 {
-		ui.PrintInfoCard("系统流量例外", system...)
+		ui.PrintSectionCard("系统流量例外", system...)
 	}
 	fmt.Println("以上是本工具入站规则的放行范围；服务监听、其他规则及云安全组也会影响实际连通性。")
 	return nil

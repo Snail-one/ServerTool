@@ -237,7 +237,7 @@ func showDockerPorts() {
 		sections, err = dockerPortSections(containers)
 	}
 	if err != nil {
-		ui.PrintInfoCard("Docker 已发布端口", ui.CardField{Label: "无法读取", Value: err.Error()})
+		ui.PrintSectionCard("Docker 已发布端口", ui.CardField{Label: "无法读取", Value: err.Error()})
 		return
 	}
 	metadata := []ui.CardField{
@@ -245,7 +245,7 @@ func showDockerPorts() {
 		{Label: "映射格式", Value: "宿主机端口 → 容器端口 / 协议"},
 	}
 	if len(sections) == 0 {
-		ui.PrintInfoCard("Docker 已发布端口", append(metadata, ui.CardField{Label: "端口映射", Value: "未发现运行中容器的已发布端口"})...)
+		ui.PrintSectionCard("Docker 已发布端口", append(metadata, ui.CardField{Label: "端口映射", Value: "未发现运行中容器的已发布端口"})...)
 		return
 	}
 	for i, section := range sections {
@@ -262,6 +262,6 @@ func showDockerPorts() {
 		} else if section.scope == "直接路由" {
 			title = "Docker 直接路由端口"
 		}
-		ui.PrintInfoCard(title, fields...)
+		ui.PrintSectionCard(title, fields...)
 	}
 }
