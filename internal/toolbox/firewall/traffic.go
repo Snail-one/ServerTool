@@ -98,6 +98,7 @@ func parseTrafficTables(output string) ([]trafficTable, error) {
 }
 
 func chooseTrafficTable(view *ui.UI, current trafficTable) (trafficTable, error) {
+	notice := ""
 	for {
 		tables, err := queryTrafficTables(context.Background())
 		if err != nil {
@@ -118,7 +119,7 @@ func chooseTrafficTable(view *ui.UI, current trafficTable) (trafficTable, error)
 		for i, table := range choices {
 			var hints []string
 			if table == defaultTrafficTable {
-				hints = append(hints, "本工具 · 默认")
+				hints = append(hints, "本工具 · 默认，回车选择")
 				if !defaultExists {
 					hints = append(hints, "未加载")
 				}
@@ -130,7 +131,11 @@ func chooseTrafficTable(view *ui.UI, current trafficTable) (trafficTable, error)
 		}
 		ui.MenuOption("r", "刷新表列表")
 		ui.MenuExit("0/q", "返回当前规则表")
-		choice, err := view.Ask("请选择规则表（回车默认 inet snail）")
+		if notice != "" {
+			ui.PrintField("提示", notice)
+			notice = ""
+		}
+		choice, err := view.Ask("请选择规则表（回车默认 inet snail）：")
 		if err != nil {
 			return trafficTable{}, err
 		}
@@ -142,6 +147,9 @@ func chooseTrafficTable(view *ui.UI, current trafficTable) (trafficTable, error)
 		}
 		if number, err := strconv.Atoi(choice); err == nil && number >= 1 && number <= len(choices) {
 			return choices[number-1], nil
+		}
+		if !strings.EqualFold(choice, "r") {
+			notice = "无效选项，请输入列表序号、r 刷新或 0/q 返回"
 		}
 	}
 }

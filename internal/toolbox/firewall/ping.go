@@ -185,13 +185,24 @@ func configurePing(view *ui.UI) error {
 	if target {
 		action = "允许"
 	}
-	prompt := "确认" + action + "外部 ICMP / ICMPv6 回显请求并加载当前配置？(y/N)"
+	ui.ClearScreen()
+	ui.MenuTitle("防火墙管理", "常用功能设置", "ICMP 回显（Ping）", "确认变更")
+	operation := action + "外部 ICMP / ICMPv6 回显请求"
+	if choice == "remove" {
+		operation = "移除专用回显配置"
+	}
+	ui.PrintInfoCard("即将应用的回显设置",
+		ui.CardField{Label: "当前配置", Value: state},
+		ui.CardField{Label: "操作", Value: operation},
+		ui.CardField{Label: "生效方式", Value: "保存并加载整份当前配置，包括其他待加载修改"},
+	)
+	prompt := "确认" + action + "外部 ICMP / ICMPv6 回显请求并加载当前配置？(y/N，0/q 返回)："
 	if choice == "remove" {
 		ui.PrintInfoCard("移除回显配置",
 			ui.CardField{Label: "移除内容", Value: "仅删除专用 ICMP / ICMPv6 回显规则及其标记"},
 			ui.CardField{Label: "移除后", Value: "由原有规则决定，项目默认规则通常仍拦截外部 Ping"},
 		)
-		prompt = "确认移除专用回显配置并加载当前配置？(y/N)"
+		prompt = "确认移除专用回显配置并加载当前配置？(y/N，0/q 返回)："
 	}
 	confirmed, err := view.Confirm(prompt)
 	if err != nil {

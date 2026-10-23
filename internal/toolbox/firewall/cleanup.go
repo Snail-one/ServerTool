@@ -142,7 +142,7 @@ func CleanupWithConfirm(view *ui.UI) error {
 	if plan.original == nil {
 		log.Warn("没有接入前的首次快照，只能移除可识别的本工具内容，无法完整恢复历史配置及自启状态。")
 	}
-	confirmed, err := view.Confirm("确认一键清理防火墙？(y/N)：")
+	confirmed, err := view.Confirm("确认一键清理防火墙？(y/N，0/q 返回)：")
 	if err != nil {
 		return err
 	}

@@ -51,6 +51,11 @@ func reorderAllowRulesWithEditor(view *ui.UI, rules []allowRule, editor ruleEdit
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理", "访问规则管理", "来源例外", "调整规则顺序")
 		state := "与已保存顺序一致"
+		impact := "仅调整本页附加规则，移动后保存才生效"
+		if editor.pending {
+			state = "与进入本页时的顺序一致"
+			impact = "采用顺序后返回访问规则管理，统一保存才生效"
+		}
 		if !reflect.DeepEqual(draft, rules) {
 			state = "有未保存的调整"
 		}
@@ -58,7 +63,7 @@ func reorderAllowRulesWithEditor(view *ui.UI, rules []allowRule, editor ruleEdit
 			ui.CardField{Label: "状态", Value: state},
 			ui.CardField{Label: "选中规则", Value: selected},
 			ui.CardField{Label: "匹配顺序", Value: "从上到下；TCP+UDP 规则作为一个整体移动"},
-			ui.CardField{Label: "调整范围", Value: "仅调整本页附加规则，移动后保存才生效"},
+			ui.CardField{Label: "调整范围", Value: impact},
 		)
 		printRuleOrder(draft, selected)
 		ui.PrintField("选择规则", "输入列表序号或完整规则 ID")
@@ -113,7 +118,7 @@ func reorderAllowRulesWithEditor(view *ui.UI, rules []allowRule, editor ruleEdit
 				continue
 			}
 			if !editor.pending {
-				confirmed, err := view.Confirm("确认保存当前规则顺序并立即加载？(y/N)：")
+				confirmed, err := view.Confirm("确认保存当前规则顺序并立即加载？(y/N，0/q 返回)：")
 				if errors.Is(err, shared.ErrReturnToMenu) || err == nil && !confirmed {
 					notice = "尚未保存，可继续调整或返回放弃草稿"
 					continue

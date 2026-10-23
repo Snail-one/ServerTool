@@ -106,6 +106,8 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 		}
 		switch strings.ToLower(choice) {
 		case "p":
+			ui.ClearScreen()
+			ui.MenuTitle("防火墙管理", "访问规则管理", "预览配置")
 			fmt.Println(draft)
 			view.PauseWithPrompt("按回车返回草稿…")
 		case "r":
@@ -120,13 +122,16 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 				notice = "设置未变化，无需保存"
 				continue
 			}
+			ui.ClearScreen()
+			ui.MenuTitle("防火墙管理", "访问规则管理", "确认变更")
 			ui.PrintInfoCard("待应用的变更", fields...)
-			prompt := "确认校验、备份、保存并加载整份当前配置（包括其他待加载修改）？(y/N)："
+			prompt := "确认校验、备份、保存并加载整份当前配置（包括其他待加载修改）？(y/N，0/q 返回)："
 			if generating {
-				prompt = "确认采用此草稿并返回最终确认页？(y/N)："
+				prompt = "确认采用此草稿并返回最终确认页？(y/N，0/q 返回)："
 			}
 			confirmed, err := view.Confirm(prompt)
 			if errors.Is(err, shared.ErrReturnToMenu) || err == nil && !confirmed {
+				notice = "尚未保存，草稿已保留，可继续编辑或返回放弃"
 				continue
 			}
 			if err != nil {
@@ -324,9 +329,12 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 	editIndex := -1
 	if operation == "edit" {
 		entries := strings.Split(current, ", ")
+		ui.ClearScreen()
+		ui.MenuTitle("防火墙管理", "访问规则管理", title, "选择编辑条目")
 		for i, entry := range entries {
 			ui.MenuOption(strconv.Itoa(i+1), entry)
 		}
+		ui.MenuExit("0/q", "取消本次编辑，返回访问规则草稿")
 		for {
 			value, err := view.Ask("请输入要编辑的条目序号（0/q 返回）：")
 			if err != nil {
@@ -343,12 +351,29 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 			ui.InvalidChoice()
 		}
 	}
+	if operation != "reset" {
+		action := map[string]string{"add": "添加", "remove": "删除", "replace": "替换", "edit": "编辑条目"}[operation]
+		ui.ClearScreen()
+		ui.MenuTitle("防火墙管理", "访问规则管理", title, action)
+		inputFields := append([]ui.CardField(nil), fields...)
+		if list.family == 0 {
+			inputFields[0].Value = "3 / 3 · " + action + "端口"
+		}
+		if editIndex >= 0 {
+			inputFields = append(inputFields, ui.CardField{Label: "编辑条目", Value: strings.Split(current, ", ")[editIndex], Detail: "回车保留当前条目"})
+		}
+		ui.PrintInfoCard("编辑内容", inputFields...)
+		ui.MenuExit("0/q", "取消本次操作，返回访问规则草稿")
+	}
 	for {
 		value := ""
 		if operation != "reset" {
 			prompt := "请输入端口或范围，多个用逗号分隔，例如 80,443,8000-8100（0/q 返回）："
 			if list.family != 0 {
 				prompt = fmt.Sprintf("请输入 IPv%d 地址 / CIDR，多个用逗号分隔（0/q 返回）：", list.family)
+				if operation == "edit" {
+					prompt = fmt.Sprintf("请输入新的 IPv%d 地址 / CIDR（回车保留当前条目，0/q 返回）：", list.family)
+				}
 			}
 			value, err = view.Ask(prompt)
 			if err != nil {
@@ -358,8 +383,16 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 				return "", shared.ErrReturnToMenu
 			}
 			if value == "" {
-				log.Warn("输入不能为空；清空业务端口请选择 4")
-				continue
+				if operation == "edit" {
+					value = strings.Split(current, ", ")[editIndex]
+				} else {
+					if list.family == 0 {
+						log.Warn("输入不能为空；清空业务端口请返回后选择 4")
+					} else {
+						log.Warn("输入不能为空，请填写至少一个地址或 CIDR")
+					}
+					continue
+				}
 			}
 		}
 		updated := content

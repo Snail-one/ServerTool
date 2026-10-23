@@ -184,7 +184,7 @@ func loadConfig(view *ui.UI) error {
 		ui.CardField{Label: "生效范围", Value: "立即执行文件中的规则，影响新建网络连接"},
 	)
 	ui.PrintInfoCard("准备加载防火墙配置", fields...)
-	confirmed, err := view.Confirm("是否立即加载此防火墙配置？(y/N)：")
+	confirmed, err := view.Confirm("是否立即加载此防火墙配置？(y/N，0/q 返回)：")
 	if err != nil {
 		return err
 	}
@@ -266,7 +266,7 @@ func editConfig(view *ui.UI) error {
 
 func ensureNftables(view *ui.UI) (bool, error) {
 	if !commandExists("nft") {
-		confirmed, err := view.Confirm("未检测到 nft，是否安装 nftables？(y/N)：")
+		confirmed, err := view.Confirm("未检测到 nft，是否安装 nftables？(y/N，0/q 返回)：")
 		if err != nil {
 			return false, err
 		}
@@ -336,19 +336,28 @@ func configure(view *ui.UI) error {
 	if len(ports) > 1 {
 		log.Warn("SSH 生效配置包含多个端口：", portList(ports), "。通常建议只保留一个 SSH 端口；本次会全部放行，请在 SSH 安全配置中检查并关闭不再使用的旧端口。")
 	}
-	ui.PrintInfoCard("检测到 SSH 配置端口",
+	sshFields := []ui.CardField{
 		ui.CardField{Label: "端口", Value: portList(ports), Detail: "/usr/sbin/sshd -T"},
 		ui.CardField{Label: "开放范围", Value: "公网、内网及 IPv4 / IPv6"},
 		ui.CardField{Label: "放行协议", Value: "相同端口号同时放行 TCP / UDP，列表独立维护"},
 		ui.CardField{Label: "附加放行规则", Value: fmt.Sprintf("保留已有 %d 条规则", len(preserved))},
-	)
+	}
+	if len(ports) > 1 {
+		sshFields = append(sshFields, ui.CardField{Label: "SSH 提示", Value: "检测到多个 SSH 端口，本次全部放行；建议在 SSH 安全配置中检查并关闭不再使用的旧端口"})
+	}
 	var content string
 	for {
-		publicWeb, err := askWeb(view, "公网")
+		publicWeb, err := askWeb(view, "公网", sshFields...)
 		if err != nil {
 			return err
 		}
-		privateWeb, err := askWeb(view, "局域网")
+		privateFields := append([]ui.CardField(nil), sshFields...)
+		publicState := "关闭"
+		if publicWeb {
+			publicState = "开放 80、443"
+		}
+		privateFields = append(privateFields, ui.CardField{Label: "已选公网 Web", Value: publicState})
+		privateWeb, err := askWeb(view, "局域网", privateFields...)
 		if err != nil {
 			return err
 		}
@@ -418,7 +427,14 @@ func configure(view *ui.UI) error {
 	return nil
 }
 
-func askWeb(view *ui.UI, scope string) (bool, error) {
+func askWeb(view *ui.UI, scope string, fields ...ui.CardField) (bool, error) {
+	ui.ClearScreen()
+	ui.MenuTitle("防火墙管理", "生成配置", scope+" Web 端口")
+	fields = append(fields, ui.CardField{Label: "本步设置", Value: scope + " TCP / UDP 80、443，IPv4 / IPv6 同时应用"})
+	ui.PrintInfoCard("生成基础配置", fields...)
+	ui.MenuOption("y", "开放 Web 端口 80、443")
+	ui.MenuOptionHint("n", "保持关闭", "默认，直接回车选择")
+	ui.MenuExit("0/q", "取消生成，返回防火墙管理")
 	for {
 		choice, err := view.Ask(fmt.Sprintf("是否开放%s Web 80、443（TCP / UDP、IPv4 / IPv6 同时开放）？[y/N，0/q 返回]：", scope))
 		if err != nil {

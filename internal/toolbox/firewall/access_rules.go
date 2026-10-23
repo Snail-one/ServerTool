@@ -172,6 +172,9 @@ func editSourceRulesDraft(view *ui.UI, original string) (string, error) {
 			action = func() error { return changeAllowRuleWithEditor(view, rules, "", editor) }
 		case "2":
 			action = func() error {
+				sourceRulePage("选择编辑例外", allowRule{})
+				printRuleOrder(rules, "")
+				ui.MenuExit("0/q", "取消编辑，返回来源例外")
 				id, err := chooseRuleID(view, rules)
 				if err != nil {
 					return err
@@ -191,7 +194,10 @@ func editSourceRulesDraft(view *ui.UI, original string) (string, error) {
 							candidates = append(candidates, rule)
 						}
 					}
+					sourceRulePage("全来源例外转入基础端口", allowRule{})
+					ui.PrintInfoCard("选择转换规则", ui.CardField{Label: "转换范围", Value: "将所选端口加入公网和内网基础列表，再从草稿移除此例外"})
 					printRuleOrder(candidates, "")
+					ui.MenuExit("0/q", "取消转换，返回来源例外")
 					id, err := chooseRuleID(view, candidates)
 					if err != nil {
 						return err
