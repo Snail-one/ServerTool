@@ -34,7 +34,7 @@ func TestDetectStatusForUserFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	status := DetectStatus(account)
+	status := DetectStatusWithProgress(account, nil)
 	if !status.Vim {
 		t.Fatal("expected Vim status to be configured")
 	}
@@ -51,7 +51,7 @@ func TestUserConfigurationCountExcludesUPS(t *testing.T) {
 
 	home := t.TempDir()
 	account := &system.Account{Name: "test", Home: home}
-	status := DetectStatus(account)
+	status := DetectStatusWithProgress(account, nil)
 
 	if status.ConfigTotal != 3 {
 		t.Fatalf("system/user configuration total = %d, want 3", status.ConfigTotal)
@@ -86,7 +86,7 @@ func TestDetectStatusForMissingUserFiles(t *testing.T) {
 	clearProxyEnv(t)
 
 	account := &system.Account{Name: "test", Home: t.TempDir()}
-	status := DetectStatus(account)
+	status := DetectStatusWithProgress(account, nil)
 
 	if status.Vim || status.Bash || status.Proxy {
 		t.Fatalf("expected missing files to be unconfigured, got %+v", status)
@@ -104,7 +104,7 @@ func TestDetectStatusRequiresProxyURL(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	status := DetectStatus(account)
+	status := DetectStatusWithProgress(account, nil)
 	if status.Proxy {
 		t.Fatal("expected empty proxy block to be unconfigured")
 	}
@@ -119,7 +119,7 @@ func TestDetectStatusReadsProxyFileEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	status := DetectStatus(account)
+	status := DetectStatusWithProgress(account, nil)
 	if !status.Proxy {
 		t.Fatal("expected proxy file env to be configured")
 	}
@@ -130,7 +130,7 @@ func TestDetectStatusIgnoresTemporaryProxyEnv(t *testing.T) {
 	t.Setenv("HTTP_PROXY", "http://192.168.31.108:52013")
 
 	account := &system.Account{Name: "test", Home: t.TempDir()}
-	status := DetectStatus(account)
+	status := DetectStatusWithProgress(account, nil)
 	if status.Proxy {
 		t.Fatal("expected temporary proxy env to be unconfigured")
 	}

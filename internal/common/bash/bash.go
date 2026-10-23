@@ -185,10 +185,6 @@ func ConfigureBash() error {
 	return nil
 }
 
-func replaceAliases(path string) error {
-	return replaceBashConfig(path, userBashBlock)
-}
-
 func replaceBashConfig(path, body string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {

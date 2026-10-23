@@ -26,9 +26,9 @@ type Account struct {
 	GID  int
 }
 
+// IsRoot checks the effective UID without starting a process or consulting PATH.
 func IsRoot() bool {
-	out, err := exec.Command("id", "-u").Output()
-	return err == nil && strings.TrimSpace(string(out)) == "0"
+	return os.Geteuid() == 0
 }
 
 func CommandExists(name string) bool {
@@ -141,11 +141,6 @@ func DirExists(path string) bool {
 func FileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
-}
-
-func FileNonEmpty(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && !info.IsDir() && info.Size() > 0
 }
 
 func ChownPath(path string, account *Account, recursive bool) error {

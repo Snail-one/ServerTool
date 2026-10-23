@@ -61,18 +61,6 @@ type composeRebuildResult struct {
 type composeRunner func(ComposeCommand, string, ...string) error
 
 func Run(view *ui.UI) error {
-	return updateDockerComposeApps(view, 1)
-}
-
-func UpdateDockerComposeApps(view *ui.UI) error {
-	mode, err := chooseUpdateMode(view)
-	if err != nil {
-		return err
-	}
-	return updateDockerComposeApps(view, mode)
-}
-
-func updateDockerComposeApps(view *ui.UI, mode int) error {
 	log.Info("批量更新运行中的 Docker Compose 应用")
 	fmt.Println()
 
@@ -81,40 +69,17 @@ func updateDockerComposeApps(view *ui.UI, mode int) error {
 		return err
 	}
 
-	var scanRoots []string
-	var dirs []string
-
-	switch mode {
-	case 1:
-		// 运行中的项目更新（使用 docker compose ls，新默认）
-		fmt.Println("正在通过 docker compose ls 获取运行中的项目...")
-		dirs, err = GetComposeProjectDirsFromLS(compose)
-		if err != nil {
-			return err
-		}
-		if len(dirs) == 0 {
-			log.Warn("未通过 compose ls 发现运行中的项目")
-			return nil
-		}
-	case 2:
-		// 扫描目录更新
-		defaultRoots := DefaultComposeRoots()
-		scanRoots, dirs, err = AskComposeScanDirs(view, defaultRoots)
-		if err != nil {
-			return err
-		}
-	default:
+	fmt.Println("正在通过 docker compose ls 获取运行中的项目...")
+	dirs, err := GetComposeProjectDirsFromLS(compose)
+	if err != nil {
+		return err
+	}
+	if len(dirs) == 0 {
+		log.Warn("未通过 compose ls 发现运行中的项目")
 		return nil
 	}
 
-	if len(scanRoots) > 0 {
-		fmt.Println(ui.PrimaryBoldText("扫描目录："))
-		for _, root := range scanRoots {
-			fmt.Printf("- %s\n", root)
-		}
-	} else {
-		ui.PrintField("来源", "docker compose ls")
-	}
+	ui.PrintField("来源", "docker compose ls")
 	ui.PrintField("Compose 命令", compose.Display)
 	fmt.Printf("找到 %d 个 Compose 目录：\n", len(dirs))
 	for _, dir := range dirs {
@@ -152,43 +117,25 @@ func updateDockerComposeApps(view *ui.UI, mode int) error {
 	return nil
 }
 
-func chooseUpdateMode(view *ui.UI) (int, error) {
-	for {
-		ui.MenuSection("请选择更新方式")
-		ui.MenuOptionHint("1", "更新运行中的项目", "docker compose ls（默认）")
-		ui.MenuOptionHint("2", "扫描目录后更新", "扫描 Compose 配置目录")
-		ui.MenuExit("0/q", "返回")
-		fmt.Println()
-
-		raw, err := view.Ask("请选择（直接回车默认 1）：")
-		if err != nil {
-			return 0, err
-		}
-		fmt.Println()
-
-		choice := strings.ToLower(strings.TrimSpace(raw))
-		if shared.IsReturnChoice(choice) {
-			return 0, shared.ErrReturnToMenu
-		}
-
-		switch choice {
-		case "1", "":
-			return 1, nil
-		case "2":
-			return 2, nil
-		default:
-			ui.InvalidChoice()
-			view.Pause()
-		}
-	}
+// GetComposeProjectDirsFromLS only includes running projects for update/rebuild.
+func GetComposeProjectDirsFromLS(compose ComposeCommand) ([]string, error) {
+	return composeProjectDirsFromLS(compose, true)
 }
 
-func GetComposeProjectDirsFromLS(compose ComposeCommand) ([]string, error) {
+// GetAllComposeProjectDirsFromLS includes stopped projects for management.
+func GetAllComposeProjectDirsFromLS(compose ComposeCommand) ([]string, error) {
+	return composeProjectDirsFromLS(compose, false)
+}
+
+func composeProjectDirsFromLS(compose ComposeCommand, runningOnly bool) ([]string, error) {
 	output, err := composeOutputGlobal(compose, "ls", "--format", "json")
 	if err != nil {
 		return nil, fmt.Errorf("执行 compose ls 失败: %w", err)
 	}
+	return parseComposeProjectDirs(output, runningOnly)
+}
 
+func parseComposeProjectDirs(output string, runningOnly bool) ([]string, error) {
 	output = strings.TrimSpace(output)
 	if output == "" || output == "[]" || output == "null" {
 		return nil, nil
@@ -202,7 +149,7 @@ func GetComposeProjectDirsFromLS(compose ComposeCommand) ([]string, error) {
 	dirSet := make(map[string]struct{})
 	for _, p := range projects {
 		statusLower := strings.ToLower(p.Status)
-		if !strings.Contains(statusLower, "running") {
+		if runningOnly && !strings.Contains(statusLower, "running") {
 			continue // 只处理运行中的项目
 		}
 		if p.ConfigFiles == "" {
@@ -210,50 +157,6 @@ func GetComposeProjectDirsFromLS(compose ComposeCommand) ([]string, error) {
 		}
 
 		// ConfigFiles 可能用逗号分隔多个文件
-		for _, f := range strings.Split(p.ConfigFiles, ",") {
-			f = strings.TrimSpace(f)
-			if f == "" {
-				continue
-			}
-			dir := filepath.Dir(f)
-			dir = filepath.Clean(dir)
-			if dir == "." || dir == "" {
-				continue
-			}
-			dirSet[dir] = struct{}{}
-		}
-	}
-
-	result := make([]string, 0, len(dirSet))
-	for d := range dirSet {
-		result = append(result, d)
-	}
-	sort.Strings(result)
-	return result, nil
-}
-
-// GetAllComposeProjectDirsFromLS returns dirs from compose ls without the running filter (for management)
-func GetAllComposeProjectDirsFromLS(compose ComposeCommand) ([]string, error) {
-	output, err := composeOutputGlobal(compose, "ls", "--format", "json")
-	if err != nil {
-		return nil, fmt.Errorf("执行 compose ls 失败: %w", err)
-	}
-
-	output = strings.TrimSpace(output)
-	if output == "" || output == "[]" || output == "null" {
-		return nil, nil
-	}
-
-	var projects []composeLsProject
-	if err := json.Unmarshal([]byte(output), &projects); err != nil {
-		return nil, fmt.Errorf("解析 compose ls 输出失败: %w (原始: %s)", err, output)
-	}
-
-	dirSet := make(map[string]struct{})
-	for _, p := range projects {
-		if p.ConfigFiles == "" {
-			continue
-		}
 		for _, f := range strings.Split(p.ConfigFiles, ",") {
 			f = strings.TrimSpace(f)
 			if f == "" {

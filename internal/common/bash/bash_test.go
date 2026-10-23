@@ -27,7 +27,7 @@ export LS_COLORS='custom colors'
 		t.Fatal(err)
 	}
 
-	if err := replaceAliases(path); err != nil {
+	if err := replaceBashConfig(path, userBashBlock); err != nil {
 		t.Fatal(err)
 	}
 	first := readTestFile(t, path)
@@ -50,7 +50,7 @@ export LS_COLORS='custom colors'
 		t.Fatalf("file mode = %o, want 600", info.Mode().Perm())
 	}
 
-	if err := replaceAliases(path); err != nil {
+	if err := replaceBashConfig(path, userBashBlock); err != nil {
 		t.Fatal(err)
 	}
 	if second := readTestFile(t, path); second != first {

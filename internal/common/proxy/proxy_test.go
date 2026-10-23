@@ -34,10 +34,10 @@ func TestWriteProxyBlockIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := writeProxyBlock(path, "http://127.0.0.1:8888"); err != nil {
+	if err := writeProxyBlockReplacingUnmanaged(path, "http://127.0.0.1:8888"); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeProxyBlock(path, "http://admin:secret@192.168.1.1:8888"); err != nil {
+	if err := writeProxyBlockReplacingUnmanaged(path, "http://admin:secret@192.168.1.1:8888"); err != nil {
 		t.Fatal(err)
 	}
 

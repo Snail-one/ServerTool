@@ -9,6 +9,29 @@ import (
 	"testing"
 )
 
+func TestComposeDirectoryParsingKeepsUpdateAndManagementScopesSeparate(t *testing.T) {
+	output := `[
+		{"Status":"running(2)","ConfigFiles":" /srv/live/compose.yml, /srv/live/override.yml, /srv/other/compose.yml "},
+		{"Status":"exited(1)","ConfigFiles":"/srv/stopped/compose.yml"},
+		{"Status":"running(1)","ConfigFiles":""}
+	]`
+	for _, tc := range []struct {
+		runningOnly bool
+		want        []string
+	}{
+		{true, []string{"/srv/live", "/srv/other"}},
+		{false, []string{"/srv/live", "/srv/other", "/srv/stopped"}},
+	} {
+		got, err := parseComposeProjectDirs(output, tc.runningOnly)
+		if err != nil || !reflect.DeepEqual(got, tc.want) {
+			t.Fatalf("runningOnly=%v: got=%v want=%v err=%v", tc.runningOnly, got, tc.want, err)
+		}
+	}
+	if _, err := parseComposeProjectDirs("invalid JSON", true); err == nil {
+		t.Fatal("invalid project discovery output must not be used for updates")
+	}
+}
+
 func TestFindComposeDirsMatchesScriptDepthAndDedupes(t *testing.T) {
 	root := t.TempDir()
 	appOne := filepath.Join(root, "app-one")

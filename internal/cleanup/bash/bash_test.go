@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	commonbash "snail_tool/internal/common/bash"
 	"snail_tool/internal/system"
 )
 
@@ -15,7 +16,7 @@ func TestRunRemovesManagedBlocksOnly(t *testing.T) {
 	bashrc := filepath.Join(home, ".bashrc")
 	manual := "export EDITOR=vim\nalias ll='eza -la'\nPS1='custom prompt '\n"
 	content := manual + "\n" +
-		bashAliasBegin + "\n" + bashAliasBlock + "\n" + bashAliasEnd + "\n\n" +
+		bashAliasBegin + "\n" + commonbash.BashAliasBlock() + "\n" + bashAliasEnd + "\n\n" +
 		legacyBashCommandBegin + "\nsnail() {\n  sudo '/usr/local/bin/snail_tool' \"$@\"\n}\n" + legacyBashCommandEnd + "\n"
 	if err := os.WriteFile(bashrc, []byte(content), 0644); err != nil {
 		t.Fatal(err)
@@ -40,7 +41,7 @@ func TestRunKeepsEmptyManagedFile(t *testing.T) {
 	home := t.TempDir()
 	account := &system.Account{Name: "test", Home: home}
 	bashrc := filepath.Join(home, ".bashrc")
-	content := bashAliasBegin + "\n" + bashAliasBlock + "\n" + bashAliasEnd + "\n"
+	content := bashAliasBegin + "\n" + commonbash.BashAliasBlock() + "\n" + bashAliasEnd + "\n"
 	if err := os.WriteFile(bashrc, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}

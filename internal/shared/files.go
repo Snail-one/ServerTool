@@ -187,10 +187,6 @@ type BlockMarker struct {
 	End   string
 }
 
-func EnsureFile(path string) error {
-	return EnsureFileWithOptions(path, AtomicWriteOptions{Mode: 0644})
-}
-
 func EnsureFileWithOptions(path string, options AtomicWriteOptions) error {
 	_, exists, err := validateAtomicTarget(path)
 	if err != nil || exists {
@@ -428,14 +424,6 @@ func ContainsLine(content, wanted string) bool {
 		}
 	}
 	return false
-}
-
-func FileContains(path, wanted string) bool {
-	return strings.Contains(ReadFileString(path), wanted)
-}
-
-func FileContainsNonEmptyContent(path string) bool {
-	return strings.TrimSpace(ReadFileString(path)) != ""
 }
 
 func ReadFileString(path string) string {

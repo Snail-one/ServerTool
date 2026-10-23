@@ -106,30 +106,8 @@ func DetectAllWithProgress(step func(string, func())) []Runtime {
 	return probeContainerRuntimesWithProgress(system.CommandExists, system.Output, step)
 }
 
-func runtimesForCommands(hasDocker, hasPodman bool) []Runtime {
-	var runtimes []Runtime
-	if hasDocker {
-		runtimes = append(runtimes, Runtime{Name: "docker", Display: "Docker"})
-	}
-	if hasPodman {
-		runtimes = append(runtimes, Runtime{Name: "podman", Display: "Podman"})
-	}
-	return runtimes
-}
-
-func runtimeForCommands(hasDocker, hasPodman bool) (Runtime, bool) {
-	switch {
-	case hasDocker:
-		return Runtime{Name: "docker", Display: "Docker"}, true
-	case hasPodman:
-		return Runtime{Name: "podman", Display: "Podman"}, true
-	default:
-		return Runtime{}, false
-	}
-}
-
 func installDockerRuntime(view *ui.UI) error {
-	if err := ensureContainerRuntimeAbsentWithProbe(system.CommandExists, system.Output); err != nil {
+	if err := ensureContainerRuntimeAbsent(system.CommandExists, system.Output); err != nil {
 		return err
 	}
 	if !system.IsRoot() {
@@ -139,7 +117,7 @@ func installDockerRuntime(view *ui.UI) error {
 }
 
 func installDockerScriptRuntime(view *ui.UI) error {
-	if err := ensureContainerRuntimeAbsentWithProbe(system.CommandExists, system.Output); err != nil {
+	if err := ensureContainerRuntimeAbsent(system.CommandExists, system.Output); err != nil {
 		return err
 	}
 	if !system.IsRoot() {
@@ -149,7 +127,7 @@ func installDockerScriptRuntime(view *ui.UI) error {
 }
 
 func installPodmanRuntime() error {
-	if err := ensureContainerRuntimeAbsentWithProbe(system.CommandExists, system.Output); err != nil {
+	if err := ensureContainerRuntimeAbsent(system.CommandExists, system.Output); err != nil {
 		return err
 	}
 	if !system.IsRoot() {
@@ -173,11 +151,7 @@ func installPodmanRuntime() error {
 	}
 }
 
-func ensureContainerRuntimeAbsent(commandExists func(string) bool) error {
-	return ensureContainerRuntimeAbsentWithProbe(commandExists, func(string, ...string) (string, error) { return "", nil })
-}
-
-func ensureContainerRuntimeAbsentWithProbe(commandExists func(string) bool, output func(string, ...string) (string, error)) error {
+func ensureContainerRuntimeAbsent(commandExists func(string) bool, output func(string, ...string) (string, error)) error {
 	runtimes := probeContainerRuntimes(commandExists, output)
 	if len(runtimes) == 0 {
 		return nil

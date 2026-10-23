@@ -34,7 +34,7 @@ func ConfigureDockerDaemonProxy(view *ui.UI) error {
 
 	log.Info("配置 Docker 服务代理")
 	fmt.Println()
-	if currentContent := dockerProxyConfigContent(dockerProxyPath); strings.TrimSpace(currentContent) != "" {
+	if currentContent := shared.ReadFileString(dockerProxyPath); strings.TrimSpace(currentContent) != "" {
 		ui.PrintInfoCard("当前 Docker 服务代理",
 			ui.CardField{Label: "配置文件", Value: dockerProxyPath},
 		)
@@ -106,11 +106,6 @@ Environment="NO_PROXY=%s"
 `, proxyURL, proxyURL, commonproxy.DefaultNoProxy())
 }
 
-func configuredDockerProxyURL(path string) (string, bool) {
-	content := dockerProxyConfigContent(path)
-	return dockerProxyURLFromContent(content)
-}
-
 // CurrentSummary 返回当前 Docker 服务代理的单行状态，供容器管理信息卡显示。
 func CurrentSummary() string {
 	return summarizeProxyConfig(dockerProxyPath)
@@ -142,15 +137,6 @@ func summarizeProxyConfig(path string) string {
 	}
 }
 
-func dockerProxyURLFromContent(content string) (string, bool) {
-	for _, name := range []string{"HTTP_PROXY", "HTTPS_PROXY"} {
-		if value, ok := dockerEnvironmentValue(content, name); ok {
-			return value, true
-		}
-	}
-	return "", false
-}
-
 func dockerEnvironmentValue(content, name string) (string, bool) {
 	prefix := `Environment="` + name + `=`
 	for _, rawLine := range strings.Split(content, "\n") {
@@ -164,14 +150,6 @@ func dockerEnvironmentValue(content, name string) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-func dockerProxyConfigContent(path string) string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	return string(data)
 }
 
 func dockerProxyURL(proxyURL string) string {

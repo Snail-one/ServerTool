@@ -56,11 +56,6 @@ type packageManager struct {
 	installArgs []string
 }
 
-// Run displays common command-line tools and installs selected missing tools.
-func Run(view *ui.UI) error {
-	return NewInventory().Run(view)
-}
-
 func (inventory *Inventory) Run(view *ui.UI) error {
 	for {
 		ui.ClearScreen()

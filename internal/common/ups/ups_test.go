@@ -390,7 +390,7 @@ func TestDeleteNUTBackupFileDeletesBackupOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := deleteNUTBackupFile(nutConfigFile{path: path, mode: 0644}); err != nil {
+	if err := backupStore.RemoveOriginal(path); err != nil {
 		t.Fatal(err)
 	}
 
@@ -430,7 +430,7 @@ func TestUPSBackupsDoNotUseLegacyLocations(t *testing.T) {
 	if got := readTestFile(t, path); got != "current\n" {
 		t.Fatalf("restored legacy contents: %q", got)
 	}
-	if err := deleteNUTBackupFile(nutConfigFiles[0]); err != nil {
+	if err := backupStore.RemoveOriginal(nutConfigFiles[0].path); err != nil {
 		t.Fatal(err)
 	}
 	if got := readTestFile(t, legacy); got != "legacy\n" {

@@ -16,6 +16,8 @@ func TestProbeContainerRuntimeScenarios(t *testing.T) {
 		wantNames  []string
 		wantDetail string
 	}{
+		{name: "none installed"},
+		{name: "podman only", podman: true, wantNames: []string{"podman"}},
 		{name: "docker engine", docker: true, version: "Docker version 29", wantNames: []string{"docker"}},
 		{name: "podman compatibility", docker: true, version: "podman version 5", wantNames: []string{"podman"}},
 		{name: "daemon abnormal", docker: true, version: "Docker version 29", infoErr: errors.New("daemon down"), wantNames: []string{"docker"}, wantDetail: "服务异常"},

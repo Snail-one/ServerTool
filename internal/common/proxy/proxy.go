@@ -215,15 +215,7 @@ func normalizeProxy(raw string) (string, error) {
 	return "http://" + raw, nil
 }
 
-func writeProxyBlock(path, proxyURL string) error {
-	return writeProxyBlockWithOptions(path, proxyURL, false)
-}
-
 func writeProxyBlockReplacingUnmanaged(path, proxyURL string) error {
-	return writeProxyBlockWithOptions(path, proxyURL, true)
-}
-
-func writeProxyBlockWithOptions(path, proxyURL string, removeUnmanaged bool) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -233,9 +225,7 @@ func writeProxyBlockWithOptions(path, proxyURL string, removeUnmanaged bool) err
 	if err != nil {
 		return err
 	}
-	if removeUnmanaged {
-		content = removeUnmanagedProxyLines(content)
-	}
+	content = removeUnmanagedProxyLines(content)
 	body := fmt.Sprintf(`export http_proxy="%s"
 export https_proxy="%s"
 

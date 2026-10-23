@@ -50,7 +50,6 @@ var (
 	nutStandaloneModeLine = regexp.MustCompile(`(?m)^[ \t]*MODE[ \t]*=[ \t]*standalone[ \t]*(?:#.*)?$`)
 	usbIDLine             = regexp.MustCompile(`(?i)^[0-9a-f]{4}$`)
 	rootNutOwner          = fileOwner{user: "root", group: "nut"}
-	rootOwner             = fileOwner{user: "root", group: "root"}
 	nutOwner              = fileOwner{user: "nut", group: "nut"}
 	nutConfFile           = nutConfigFile{path: nutConfPath, mode: 0640, owner: rootNutOwner}
 	upsConfFile           = nutConfigFile{path: upsConfPath, mode: 0640, owner: rootNutOwner}
@@ -714,15 +713,6 @@ func existingNUTBackups() []nutConfigFile {
 		}
 	}
 	return backups
-}
-
-func deleteNUTBackupFile(file nutConfigFile) error {
-	backup := originalNUTBackupPath(file.path)
-	if err := backupStore.RemoveOriginal(file.path); err != nil {
-		return err
-	}
-	log.Info("已删除 NUT 配置备份：", backup)
-	return nil
 }
 
 func restoreNUTBackupFile(file nutConfigFile) error {

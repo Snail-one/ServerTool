@@ -27,10 +27,6 @@ type Status struct {
 	ConfigTotal int
 }
 
-func DetectStatus(account *system.Account) Status {
-	return DetectStatusWithProgress(account, nil)
-}
-
 // DetectStatusWithProgress reports the current probe without changing how
 // configuration status is determined. A nil step keeps detection silent.
 func DetectStatusWithProgress(account *system.Account, step func(string, func())) Status {

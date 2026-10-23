@@ -25,10 +25,6 @@ type App struct {
 	startup *startup.Report
 }
 
-func New() *App {
-	return NewWithStartupReport(startup.New(version.Version))
-}
-
 func NewWithStartupReport(report *startup.Report) *App {
 	if report == nil {
 		report = startup.New(version.Version)

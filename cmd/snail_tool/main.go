@@ -23,8 +23,8 @@ func main() {
 
 	var isRoot bool
 	report := startup.New(version.Version)
-	report.Record("运行权限（id -u）", func() {
-		ui.NewDetectionProgress(os.Stdout).Step("运行权限（id -u）", func() {
+	report.Record("运行权限", func() {
+		ui.NewDetectionProgress(os.Stdout).Step("运行权限", func() {
 			isRoot = system.IsRoot()
 		})
 	})

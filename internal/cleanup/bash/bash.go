@@ -14,10 +14,7 @@ const (
 	legacyBashCommandEnd   = "# ===== END SNAIL COMMAND ====="
 )
 
-var (
-	bashAliasBegin, bashAliasEnd = commonbash.BashAliasMarkers()
-	bashAliasBlock               = commonbash.BashAliasBlock()
-)
+var bashAliasBegin, bashAliasEnd = commonbash.BashAliasMarkers()
 
 func Run(account *system.Account) error {
 	bashrc := filepath.Join(account.Home, ".bashrc")

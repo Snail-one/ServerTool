@@ -37,8 +37,8 @@ flowchart TD
     D[普通分支推送 / PR / 手动 CI] --> C0[独立 ci.yml 测试]
     A[推送 v* 标签] --> T[调用 ci.yml 测试]
     M[手动输入 tag_name] --> T
-    T -->|go test ./... 通过| B1[Build linux/amd64]
-    T -->|go test ./... 通过| B2[Build linux/arm64]
+    T -->|格式、静态检查及测试通过| B1[Build linux/amd64]
+    T -->|格式、静态检查及测试通过| B2[Build linux/arm64]
     B1 --> U1[上传 amd64 Artifact]
     B2 --> U2[上传 arm64 Artifact]
     U1 --> R[Release Job]
@@ -162,7 +162,7 @@ jobs:
     needs: test
 ```
 
-独立 CI 中的测试步骤：
+独立 CI 先检查 `gofmt` 格式，再运行 `go vet` 和全项目测试；任一步失败都会阻止后续构建。主要步骤：
 
 ```yaml
 - uses: actions/checkout@v7
@@ -172,6 +172,8 @@ jobs:
     go-version-file: go.mod
     cache: true
 
+- run: test -z "$(gofmt -l cmd internal)"
+- run: go vet ./...
 - run: go test ./...
 ```
 
@@ -226,6 +228,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - run: test -z "$(gofmt -l cmd internal)"
+      - run: go vet ./...
       - run: go test ./...
 ```
 
@@ -435,7 +439,7 @@ ServerTool 使用两层说明：
 2. 独立 CI 验证测试。
 3. 维护者创建并推送 `v1.2.0` 标签。
 4. Release 工作流启动。
-5. Test Job 调用 `ci.yml`，执行 `go test ./...`。
+5. Test Job 调用 `ci.yml`，检查格式并执行 `go vet ./...` 和 `go test ./...`。
 6. amd64、arm64 Build Job 并行构建。
 7. 构建时注入 `v1.2.0`、提交 SHA 和 UTC 构建时间。
 8. 两个二进制作为内部 Artifact 上传。

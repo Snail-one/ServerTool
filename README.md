@@ -125,12 +125,14 @@ sudo ./dist/snail
 ### 验证
 
 ```bash
+gofmt -l cmd internal
+go vet ./...
 go test ./...
 ```
 
 ### 自动发布
 
-测试独立在 [CI 工作流](.github/workflows/ci.yml) 中，所有分支推送和 Pull Request 会自动执行 `go test ./...`，也可手动运行。
+质量检查统一在 [CI 工作流](.github/workflows/ci.yml) 中，所有分支推送和 Pull Request 会自动检查 Go 格式、执行 `go vet ./...` 和 `go test ./...`，也可手动运行。`gofmt -l cmd internal` 应无输出。
 
 推送 `v*` 标签后，[发布工作流](.github/workflows/release.yml) 会调用同一 CI 工作流，测试通过后再构建 Linux amd64/arm64 二进制并发布到 GitHub Releases，同时提供 `checksums.txt`。
 
