@@ -129,8 +129,9 @@ func TestPolicyManagerBatchesDraftAndSavesOnce(t *testing.T) {
 	setupTest(t)
 	version := ruleTestConfig(t, nil)
 	calls := acceptRuleCommands(t)
-	// Both private families and both protocols; add, subtract, edit both address lists.
-	input := "1\n2\n3\n3\n1\n443,8000-8100\n" +
+	// Add to both public/private policies, subtract only from private IPv4 TCP,
+	// then edit both address lists and save the complete draft once.
+	input := "1\n3\n3\n1\n443,8000-8100\n" +
 		"3\n1\n1\n2\n8050-8060\n4\n1\n3\n10.20.1.1/16\n" +
 		"4\n2\n5\n2\n2001:db8:1::123/64\ns\ny\n"
 	if err := runRuleManager(inputUI(t, input)); err != nil {
@@ -141,8 +142,6 @@ func TestPolicyManagerBatchesDraftAndSavesOnce(t *testing.T) {
 		value, err := readPolicyValue(updated, list)
 		want := ""
 		switch {
-		case i < 4:
-			want, _ = readPolicyValue(string(version.content), list)
 		case i == 4:
 			want = "443, 8000-8049, 8061-8100"
 		case i < 8:
@@ -203,7 +202,7 @@ func TestPolicyBatchSelectorsTargetOnlyChosenLists(t *testing.T) {
 		{"2\n\n\n", []int{4, 5, 6, 7}},
 		{"1\n1\nb\n2\n\n", []int{2, 3}},
 	} {
-		got, err := choosePolicyPortLists(inputUI(t, tc.input))
+		got, err := choosePolicyPortScope(inputUI(t, tc.input[2:]), tc.input[:1])
 		if err != nil || !reflect.DeepEqual(got, tc.want) {
 			t.Fatalf("%q: got=%v want=%v err=%v", tc.input, got, tc.want, err)
 		}

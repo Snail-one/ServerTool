@@ -80,7 +80,7 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理", "访问规则管理")
 		ui.PrintInfoCard("访问规则草稿（尚未保存）", accessSummaryFields(draft)...)
-		ui.MenuOptionHint("1", "端口放行", "选择公网 / 内网，批量增删端口")
+		ui.MenuOptionHint("1", "端口放行", "同时设置公网和内网端口")
 		ui.MenuOptionHint("2", "公网端口", "单独设置公网开放端口")
 		ui.MenuOptionHint("3", "内网端口", "单独设置内网开放端口")
 		ui.MenuOptionHint("4", "内网 IP 范围", "设置哪些 IP / 网段按内网处理")
@@ -149,13 +149,9 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 					view.PauseWithPrompt("按回车返回访问规则草稿…")
 					continue
 				}
+				scope := map[string]string{"1": "3", "2": "1", "3": "2"}[choice]
 				var indices []int
-				if choice == "1" {
-					indices, err = choosePolicyPortLists(view)
-				} else {
-					scope := map[string]string{"2": "1", "3": "2"}[choice]
-					indices, err = choosePolicyPortScope(view, scope)
-				}
+				indices, err = choosePolicyPortScope(view, scope)
 				if err == nil {
 					updated, err = changePolicyLists(view, draft, indices)
 				}
@@ -198,20 +194,6 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 			draft = updated
 		}
 	}
-}
-
-func choosePolicyPortLists(view *ui.UI) ([]int, error) {
-	ui.ClearScreen()
-	ui.MenuTitle("防火墙管理", "访问规则管理", "端口放行", "选择端口设置")
-	ui.MenuOptionHint("1", "公网", "只修改公网端口，内网端口保持不变")
-	ui.MenuOptionHint("2", "内网", "只修改内网端口，公网端口保持不变")
-	ui.MenuOptionHint("3", "公网和内网", "同时修改公网和内网端口")
-	ui.MenuExit("0/q", "取消本次操作，返回访问规则草稿")
-	scope, err := askRuleChoice(view, "请选择要修改的端口设置", "", map[string]string{"1": "1", "2": "2", "3": "3"})
-	if err != nil {
-		return nil, err
-	}
-	return choosePolicyPortScope(view, scope)
 }
 
 func choosePolicyPortScope(view *ui.UI, scope string) ([]int, error) {
