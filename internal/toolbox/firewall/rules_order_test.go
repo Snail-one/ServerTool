@@ -132,7 +132,7 @@ func TestRuleManagerOpensOrderEditorAndSelectsNumericRuleID(t *testing.T) {
 	acceptRuleCommands(t)
 	// Enter sorting, select the numeric ID at position 3, put it first, save,
 	// read the result once, and return from the rule manager.
-	if err := runRuleManager(inputUI(t, "4\n00000001\nt\ns\ny\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := runRuleManager(inputUI(t, "4\n4\n00000001\nt\ns\n\nq\ns\ny\n")); err != nil {
 		t.Fatal(err)
 	}
 	got, err := managedRules(shared.ReadFileString(configPath))

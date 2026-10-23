@@ -37,12 +37,12 @@ func policyChangeFields(before, after string) []ui.CardField {
 			fields = append(fields, ui.CardField{Label: next[i].Label, Value: next[i].Value, Detail: "原设置：" + old[i].Value})
 		}
 	}
-	return fields
+	return append(fields, ruleChangeFields(before, after)...)
 }
 
-func runNetworkPolicy(view *ui.UI) error {
+func runRuleManager(view *ui.UI) error {
 	if !isRoot() {
-		return fmt.Errorf("端口与内网设置需要 root 权限，请使用 sudo 运行本工具")
+		return fmt.Errorf("访问规则管理需要 root 权限，请使用 sudo 运行本工具")
 	}
 	version, err := readConfigVersion()
 	if err != nil {
@@ -56,33 +56,34 @@ func runNetworkPolicy(view *ui.UI) error {
 		return err
 	}
 	if err := applyConfig([]byte(updated)); err != nil {
-		return fmt.Errorf("端口与内网设置已保存，但未成功加载；原配置已备份，可输入 r 校验加载配置重试: %w", err)
+		return fmt.Errorf("访问规则已保存，但未成功加载；原配置已备份，可输入 r 校验加载配置重试: %w", err)
 	}
-	ui.PrintSuccessCard("端口与内网设置已保存并加载")
+	ui.PrintSuccessCard("访问规则已保存并加载")
 	return nil
 }
 
 // The same draft editor is used for existing configurations and during initial
 // generation. It never writes files or changes the running firewall itself.
 func editPolicyDraft(view *ui.UI, original string, generating bool) (string, error) {
-	if err := validatePolicyConfig(original); err != nil {
+	if !hasManagedConfig(original) {
+		return "", fmt.Errorf("请先选择 6 生成本工具防火墙配置")
+	}
+	if _, _, _, err := inputChainBounds(original); err != nil {
+		return "", err
+	}
+	if _, err := managedRules(original); err != nil {
 		return "", err
 	}
 	draft := original
 	for {
 		ui.ClearScreen()
-		ui.MenuTitle("防火墙管理", "端口与内网设置")
-		ui.PrintInfoCard("配置草稿（尚未保存）", policyFields(draft)...)
-		ssh := sshDefinitionLine.FindStringSubmatch(draft)
-		ui.PrintInfoCard("设置说明",
-			ui.CardField{Label: "SSH 端口", Value: strings.TrimSpace(ssh[1]), Detail: "所有端口列表自动保留；通过 SSH 安全配置修改"},
-			ui.CardField{Label: "内网划分", Value: "按访问来源地址匹配，未列入名单的来源使用公网端口列表", Detail: "名单不直接放行全部端口；IPv6 公网地址也可按实际需要加入内网名单"},
-			ui.CardField{Label: "附加放行", Value: "来源 / 端口例外仍优先匹配，可通过放行规则管理编辑"},
-		)
-		for i, list := range policyLists {
-			ui.MenuOption(strconv.Itoa(i+1), list.label)
-		}
-		ui.MenuOptionHint("11", "批量设置端口", "选择公网 / 内网、IPv4 / IPv6、TCP / UDP")
+		ui.MenuTitle("防火墙管理", "访问规则管理")
+		ui.PrintInfoCard("访问规则草稿（尚未保存）", accessSummaryFields(draft)...)
+		ui.MenuOption("1", "公网端口")
+		ui.MenuOption("2", "内网端口")
+		ui.MenuOptionHint("3", "内网来源名单", "IPv4 / IPv6 地址及网段")
+		ui.MenuOptionHint("4", "来源例外", "添加 / 编辑 / 删除 / 排序，优先于基础端口")
+		ui.MenuOptionHint("5", "公网与内网同时设置", "批量修改所选 IP 版本和协议的端口")
 		ui.MenuOption("p", "预览完整配置")
 		ui.MenuOption("r", "还原本次草稿")
 		if generating {
@@ -127,41 +128,63 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 			}
 			return draft, nil
 		default:
-			index, err := strconv.Atoi(choice)
-			if err != nil || index < 1 || index > 11 {
+			var updated string
+			switch choice {
+			case "1", "2", "5":
+				if err = validatePolicyConfig(draft); err != nil {
+					log.Warn(err)
+					view.PauseWithPrompt("按回车返回访问规则草稿…")
+					continue
+				}
+				scope := map[string]string{"1": "1", "2": "2", "5": "3"}[choice]
+				var indices []int
+				indices, err = choosePolicyPortScope(view, scope)
+				if err == nil {
+					updated, err = changePolicyLists(view, draft, indices)
+				}
+			case "3":
+				ui.MenuOption("1", "IPv4 内网来源名单")
+				ui.MenuOption("2", "IPv6 内网来源名单")
+				ui.MenuExit("0/q", "返回访问规则草稿")
+				var family string
+				family, err = askRuleChoice(view, "请选择 IP 版本", "", map[string]string{"1": "ipv4", "2": "ipv6"})
+				if err == nil {
+					index := 8
+					if family == "ipv6" {
+						index = 9
+					}
+					updated, err = changePolicyLists(view, draft, []int{index})
+				}
+			case "4":
+				updated, err = editSourceRulesDraft(view, draft)
+			default:
 				ui.InvalidChoice()
 				continue
-			}
-			indices := []int{index - 1}
-			if index == 11 {
-				indices, err = choosePolicyPortLists(view)
-			}
-			var updated string
-			if err == nil {
-				updated, err = changePolicyLists(view, draft, indices)
 			}
 			if errors.Is(err, shared.ErrReturnToMenu) {
 				continue
 			}
 			if err != nil {
-				return "", err
+				log.Warn(err)
+				view.PauseWithPrompt("按回车返回访问规则草稿…")
+				continue
 			}
 			draft = updated
 		}
 	}
 }
 
-func choosePolicyPortLists(view *ui.UI) ([]int, error) {
-	selections := make([]string, 0, 3)
+func choosePolicyPortScope(view *ui.UI, scope string) ([]int, error) {
+	selections := []string{scope}
 	for _, options := range []struct{ title, a, b string }{
-		{"访问范围", "公网", "内网"}, {"IP 版本", "IPv4", "IPv6"}, {"协议", "TCP", "UDP"},
+		{"IP 版本", "IPv4", "IPv6"}, {"协议", "TCP", "UDP"},
 	} {
 		ui.MenuSection(options.title)
 		ui.MenuOption("1", options.a)
 		ui.MenuOption("2", options.b)
 		ui.MenuOption("3", "两者同时")
 		ui.MenuExit("0/q", "取消并返回草稿")
-		choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "1", "2": "2", "3": "3"})
+		choice, err := askRuleChoice(view, "请选择（回车默认两者同时）", "3", map[string]string{"1": "1", "2": "2", "3": "3"})
 		if err != nil {
 			return nil, err
 		}

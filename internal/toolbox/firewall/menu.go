@@ -11,7 +11,7 @@ func showMenu() {
 	fmt.Println()
 	ui.MenuOptionHint("1", "查看端口策略", "公网 / 内网 · Docker 发布端口")
 	ui.MenuOptionHint("2", "查看全部规则", "当前已加载的完整规则")
-	ui.MenuOptionHint("3", "放行规则管理", "添加 / 编辑 / 删除 / 排序")
+	ui.MenuOptionHint("3", "访问规则管理", "公网 / 内网端口 · 内网名单 · 来源例外")
 	fmt.Println()
 	ui.MenuOptionHint("4", "查看配置文件", configPath)
 	ui.MenuOptionHint("5", "编辑配置文件", "保存后校验，可立即加载")
@@ -29,7 +29,6 @@ func showMenu() {
 	}
 	ui.MenuOptionHint("7", "常用功能设置", "开机自启 / ICMP 回显 / 数据包统计")
 	ui.MenuOptionHint("8", "实时查看规则", "每秒刷新，支持切换规则表")
-	ui.MenuOptionHint("9", "端口与内网设置", "公网 / 内网端口 · IPv4 / IPv6 内网名单")
 	fmt.Println()
 	ui.MenuShortcutHint("r", "校验加载配置", "使当前配置文件立即生效")
 	ui.MenuExit("0/q", "返回主菜单")

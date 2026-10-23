@@ -33,16 +33,16 @@ func acceptRuleCommands(t *testing.T) *[]string {
 	return &calls
 }
 
-func TestRuleManagerAddsOneLogicalRuleForBothProtocols(t *testing.T) {
+func TestRuleManagerAddsSourceExceptionForBothProtocols(t *testing.T) {
 	setupTest(t)
 	ruleTestConfig(t, nil)
 	calls := acceptRuleCommands(t)
-	// Main menu -> add -> port -> both IP versions -> range -> both protocols.
-	if err := runRuleManager(inputUI(t, "1\n1\n3\n8000-8100\n3\ny\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	// Unified draft -> source exceptions -> add -> both IP versions and protocols.
+	if err := runRuleManager(inputUI(t, "4\n1\n1\n3\n192.168.1.0/24\nfd12::/48\n8000-8100\n3\n\nq\ns\ny\n")); err != nil {
 		t.Fatal(err)
 	}
 	rules, err := managedRules(shared.ReadFileString(configPath))
-	if err != nil || len(rules) != 1 || rules[0].Kind != "port" || rules[0].Family != "both" || rules[0].Ports != "8000-8100" || rules[0].Protocol != "both" {
+	if err != nil || len(rules) != 1 || rules[0].Kind != "source_port" || rules[0].Family != "both" || rules[0].Ports != "8000-8100" || rules[0].Protocol != "both" {
 		t.Fatalf("incorrect saved rule: %v %v", rules, err)
 	}
 	if !reflect.DeepEqual(*calls, []string{"check", "load"}) {
@@ -71,7 +71,7 @@ func TestRuleManagerEditsByDisplayedNumberAndKeepsOtherRules(t *testing.T) {
 	ruleTestConfig(t, rules)
 	calls := acceptRuleCommands(t)
 	// Edit row 2, keep its type/source, and change its ports/protocol.
-	if err := runRuleManager(inputUI(t, "2\n2\n\n\n\n8443\n3\ny\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := runRuleManager(inputUI(t, "4\n2\n2\n\n\n\n8443\n3\n\nq\ns\ny\n")); err != nil {
 		t.Fatal(err)
 	}
 	want := append([]allowRule(nil), rules...)

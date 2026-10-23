@@ -67,10 +67,6 @@ func Run(view *ui.UI) error {
 			shared.RunAction(view, "规则管理失败，已返回防火墙管理", func() error {
 				return runRuleManager(view)
 			})
-		case "9":
-			shared.RunAction(view, "端口与内网设置失败，已返回防火墙管理", func() error {
-				return runNetworkPolicy(view)
-			})
 		case "4":
 			shared.RunAction(view, "读取配置文件失败，已返回防火墙管理", showConfigFile)
 		case "5":
@@ -469,7 +465,7 @@ func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, er
 		if counters {
 			counterState = ui.PrimaryText("已开启")
 		}
-		ui.PrintInfoCard("端口与内网来源", policyFields(content)...)
+		ui.PrintInfoCard("访问规则", accessSummaryFields(content)...)
 		ui.PrintInfoCard("即将写入的配置",
 			ui.CardField{Label: "SSH 端口", Value: strings.TrimSpace(sshDefinitionLine.FindStringSubmatch(content)[1])},
 			ui.CardField{Label: "附加放行规则", Value: fmt.Sprintf("保留 %d 条，可额外放行来源和端口", len(extraRules))},
@@ -486,7 +482,7 @@ func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, er
 		ui.MenuOption("1", "校验、写入并立即加载")
 		ui.MenuOption("2", "预览完整配置")
 		ui.MenuOption("3", "重新选择公网 / 局域网 Web 端口")
-		ui.MenuOptionHint("4", "自定义端口与内网名单", "编辑八组端口及 IPv4 / IPv6 名单，先调整草稿")
+		ui.MenuOptionHint("4", "自定义访问规则", "端口 / 内网名单 / 来源例外，先调整草稿")
 		ui.MenuExit("0/q", "取消并返回")
 		fmt.Println()
 		choice, err := view.Ask("请选择：")
