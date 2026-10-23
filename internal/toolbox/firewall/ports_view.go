@@ -46,8 +46,8 @@ func showLoadedPorts() error {
 		)
 		return nil
 	}
-	var ports []ui.CardField
 	for scope, label := range []string{"公网", "内网"} {
+		var ports []ui.CardField
 		for family, version := range []string{"IPv4", "IPv6"} {
 			for protocol, name := range []string{"TCP", "UDP"} {
 				value := summary.ports[scope][family][protocol].String()
@@ -57,8 +57,8 @@ func showLoadedPorts() error {
 				ports = append(ports, ui.CardField{Label: label + " " + version + " " + name, Value: value})
 			}
 		}
+		ui.PrintSectionCard(label+"放行端口", ports...)
 	}
-	ui.PrintSectionCard("普通来源放行端口", ports...)
 	ui.PrintSectionCard("来源划分",
 		ui.CardField{Label: "内网 IPv4", Value: strings.Join(summary.private[0], ", ")},
 		ui.CardField{Label: "内网 IPv6", Value: strings.Join(summary.private[1], ", ")},
