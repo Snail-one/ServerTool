@@ -202,12 +202,12 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 
 func choosePolicyPortLists(view *ui.UI) ([]int, error) {
 	ui.ClearScreen()
-	ui.MenuTitle("防火墙管理", "访问规则管理", "端口放行", "选择访问范围")
-	ui.MenuOptionHint("1", "公网", "内网 IP 范围以外的来源")
-	ui.MenuOptionHint("2", "内网", "内网 IP 范围以内的来源")
-	ui.MenuOptionHint("3", "公网和内网", "两边执行相同的端口操作")
+	ui.MenuTitle("防火墙管理", "访问规则管理", "端口放行", "选择端口设置")
+	ui.MenuOptionHint("1", "公网", "只修改公网端口，内网端口保持不变")
+	ui.MenuOptionHint("2", "内网", "只修改内网端口，公网端口保持不变")
+	ui.MenuOptionHint("3", "公网和内网", "同时修改公网和内网端口")
 	ui.MenuExit("0/q", "取消本次操作，返回访问规则草稿")
-	scope, err := askRuleChoice(view, "请选择访问范围", "", map[string]string{"1": "1", "2": "2", "3": "3"})
+	scope, err := askRuleChoice(view, "请选择要修改的端口设置", "", map[string]string{"1": "1", "2": "2", "3": "3"})
 	if err != nil {
 		return nil, err
 	}
