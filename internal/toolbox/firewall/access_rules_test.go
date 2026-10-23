@@ -77,7 +77,7 @@ func TestAccessDraftDiscardAndRestoreIncludeSourceChanges(t *testing.T) {
 			setupTest(t)
 			version := ruleTestConfig(t, nil)
 			input := "3\n\n\n1\n8443\n5\n1\n1\n192.168.1.10\n1\n3306\n1\n\nq\n" + ending
-			if err := runRuleManager(inputUI(t, input)); !errors.Is(err, shared.ErrReturnToMenu) {
+			if err := runAccessRuleManager(inputUI(t, input)); !errors.Is(err, shared.ErrReturnToMenu) {
 				t.Fatal(err)
 			}
 			if shared.ReadFileString(configPath) != string(version.content) {
@@ -99,7 +99,7 @@ func TestNewSourceExceptionsDoNotOfferGlobalPortCreation(t *testing.T) {
 		output := capturePortOutput(t, func() {
 			var err error
 			// Both permissions must remain limited to the source entered first.
-			rule, err = askAllowRuleType(inputUI(t, tc.input), allowRule{ID: "aaaaaaaa"}, true)
+			rule, err = askAllowRule(inputUI(t, tc.input), allowRule{ID: "aaaaaaaa"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -160,7 +160,7 @@ func TestMigrationIsVisibleAndOnlySavedWithTheParentDraft(t *testing.T) {
 	version := ruleTestConfig(t, rules)
 	calls := acceptRuleCommands(t)
 	output := capturePortOutput(t, func() {
-		if err := runRuleManager(inputUI(t, "5\n5\n1\n\nq\ns\ny\n")); err != nil {
+		if err := runAccessRuleManager(inputUI(t, "5\n5\n1\n\nq\ns\ny\n")); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -181,7 +181,7 @@ func TestSourceEditingStillWorksWithCustomBusinessPortExpressions(t *testing.T) 
 		t.Fatal(err)
 	}
 	acceptRuleCommands(t)
-	if err := runRuleManager(inputUI(t, "5\n1\n1\n192.168.1.10\n1\n3306\n1\n\nq\ns\ny\n")); err != nil {
+	if err := runAccessRuleManager(inputUI(t, "5\n1\n1\n192.168.1.10\n1\n3306\n1\n\nq\ns\ny\n")); err != nil {
 		t.Fatal(err)
 	}
 	updated := shared.ReadFileString(configPath)

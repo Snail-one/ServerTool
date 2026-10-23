@@ -49,11 +49,6 @@ func backupFirewallConfig() (string, error) {
 	return (shared.BackupStore{Root: dataDir, Module: "firewall"}).Snapshot(configPath)
 }
 
-func firewallBackupDir() string {
-	dir, _ := (shared.BackupStore{Root: dataDir, Module: "firewall"}).Directory(configPath)
-	return dir
-}
-
 type nftToken struct {
 	text       string
 	start, end int
@@ -298,16 +293,12 @@ func replaceManagedRules(content string, rules []allowRule) (string, error) {
 	return content[:start] + "\n        " + block + "\n" + content[start:], nil
 }
 
-func saveManagedRules(version configVersion, rules []allowRule) error {
-	updated, err := replaceManagedRules(string(version.content), rules)
-	if err != nil {
-		return err
-	}
+func saveAccessRules(version configVersion, updated string) error {
 	if err := writeConfig(updated, version); err != nil {
 		return err
 	}
 	if err := applyConfig([]byte(updated)); err != nil {
-		return fmt.Errorf("规则已写入，但未成功加载；原配置已备份，可修正后输入 r 校验加载配置重试: %w", err)
+		return fmt.Errorf("访问规则已保存，但未成功加载；原配置已备份，可输入 r 校验加载配置重试: %w", err)
 	}
 	return nil
 }

@@ -126,48 +126,24 @@ func askRulePorts(view *ui.UI, current string) (string, error) {
 	}
 }
 
+// New rules always specify a source. The older unrestricted rules remain
+// editable, but cannot be created through the current menu.
 func askAllowRule(view *ui.UI, current allowRule) (allowRule, error) {
-	return askAllowRuleType(view, current, false)
-}
-
-func askAllowRuleType(view *ui.UI, current allowRule, sourceOnly bool) (allowRule, error) {
-	if sourceOnly && current.Kind != "port" {
+	if current.Kind != "port" {
 		return askSourceIPRule(view, current)
 	}
-	rule := allowRule{ID: current.ID}
 	sourceRulePage("选择放行类型", current)
-	kinds := map[string]string{"1": "port", "2": "source", "3": "source_port"}
-	fallback := map[string]string{"port": "1", "source": "2", "source_port": "3"}[current.Kind]
-	if sourceOnly {
-		kinds = map[string]string{"1": "source_port", "2": "source"}
-		fallback = map[string]string{"source_port": "1", "source": "2", "port": "3"}[current.Kind]
-		if fallback == "" {
-			fallback = "1"
-		}
-		ruleChoiceOption("1", "来源 IP + 端口", "指定来源和端口 / 范围", fallback)
-		ruleChoiceOption("2", "来源 IP 放行", "指定来源的全部 TCP / UDP 端口", fallback)
-		if current.Kind == "port" {
-			kinds["3"] = "port"
-			ruleChoiceOption("3", "保留已有全来源端口例外", "也可通过转入基础端口移除此规则", fallback)
-		}
-	} else {
-		if fallback == "" {
-			fallback = "1"
-		}
-		ruleChoiceOption("1", "全来源端口例外", "优先放行；新端口请通过公网 / 内网端口设置", fallback)
-		ruleChoiceOption("2", "来源 IP 放行", "指定来源的全部 TCP / UDP 端口", fallback)
-		ruleChoiceOption("3", "来源 IP + 端口", "指定来源和端口 / 范围", fallback)
-	}
+	const fallback = "3"
+	ruleChoiceOption("1", "来源 IP + 端口", "指定来源和端口 / 范围", fallback)
+	ruleChoiceOption("2", "来源 IP 放行", "指定来源的全部 TCP / UDP 端口", fallback)
+	ruleChoiceOption("3", "保留已有全来源端口例外", "也可通过转入基础端口移除此规则", fallback)
 	ui.MenuExit("0/q", "取消本次编辑，返回来源 IP 放行")
-	if fallback == "" {
-		fallback = "1"
-	}
-	kind, err := askRuleChoice(view, "请选择类型（回车默认 "+fallback+"）：", fallback, kinds)
+	kind, err := askRuleChoice(view, "请选择类型（回车默认 "+fallback+"）", fallback,
+		map[string]string{"1": "source_port", "2": "source", "3": "port"})
 	if err != nil {
-		return rule, err
+		return current, err
 	}
-	rule.Kind = kind
-	rule, err = askRuleFamily(view, current, rule)
+	rule, err := askRuleFamily(view, current, allowRule{ID: current.ID, Kind: kind})
 	if err != nil {
 		return rule, err
 	}
@@ -297,32 +273,13 @@ func askSourceIPRule(view *ui.UI, current allowRule) (allowRule, error) {
 	return normalizeAllowRule(rule)
 }
 
-func changeAllowRule(view *ui.UI, version configVersion, rules []allowRule, id string) error {
-	return changeAllowRuleWithEditor(view, rules, id, ruleEditor{save: func(updated []allowRule) error {
-		return saveManagedRules(version, updated)
-	}})
-}
-
-// ruleEditor shares validation and selection between draft editing and direct
-// saves. Draft sessions only update their parent in memory.
-type ruleEditor struct {
-	pending bool
-	save    func([]allowRule) error
-}
-
-func changeAllowRuleWithEditor(view *ui.UI, rules []allowRule, id string, editor ruleEditor) error {
-	ui.ClearScreen()
-	if id == "" {
-		ui.MenuTitle("防火墙管理", "访问规则管理", "来源 IP 放行", "添加放行规则")
-	} else {
-		ui.MenuTitle("防火墙管理", "访问规则管理", "来源 IP 放行", "编辑放行规则")
-	}
+func changeAllowRuleDraft(view *ui.UI, rules []allowRule, id string) ([]allowRule, error) {
 	current := allowRule{ID: id}
 	if id == "" {
 		var err error
 		current.ID, err = newRuleID(rules)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	} else {
 		found := false
@@ -332,29 +289,23 @@ func changeAllowRuleWithEditor(view *ui.UI, rules []allowRule, id string, editor
 			}
 		}
 		if !found {
-			return fmt.Errorf("规则 ID 不存在，请刷新后重新选择")
+			return nil, fmt.Errorf("规则 ID 不存在，请刷新后重新选择")
 		}
-		ui.PrintInfoCard("编辑前的规则", ui.CardField{Label: current.ID, Value: current.description()})
 	}
-	draft, err := askAllowRuleType(view, current, editor.pending)
+	draft, err := askAllowRule(view, current)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if draft == current {
 		log.Info("规则未变化")
-		return nil
+		return rules, nil
 	}
 	warnings, err := checkRuleRelations(draft, rules)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	title := "即将保存的入站放行规则"
-	if editor.pending {
-		title = "待加入草稿的来源 IP 放行"
-	}
-	ui.ClearScreen()
-	ui.MenuTitle("防火墙管理", "访问规则管理", "来源 IP 放行", "检查放行规则")
-	ui.PrintInfoCard(title,
+	sourceRulePage("检查放行规则", allowRule{})
+	ui.PrintInfoCard("待加入草稿的来源 IP 放行",
 		ui.CardField{Label: "规则 ID", Value: draft.ID},
 		ui.CardField{Label: "IP 版本", Value: draft.familyLabel()},
 		ui.CardField{Label: "放行内容", Value: draft.description()},
@@ -366,15 +317,6 @@ func changeAllowRuleWithEditor(view *ui.UI, rules []allowRule, id string, editor
 			ui.CardField{Label: "保存方式", Value: "保留各规则 ID，不合并、不删除其他规则"},
 		)
 	}
-	if !editor.pending {
-		confirmed, err := view.Confirm("确认保存此规则并立即加载？(y/N，0/q 返回)：")
-		if err != nil {
-			return err
-		}
-		if !confirmed {
-			return shared.ErrReturnToMenu
-		}
-	}
 	updated := append([]allowRule(nil), rules...)
 	if id == "" {
 		updated = append(updated, draft)
@@ -385,20 +327,12 @@ func changeAllowRuleWithEditor(view *ui.UI, rules []allowRule, id string, editor
 			}
 		}
 	}
-	if err := editor.save(updated); err != nil {
-		return err
-	}
-	message := "放行规则已保存并加载"
-	if editor.pending {
-		message = "来源 IP 放行已加入草稿"
-	}
-	ui.PrintSuccessCard(message, ui.CardField{Label: draft.ID, Value: draft.description()})
-	return nil
+	ui.PrintSuccessCard("来源 IP 放行已加入草稿", ui.CardField{Label: draft.ID, Value: draft.description()})
+	return updated, nil
 }
 
 func queryRulesByPort(view *ui.UI, rules []allowRule) ([]allowRule, error) {
-	ui.ClearScreen()
-	ui.MenuTitle("防火墙管理", "访问规则管理", "来源 IP 放行", "按端口查询")
+	sourceRulePage("按端口查询", allowRule{})
 	ui.MenuExit("0/q", "取消查询，返回来源 IP 放行")
 	ports, err := askRulePorts(view, "")
 	if err != nil {
@@ -412,8 +346,7 @@ func queryRulesByPort(view *ui.UI, rules []allowRule) ([]allowRule, error) {
 			matches = append(matches, rule)
 		}
 	}
-	ui.ClearScreen()
-	ui.MenuTitle("防火墙管理", "访问规则管理", "来源 IP 放行", "端口查询结果")
+	sourceRulePage("端口查询结果", allowRule{})
 	ui.PrintInfoCard("端口查询结果",
 		ui.CardField{Label: "端口 / 范围", Value: ports},
 		ui.CardField{Label: "查询范围", Value: "IPv4 / IPv6、全部协议；IP 放行规则涵盖全部端口，也会列出"},
@@ -422,27 +355,20 @@ func queryRulesByPort(view *ui.UI, rules []allowRule) ([]allowRule, error) {
 	return matches, nil
 }
 
-func deleteAllowRule(view *ui.UI, version configVersion, rules []allowRule) error {
-	return deleteAllowRuleWithEditor(view, rules, ruleEditor{save: func(updated []allowRule) error {
-		return saveManagedRules(version, updated)
-	}})
-}
-
-func deleteAllowRuleWithEditor(view *ui.UI, rules []allowRule, editor ruleEditor) error {
-	ui.ClearScreen()
-	ui.MenuTitle("防火墙管理", "访问规则管理", "来源 IP 放行", "删除放行规则")
+func deleteAllowRuleDraft(view *ui.UI, rules []allowRule) ([]allowRule, error) {
+	sourceRulePage("删除放行规则", allowRule{})
 	ruleChoiceOption("1", "按序号 / 规则 ID 删除", "", "1")
 	ui.MenuOption("2", "按端口查询后选择规则删除")
 	ui.MenuExit("0/q", "取消删除，返回来源 IP 放行")
 	mode, err := askRuleChoice(view, "请选择删除方式（回车默认 1）：", "1", map[string]string{"1": "id", "2": "port"})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	candidates := rules
 	if mode == "port" {
 		candidates, err = queryRulesByPort(view, rules)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	} else {
 		sourceRulePage("选择删除放行规则", allowRule{})
@@ -451,7 +377,7 @@ func deleteAllowRuleWithEditor(view *ui.UI, rules []allowRule, editor ruleEditor
 	ui.MenuExit("0/q", "取消删除，返回来源 IP 放行")
 	id, err := chooseRuleID(view, candidates)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var target allowRule
 	var updated []allowRule
@@ -462,8 +388,7 @@ func deleteAllowRuleWithEditor(view *ui.UI, rules []allowRule, editor ruleEditor
 			updated = append(updated, rule)
 		}
 	}
-	ui.ClearScreen()
-	ui.MenuTitle("防火墙管理", "访问规则管理", "来源 IP 放行", "检查删除范围")
+	sourceRulePage("检查删除范围", allowRule{})
 	ui.PrintWarningCard("即将删除一条放行规则",
 		ui.CardField{Label: "规则 ID", Value: target.ID},
 		ui.CardField{Label: "IP 版本", Value: target.familyLabel()},
@@ -476,22 +401,6 @@ func deleteAllowRuleWithEditor(view *ui.UI, rules []allowRule, editor ruleEditor
 			ui.PrintField("仍保留的重叠规则 "+rule.ID, rule.description())
 		}
 	}
-	if !editor.pending {
-		confirmed, err := view.Confirm("确认仅删除规则 " + id + " 并立即加载？(y/N，0/q 返回)：")
-		if err != nil {
-			return err
-		}
-		if !confirmed {
-			return shared.ErrReturnToMenu
-		}
-	}
-	if err := editor.save(updated); err != nil {
-		return err
-	}
-	message := "指定规则已删除并加载"
-	if editor.pending {
-		message = "删除操作已加入草稿"
-	}
-	ui.PrintSuccessCard(message, ui.CardField{Label: "规则 ID", Value: id})
-	return nil
+	ui.PrintSuccessCard("删除操作已加入草稿", ui.CardField{Label: "规则 ID", Value: id})
+	return updated, nil
 }

@@ -134,7 +134,7 @@ func TestPolicyManagerBatchesDraftAndSavesOnce(t *testing.T) {
 	input := "1\n3\n3\n1\n443,8000-8100\n" +
 		"3\n1\n1\n2\n8050-8060\n4\n1\n3\n10.20.1.1/16\n" +
 		"4\n2\n5\n2\n2001:db8:1::123/64\ns\ny\n"
-	if err := runRuleManager(inputUI(t, input)); err != nil {
+	if err := runAccessRuleManager(inputUI(t, input)); err != nil {
 		t.Fatal(err)
 	}
 	updated := shared.ReadFileString(configPath)
@@ -178,7 +178,7 @@ func TestPolicyManagerCancellationAndRestoreNeverWrite(t *testing.T) {
 		t.Run(input, func(t *testing.T) {
 			setupTest(t)
 			version := ruleTestConfig(t, nil)
-			if err := runRuleManager(inputUI(t, input)); err == nil {
+			if err := runAccessRuleManager(inputUI(t, input)); err == nil {
 				t.Fatal("cancelled/unfinished draft must not report saved")
 			}
 			if shared.ReadFileString(configPath) != string(version.content) {
@@ -214,7 +214,7 @@ func TestPolicyEditorRetriesInvalidInputsWithoutChangingOtherLists(t *testing.T)
 	version := ruleTestConfig(t, nil)
 	acceptRuleCommands(t)
 	input := "3\n1\n1\n1\n65536\n443,,80\n8443\n4\n1\n3\n::1\n10.42.1.1/16\ns\ny\n"
-	if err := runRuleManager(inputUI(t, input)); err != nil {
+	if err := runAccessRuleManager(inputUI(t, input)); err != nil {
 		t.Fatal(err)
 	}
 	updated := shared.ReadFileString(configPath)
@@ -254,7 +254,7 @@ func TestPolicyManagerStopsOnValidationConflictOrLoadFailure(t *testing.T) {
 				t.Fatalf("unexpected args: %v", args)
 				return "", nil
 			}
-			err := runRuleManager(inputUI(t, "3\n1\n1\n1\n8443\ns\ny\n"))
+			err := runAccessRuleManager(inputUI(t, "3\n1\n1\n1\n8443\ns\ny\n"))
 			if err == nil {
 				t.Fatal("expected failure")
 			}

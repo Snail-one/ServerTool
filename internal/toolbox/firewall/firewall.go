@@ -65,7 +65,7 @@ func Run(view *ui.UI) error {
 			shared.RunAction(view, "读取已加载规则失败，已返回防火墙管理", showLoadedRules)
 		case "3":
 			shared.RunAction(view, "规则管理失败，已返回防火墙管理", func() error {
-				return runRuleManager(view)
+				return runAccessRuleManager(view)
 			})
 		case "4":
 			shared.RunAction(view, "读取配置文件失败，已返回防火墙管理", showConfigFile)
@@ -519,7 +519,7 @@ func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, er
 		case "3":
 			return false, nil
 		case "4":
-			updated, err := editPolicyDraft(view, content, true)
+			updated, err := editAccessRulesDraft(view, content, true)
 			if errors.Is(err, shared.ErrReturnToMenu) {
 				continue
 			}

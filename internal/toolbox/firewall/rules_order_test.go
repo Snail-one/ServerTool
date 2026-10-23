@@ -25,11 +25,11 @@ func TestReorderRulesPersistsMatchingOrderAndKeepsLogicalRulesIntact(t *testing.
 		name, input string
 		order       []int
 	}{
-		{"up", "2\nu\ns\ny\n", []int{1, 0, 2, 3}},
-		{"down", "BBBBBBBB\nD\ns\ny\n", []int{0, 2, 1, 3}},
-		{"top", "4\nt\ns\ny\n", []int{3, 0, 1, 2}},
-		{"bottom", "aaaaaaaa\nb\ns\ny\n", []int{1, 2, 3, 0}},
-		{"multiple moves and reset", "2\nu\n4\nt\nr\n3\nb\ns\ny\n", []int{0, 1, 3, 2}},
+		{"up", "2\nu\ns\n", []int{1, 0, 2, 3}},
+		{"down", "BBBBBBBB\nD\ns\n", []int{0, 2, 1, 3}},
+		{"top", "4\nt\ns\n", []int{3, 0, 1, 2}},
+		{"bottom", "aaaaaaaa\nb\ns\n", []int{1, 2, 3, 0}},
+		{"multiple moves and reset", "2\nu\n4\nt\nr\n3\nb\ns\n", []int{0, 1, 3, 2}},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			setupTest(t)
@@ -40,12 +40,8 @@ func TestReorderRulesPersistsMatchingOrderAndKeepsLogicalRulesIntact(t *testing.
 			if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
 				t.Fatal(err)
 			}
-			version, err := readConfigVersion()
-			if err != nil {
-				t.Fatal(err)
-			}
 			calls := acceptRuleCommands(t)
-			if err := reorderAllowRules(inputUI(t, scenario.input), version, rules); err != nil {
+			if err := runAccessRuleManager(inputUI(t, "5\n4\n"+scenario.input+"\nq\ns\ny\n")); err != nil {
 				t.Fatal(err)
 			}
 			var want []allowRule
@@ -81,7 +77,7 @@ func TestReorderRulesPersistsMatchingOrderAndKeepsLogicalRulesIntact(t *testing.
 
 func TestReorderDraftCancellationAndBoundariesDoNotWriteOrPause(t *testing.T) {
 	for _, input := range []string{
-		"q\n", "2\nu\n返回\n", "2\nu\ns\nn\nq\n", "2\nu\ns\nq\nq\n",
+		"q\n", "2\nu\n返回\n",
 		"u\nt\ns\nq\n", "4\nd\nb\ns\nq\n", "2\nu\nr\ns\nq\n",
 		"bad choice\n2\nu\nq\n",
 	} {
@@ -90,7 +86,7 @@ func TestReorderDraftCancellationAndBoundariesDoNotWriteOrPause(t *testing.T) {
 			rules := orderTestRules()
 			version := ruleTestConfig(t, rules)
 			view := inputUI(t, input+"next\n")
-			if err := reorderAllowRules(view, version, rules); !errors.Is(err, shared.ErrReturnToMenu) {
+			if _, err := reorderAllowRulesDraft(view, rules); !errors.Is(err, shared.ErrReturnToMenu) {
 				t.Fatalf("draft cancellation did not return: %v", err)
 			}
 			if got := shared.ReadFileString(configPath); got != string(version.content) {
@@ -112,11 +108,17 @@ func TestReorderRejectsConcurrentConfigChanges(t *testing.T) {
 	rules := orderTestRules()
 	version := ruleTestConfig(t, rules)
 	changed := string(version.content) + "\n# external edit\n"
-	if err := os.WriteFile(configPath, []byte(changed), 0600); err != nil {
-		t.Fatal(err)
-	}
 	calls := acceptRuleCommands(t)
-	if err := reorderAllowRules(inputUI(t, "2\nu\ns\ny\n"), version, rules); err == nil || errors.Is(err, shared.ErrReturnToMenu) {
+	query := commandOutput
+	commandOutput = func(name string, args ...string) (string, error) {
+		if len(args) == 3 && args[0] == "-c" {
+			if err := os.WriteFile(configPath, []byte(changed), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return query(name, args...)
+	}
+	if err := runAccessRuleManager(inputUI(t, "5\n4\n2\nu\ns\n\nq\ns\ny\n")); err == nil || errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatalf("concurrent edit should prevent saving: %v", err)
 	}
 	if shared.ReadFileString(configPath) != changed || !reflect.DeepEqual(*calls, []string{"check"}) {
@@ -132,7 +134,7 @@ func TestRuleManagerOpensOrderEditorAndSelectsNumericRuleID(t *testing.T) {
 	acceptRuleCommands(t)
 	// Enter sorting, select the numeric ID at position 3, put it first, save,
 	// read the result once, and return from the rule manager.
-	if err := runRuleManager(inputUI(t, "5\n4\n00000001\nt\ns\n\nq\ns\ny\n")); err != nil {
+	if err := runAccessRuleManager(inputUI(t, "5\n4\n00000001\nt\ns\n\nq\ns\ny\n")); err != nil {
 		t.Fatal(err)
 	}
 	got, err := managedRules(shared.ReadFileString(configPath))

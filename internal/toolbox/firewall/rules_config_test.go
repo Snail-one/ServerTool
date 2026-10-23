@@ -11,6 +11,11 @@ import (
 	"snail_tool/internal/shared"
 )
 
+func firewallBackupDir() string {
+	dir, _ := (shared.BackupStore{Root: dataDir, Module: "firewall"}).Directory(configPath)
+	return dir
+}
+
 func ruleTestConfig(t *testing.T, rules []allowRule) configVersion {
 	t.Helper()
 	base, err := buildConfig([]int{2222}, false, false)
@@ -83,7 +88,7 @@ func TestManagedRulesRejectsDriftCorruptMarkersAndUnreachableChains(t *testing.T
 	}
 }
 
-func TestSaveManagedRulesValidatesBeforeWriteAndGuardsConcurrentChanges(t *testing.T) {
+func TestSaveAccessRulesValidatesBeforeWriteAndGuardsConcurrentChanges(t *testing.T) {
 	for _, scenario := range []string{"success", "invalid", "changed", "load failure"} {
 		t.Run(scenario, func(t *testing.T) {
 			setupTest(t)
@@ -120,7 +125,11 @@ func TestSaveManagedRulesValidatesBeforeWriteAndGuardsConcurrentChanges(t *testi
 				t.Fatalf("unexpected arguments: %v", args)
 				return "", nil
 			}
-			err := saveManagedRules(version, wanted)
+			updated, err := replaceManagedRules(string(version.content), wanted)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = saveAccessRules(version, updated)
 			if (err == nil) != (scenario == "success") {
 				t.Fatalf("err=%v for %s", err, scenario)
 			}

@@ -129,8 +129,7 @@ func editSourceRulesDraft(view *ui.UI, original string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		ui.ClearScreen()
-		ui.MenuTitle("防火墙管理", "访问规则管理", "来源 IP 放行")
+		sourceRulePage("", allowRule{})
 		ui.PrintInfoCard("来源 IP 放行草稿",
 			ui.CardField{Label: "配置对象", Value: "访问本机的来源 IP / 网段（客户端地址）", Detail: "例如：允许 192.168.1.10 访问 TCP 3306"},
 			ui.CardField{Label: "放行权限", Value: "指定端口，或所选 TCP / UDP 协议的全部端口"},
@@ -160,64 +159,72 @@ func editSourceRulesDraft(view *ui.UI, original string) (string, error) {
 		if shared.IsReturnChoice(choice) {
 			return draft, nil
 		}
-		editor := ruleEditor{pending: true, save: func(updated []allowRule) error {
-			content, err := replaceManagedRules(draft, updated)
-			if err == nil {
-				draft = content
-			}
-			return err
-		}}
-		var action func() error
-		switch choice {
-		case "1":
-			action = func() error { return changeAllowRuleWithEditor(view, rules, "", editor) }
-		case "2":
-			action = func() error {
-				sourceRulePage("选择编辑放行规则", allowRule{})
-				printRuleOrder(rules, "")
-				ui.MenuExit("0/q", "取消编辑，返回来源 IP 放行")
-				id, err := chooseRuleID(view, rules)
-				if err != nil {
-					return err
-				}
-				return changeAllowRuleWithEditor(view, rules, id, editor)
-			}
-		case "3":
-			action = func() error { return deleteAllowRuleWithEditor(view, rules, editor) }
-		case "4":
-			action = func() error { return reorderAllowRulesWithEditor(view, rules, editor) }
-		case "5":
-			if legacy {
-				action = func() error {
-					var candidates []allowRule
-					for _, rule := range rules {
-						if rule.Kind == "port" {
-							candidates = append(candidates, rule)
-						}
-					}
-					sourceRulePage("旧规则转入基础端口", allowRule{})
-					ui.PrintInfoCard("选择转换规则", ui.CardField{Label: "转换范围", Value: "将所选端口加入公网和内网基础列表，再从草稿移除此规则"})
-					printRuleOrder(candidates, "")
-					ui.MenuExit("0/q", "取消转换，返回来源 IP 放行")
-					id, err := chooseRuleID(view, candidates)
-					if err != nil {
-						return err
-					}
-					updated, err := migrateGlobalPortRule(draft, id)
-					if err == nil {
-						draft = updated
-						ui.PrintInfoCard("转换已加入草稿", ui.CardField{Label: "生效方式", Value: "统一保存后按基础端口及来源分流匹配，仍受其他手写规则约束"})
-					}
-					return err
-				}
-			}
-		}
-		if action == nil {
+		if choice != "1" && choice != "2" && choice != "3" && choice != "4" && (choice != "5" || !legacy) {
 			ui.InvalidChoice()
 			continue
 		}
-		shared.RunAction(view, "修改来源 IP 放行失败，已返回规则草稿", action)
+		shared.RunAction(view, "修改来源 IP 放行失败，已返回规则草稿", func() error {
+			updated, err := changeSourceRulesDraft(view, draft, rules, choice)
+			if err == nil {
+				draft = updated
+			}
+			return err
+		})
 	}
+}
+
+// Every source-rule action returns a new draft. The access manager owns the
+// only save/load boundary, so subpages cannot apply an incomplete edit.
+func changeSourceRulesDraft(view *ui.UI, content string, rules []allowRule, choice string) (string, error) {
+	var updated []allowRule
+	var err error
+	switch choice {
+	case "1", "2":
+		id := ""
+		if choice == "2" {
+			sourceRulePage("选择编辑放行规则", allowRule{})
+			printRuleOrder(rules, "")
+			ui.MenuExit("0/q", "取消编辑，返回来源 IP 放行")
+			id, err = chooseRuleID(view, rules)
+			if err != nil {
+				return "", err
+			}
+		}
+		updated, err = changeAllowRuleDraft(view, rules, id)
+	case "3":
+		updated, err = deleteAllowRuleDraft(view, rules)
+	case "4":
+		updated, err = reorderAllowRulesDraft(view, rules)
+	case "5":
+		var candidates []allowRule
+		for _, rule := range rules {
+			if rule.Kind == "port" {
+				candidates = append(candidates, rule)
+			}
+		}
+		sourceRulePage("旧规则转入基础端口", allowRule{})
+		ui.PrintInfoCard("选择转换规则", ui.CardField{Label: "转换范围", Value: "将所选端口加入公网和内网基础列表，再从草稿移除此规则"})
+		printRuleOrder(candidates, "")
+		ui.MenuExit("0/q", "取消转换，返回来源 IP 放行")
+		id, err := chooseRuleID(view, candidates)
+		if err != nil {
+			return "", err
+		}
+		converted, err := migrateGlobalPortRule(content, id)
+		if err == nil {
+			ui.PrintInfoCard("转换已加入草稿", ui.CardField{Label: "生效方式", Value: "统一保存后按基础端口及来源分流匹配，仍受其他手写规则约束"})
+		}
+		return converted, err
+	default:
+		return "", fmt.Errorf("无效的来源 IP 放行操作")
+	}
+	if err != nil {
+		return "", err
+	}
+	if reflect.DeepEqual(rules, updated) {
+		return content, nil
+	}
+	return replaceManagedRules(content, updated)
 }
 
 func migrateGlobalPortRule(content, id string) (string, error) {

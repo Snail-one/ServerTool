@@ -40,7 +40,7 @@ func policyChangeFields(before, after string) []ui.CardField {
 	return append(fields, ruleChangeFields(before, after)...)
 }
 
-func runRuleManager(view *ui.UI) error {
+func runAccessRuleManager(view *ui.UI) error {
 	if !isRoot() {
 		return fmt.Errorf("访问规则管理需要 root 权限，请使用 sudo 运行本工具")
 	}
@@ -48,15 +48,12 @@ func runRuleManager(view *ui.UI) error {
 	if err != nil {
 		return err
 	}
-	updated, err := editPolicyDraft(view, string(version.content), false)
+	updated, err := editAccessRulesDraft(view, string(version.content), false)
 	if err != nil {
 		return err
 	}
-	if err := writeConfig(updated, version); err != nil {
+	if err := saveAccessRules(version, updated); err != nil {
 		return err
-	}
-	if err := applyConfig([]byte(updated)); err != nil {
-		return fmt.Errorf("访问规则已保存，但未成功加载；原配置已备份，可输入 r 校验加载配置重试: %w", err)
 	}
 	ui.PrintSuccessCard("访问规则已保存并加载")
 	return nil
@@ -64,7 +61,7 @@ func runRuleManager(view *ui.UI) error {
 
 // The same draft editor is used for existing configurations and during initial
 // generation. It never writes files or changes the running firewall itself.
-func editPolicyDraft(view *ui.UI, original string, generating bool) (string, error) {
+func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string, error) {
 	if !hasManagedConfig(original) {
 		return "", fmt.Errorf("请先选择 6 生成本工具防火墙配置")
 	}
@@ -401,21 +398,7 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 				}
 			}
 		}
-		updated := content
-		for _, index := range indices {
-			selected := policyLists[index]
-			current, err = readPolicyValue(updated, selected)
-			if err == nil {
-				var next string
-				next, err = changePolicyValue(selected, current, operation, value, editIndex)
-				if err == nil {
-					updated, err = withPolicyValue(updated, selected, next)
-				}
-			}
-			if err != nil {
-				break
-			}
-		}
+		updated, err := withPolicyChanges(content, indices, operation, value, editIndex)
 		if err == nil {
 			return updated, nil
 		}
@@ -424,58 +407,4 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 			return "", err
 		}
 	}
-}
-
-func changePolicyValue(list policyList, current, operation, value string, editIndex int) (string, error) {
-	if operation == "reset" {
-		return list.defaults, nil
-	}
-	if list.family == 0 {
-		old, err := parsePolicyPorts(current)
-		if err != nil {
-			return "", err
-		}
-		ports, err := parsePolicyPorts(value)
-		if err != nil {
-			return "", err
-		}
-		switch operation {
-		case "add":
-			ports = unionPorts(append(old, ports...))
-		case "remove":
-			ports = subtractPorts(old, ports)
-		}
-		return policyPortsText(ports), nil
-	}
-	entries, err := parsePolicySources(value, list.family)
-	if err != nil {
-		return "", err
-	}
-	old := strings.Split(current, ", ")
-	switch operation {
-	case "add":
-		entries = append(old, entries...)
-	case "remove":
-		removed := make(map[string]bool)
-		for _, entry := range entries {
-			removed[entry] = true
-		}
-		entries = nil
-		for _, entry := range old {
-			if !removed[entry] {
-				entries = append(entries, entry)
-			}
-		}
-		if len(entries) == 0 {
-			return "", fmt.Errorf("内网 IP 范围至少保留一项；可替换整个范围或恢复默认")
-		}
-	case "edit":
-		if len(entries) != 1 || editIndex < 0 || editIndex >= len(old) {
-			return "", fmt.Errorf("编辑单个条目时请只输入一个地址或 CIDR")
-		}
-		old[editIndex] = entries[0]
-		entries = old
-	}
-	entries, err = parsePolicySources(strings.Join(entries, ", "), list.family)
-	return strings.Join(entries, ", "), err
 }

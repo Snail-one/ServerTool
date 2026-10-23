@@ -1,7 +1,6 @@
 package firewall
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -36,29 +35,17 @@ func printRuleOrder(rules []allowRule, selected string) {
 	fmt.Println()
 }
 
-func reorderAllowRules(view *ui.UI, version configVersion, rules []allowRule) error {
-	return reorderAllowRulesWithEditor(view, rules, ruleEditor{save: func(updated []allowRule) error {
-		return saveManagedRules(version, updated)
-	}})
-}
-
-func reorderAllowRulesWithEditor(view *ui.UI, rules []allowRule, editor ruleEditor) error {
+func reorderAllowRulesDraft(view *ui.UI, rules []allowRule) ([]allowRule, error) {
 	if len(rules) < 2 {
 		ui.PrintInfoCard("无需调整顺序", ui.CardField{Label: "规则数量", Value: "至少需要两条附加规则"})
-		return nil
+		return rules, nil
 	}
 	draft := append([]allowRule(nil), rules...)
 	selected := draft[0].ID
 	notice := ""
 	for {
-		ui.ClearScreen()
-		ui.MenuTitle("防火墙管理", "访问规则管理", "来源 IP 放行", "调整规则顺序")
-		state := "与已保存顺序一致"
-		impact := "仅调整本页附加规则，移动后保存才生效"
-		if editor.pending {
-			state = "与进入本页时的顺序一致"
-			impact = "采用顺序后返回访问规则管理，统一保存才生效"
-		}
+		sourceRulePage("调整规则顺序", allowRule{})
+		state := "与进入本页时的顺序一致"
 		if !reflect.DeepEqual(draft, rules) {
 			state = "有未保存的调整"
 		}
@@ -66,7 +53,7 @@ func reorderAllowRulesWithEditor(view *ui.UI, rules []allowRule, editor ruleEdit
 			ui.CardField{Label: "状态", Value: state},
 			ui.CardField{Label: "选中规则", Value: selected},
 			ui.CardField{Label: "匹配顺序", Value: "从上到下；TCP+UDP 规则作为一个整体移动"},
-			ui.CardField{Label: "调整范围", Value: impact},
+			ui.CardField{Label: "调整范围", Value: "采用顺序后返回访问规则管理，统一保存才生效"},
 		)
 		printRuleOrder(draft, selected)
 		ui.PrintField("选择规则", "输入列表序号或完整规则 ID")
@@ -75,11 +62,7 @@ func reorderAllowRulesWithEditor(view *ui.UI, rules []allowRule, editor ruleEdit
 		ui.MenuOption("t", "置顶")
 		ui.MenuOption("b", "置底")
 		ui.MenuOption("r", "还原草稿")
-		if editor.pending {
-			ui.MenuShortcutHint("s", "采用顺序并返回", "加入访问规则草稿，最后统一保存")
-		} else {
-			ui.MenuShortcutHint("s", "保存并立即加载", "统一校验、备份并保存当前顺序")
-		}
+		ui.MenuShortcutHint("s", "采用顺序并返回", "加入访问规则草稿，最后统一保存")
 		ui.MenuExit("0/q", "放弃草稿并返回")
 		if notice != "" {
 			ui.PrintField("提示", notice)
@@ -87,10 +70,10 @@ func reorderAllowRulesWithEditor(view *ui.UI, rules []allowRule, editor ruleEdit
 		}
 		choice, err := view.Ask("请选择操作或规则：")
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if shared.IsReturnChoice(choice) {
-			return shared.ErrReturnToMenu
+			return nil, shared.ErrReturnToMenu
 		}
 		choice = strings.ToLower(choice)
 		from := 0
@@ -120,25 +103,8 @@ func reorderAllowRulesWithEditor(view *ui.UI, rules []allowRule, editor ruleEdit
 				notice = "顺序未变化，无需保存"
 				continue
 			}
-			if !editor.pending {
-				confirmed, err := view.Confirm("确认保存当前规则顺序并立即加载？(y/N，0/q 返回)：")
-				if errors.Is(err, shared.ErrReturnToMenu) || err == nil && !confirmed {
-					notice = "尚未保存，可继续调整或返回放弃草稿"
-					continue
-				}
-				if err != nil {
-					return err
-				}
-			}
-			if err := editor.save(draft); err != nil {
-				return err
-			}
-			message := "规则顺序已保存并加载"
-			if editor.pending {
-				message = "规则顺序已加入草稿"
-			}
-			ui.PrintSuccessCard(message, ui.CardField{Label: "规则数量", Value: fmt.Sprintf("%d 条", len(draft))})
-			return nil
+			ui.PrintSuccessCard("规则顺序已加入草稿", ui.CardField{Label: "规则数量", Value: fmt.Sprintf("%d 条", len(draft))})
+			return draft, nil
 		case "u", "d", "t", "b":
 			to := from
 			switch choice {

@@ -224,3 +224,79 @@ func validatePolicyConfig(content string) error {
 	}
 	return nil
 }
+
+// Build the complete edit in memory. A failure in any selected list returns
+// no replacement, so a batch never leaves a partially updated parent draft.
+func withPolicyChanges(content string, indices []int, operation, value string, editIndex int) (string, error) {
+	updated := content
+	for _, index := range indices {
+		list := policyLists[index]
+		current, err := readPolicyValue(updated, list)
+		if err != nil {
+			return "", err
+		}
+		next, err := changePolicyValue(list, current, operation, value, editIndex)
+		if err != nil {
+			return "", err
+		}
+		updated, err = withPolicyValue(updated, list, next)
+		if err != nil {
+			return "", err
+		}
+	}
+	return updated, nil
+}
+
+func changePolicyValue(list policyList, current, operation, value string, editIndex int) (string, error) {
+	if operation == "reset" {
+		return list.defaults, nil
+	}
+	if list.family == 0 {
+		old, err := parsePolicyPorts(current)
+		if err != nil {
+			return "", err
+		}
+		ports, err := parsePolicyPorts(value)
+		if err != nil {
+			return "", err
+		}
+		switch operation {
+		case "add":
+			ports = unionPorts(append(old, ports...))
+		case "remove":
+			ports = subtractPorts(old, ports)
+		}
+		return policyPortsText(ports), nil
+	}
+	entries, err := parsePolicySources(value, list.family)
+	if err != nil {
+		return "", err
+	}
+	old := strings.Split(current, ", ")
+	switch operation {
+	case "add":
+		entries = append(old, entries...)
+	case "remove":
+		removed := make(map[string]bool)
+		for _, entry := range entries {
+			removed[entry] = true
+		}
+		entries = nil
+		for _, entry := range old {
+			if !removed[entry] {
+				entries = append(entries, entry)
+			}
+		}
+		if len(entries) == 0 {
+			return "", fmt.Errorf("内网 IP 范围至少保留一项；可替换整个范围或恢复默认")
+		}
+	case "edit":
+		if len(entries) != 1 || editIndex < 0 || editIndex >= len(old) {
+			return "", fmt.Errorf("编辑单个条目时请只输入一个地址或 CIDR")
+		}
+		old[editIndex] = entries[0]
+		entries = old
+	}
+	entries, err = parsePolicySources(strings.Join(entries, ", "), list.family)
+	return strings.Join(entries, ", "), err
+}

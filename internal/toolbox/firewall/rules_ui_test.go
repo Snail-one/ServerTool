@@ -38,7 +38,7 @@ func TestRuleManagerAddsSourceExceptionForBothProtocols(t *testing.T) {
 	ruleTestConfig(t, nil)
 	calls := acceptRuleCommands(t)
 	// Unified draft -> source exceptions -> add -> both IP versions and protocols.
-	if err := runRuleManager(inputUI(t, "5\n1\n3\n192.168.1.0/24\nfd12::/48\n1\n8000-8100\n3\n\nq\ns\ny\n")); err != nil {
+	if err := runAccessRuleManager(inputUI(t, "5\n1\n3\n192.168.1.0/24\nfd12::/48\n1\n8000-8100\n3\n\nq\ns\ny\n")); err != nil {
 		t.Fatal(err)
 	}
 	rules, err := managedRules(shared.ReadFileString(configPath))
@@ -54,11 +54,10 @@ func TestEditRuleKeepsIDAndCanonicalizesCIDR(t *testing.T) {
 	setupTest(t)
 	initial := []allowRule{{ID: "aaaaaaaa", Kind: "source_port", Source: "192.168.1.0/24", Ports: "443", Protocol: "tcp"}}
 	version := ruleTestConfig(t, initial)
-	acceptRuleCommands(t)
-	if err := changeAllowRule(inputUI(t, "\n\n192.168.1.1/16\n21069\n3\ny\n"), version, initial, "aaaaaaaa"); err != nil {
-		t.Fatal(err)
+	rules, err := changeAllowRuleDraft(inputUI(t, "\n192.168.1.1/16\n\n21069\n3\n"), initial, "aaaaaaaa")
+	if shared.ReadFileString(configPath) != string(version.content) {
+		t.Fatal("editing a draft wrote the configuration")
 	}
-	rules, err := managedRules(shared.ReadFileString(configPath))
 	want := []allowRule{{ID: "aaaaaaaa", Kind: "source_port", Family: "ipv4", Source: "192.168.0.0/16", Ports: "21069", Protocol: "both"}}
 	if err != nil || !reflect.DeepEqual(rules, want) {
 		t.Fatalf("editing changed ID or failed to normalize: %v %v", rules, err)
@@ -71,7 +70,7 @@ func TestRuleManagerEditsByDisplayedNumberAndKeepsOtherRules(t *testing.T) {
 	ruleTestConfig(t, rules)
 	calls := acceptRuleCommands(t)
 	// Edit row 2, keep its type/source, and change its ports/protocol.
-	if err := runRuleManager(inputUI(t, "5\n2\n2\n\n\n\n8443\n3\n\nq\ns\ny\n")); err != nil {
+	if err := runAccessRuleManager(inputUI(t, "5\n2\n2\n\n\n\n8443\n3\n\nq\ns\ny\n")); err != nil {
 		t.Fatal(err)
 	}
 	want := append([]allowRule(nil), rules...)
@@ -113,34 +112,33 @@ func TestDeleteByNumberUsesTheDisplayedFilteredList(t *testing.T) {
 		{ID: "cccccccc", Kind: "port", Ports: "443", Protocol: "udp"},
 	}
 	version := ruleTestConfig(t, rules)
-	acceptRuleCommands(t)
 	// The second matching row is rule C, which was third in the full list.
-	if err := deleteAllowRule(inputUI(t, "2\n443\n2\ny\n"), version, rules); err != nil {
-		t.Fatal(err)
+	got, err := deleteAllowRuleDraft(inputUI(t, "2\n443\n2\n"), rules)
+	if shared.ReadFileString(configPath) != string(version.content) {
+		t.Fatal("deleting from a draft wrote the configuration")
 	}
-	got, err := managedRules(shared.ReadFileString(configPath))
 	if err != nil || !reflect.DeepEqual(got, rules[:2]) {
 		t.Fatalf("filtered number selected a rule from the original list: got=%v err=%v", got, err)
 	}
 }
 
 func TestRuleAddCancellationAndDuplicateDoNotChangeConfiguration(t *testing.T) {
-	for _, scenario := range []string{"cancel", "duplicate", "cancel draft", "cancel family", "cancel second source"} {
+	for _, scenario := range []string{"cancel ports", "duplicate", "cancel family", "cancel permissions", "cancel second source"} {
 		t.Run(scenario, func(t *testing.T) {
 			setupTest(t)
 			rules := []allowRule{{ID: "aaaaaaaa", Kind: "source_port", Source: "192.168.0.0/16", Ports: "443", Protocol: "tcp"}}
 			version := ruleTestConfig(t, rules)
-			input := "1\n1\n8443\n1\nn\n"
+			input := "1\n192.168.1.10\n1\nq\n"
 			if scenario == "duplicate" {
-				input = "3\n1\n192.168.1.1/16\n443-443\n1\n"
-			} else if scenario == "cancel draft" {
-				input = "q\n"
+				input = "1\n192.168.1.1/16\n1\n443-443\n1\n"
 			} else if scenario == "cancel family" {
-				input = "1\nq\n"
+				input = "q\n"
+			} else if scenario == "cancel permissions" {
+				input = "1\n192.168.1.10\nq\n"
 			} else if scenario == "cancel second source" {
-				input = "3\n3\n192.168.1.0/24\nq\n"
+				input = "3\n192.168.1.0/24\nq\n"
 			}
-			err := changeAllowRule(inputUI(t, input), version, rules, "")
+			_, err := changeAllowRuleDraft(inputUI(t, input), rules, "")
 			if scenario == "duplicate" && (err == nil || !strings.Contains(err.Error(), "完全重复")) {
 				t.Fatalf("normalized duplicate not rejected: %v", err)
 			}
@@ -169,23 +167,22 @@ func TestQueryPortAndDeleteOnlyChosenIDPreservingOtherSources(t *testing.T) {
 	if err != nil || len(rangeMatches) != 2 || rangeMatches[1].ID != "dddddddd" {
 		t.Fatalf("port inside range not matched: %v %v", rangeMatches, err)
 	}
-	acceptRuleCommands(t)
 	// dddddddd is not in the query result, so it must not be selected/deleted.
-	if err := deleteAllowRule(inputUI(t, "2\n443\ndddddddd\nbbbbbbbb\ny\n"), version, rules); err != nil {
-		t.Fatal(err)
+	got, err := deleteAllowRuleDraft(inputUI(t, "2\n443\ndddddddd\nbbbbbbbb\n"), rules)
+	if shared.ReadFileString(configPath) != string(version.content) {
+		t.Fatal("deleting from a draft wrote the configuration")
 	}
-	got, err := managedRules(shared.ReadFileString(configPath))
 	want := []allowRule{rules[0], rules[2], rules[3]}
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("deleting by port removed unrelated/global/source rules: %v %v", got, err)
 	}
 }
 
-func TestDeleteByIDRequiresConfirmation(t *testing.T) {
+func TestDeleteByIDRequiresFinalConfirmation(t *testing.T) {
 	setupTest(t)
 	rules := []allowRule{{ID: "aaaaaaaa", Kind: "port", Ports: "443", Protocol: "tcp"}}
 	version := ruleTestConfig(t, rules)
-	if err := deleteAllowRule(inputUI(t, "1\naaaaaaaa\nn\n"), version, rules); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := runAccessRuleManager(inputUI(t, "5\n3\n1\naaaaaaaa\n\nq\ns\nn\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if shared.ReadFileString(configPath) != string(version.content) {
