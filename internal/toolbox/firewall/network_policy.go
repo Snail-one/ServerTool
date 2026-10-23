@@ -23,8 +23,8 @@ var policyLists = []policyList{
 	{name: "snail_private_ipv4_udp_ports", label: "内网 IPv4 UDP"},
 	{name: "snail_private_ipv6_tcp_ports", label: "内网 IPv6 TCP"},
 	{name: "snail_private_ipv6_udp_ports", label: "内网 IPv6 UDP"},
-	{name: "snail_private_ipv4", label: "IPv4 内网来源名单", family: 4, defaults: "10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16"},
-	{name: "snail_private_ipv6", label: "IPv6 内网来源名单", family: 6, defaults: "fc00::/7, fe80::/10"},
+	{name: "snail_private_ipv4", label: "IPv4 内网范围", family: 4, defaults: "10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16"},
+	{name: "snail_private_ipv6", label: "IPv6 内网范围", family: 6, defaults: "fc00::/7, fe80::/10"},
 }
 
 // Definitions are found through the tokenizer so comments, multiline sets and

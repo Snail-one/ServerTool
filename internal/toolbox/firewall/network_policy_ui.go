@@ -82,7 +82,7 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 		ui.PrintInfoCard("访问规则草稿（尚未保存）", accessSummaryFields(draft)...)
 		ui.MenuOption("1", "公网端口")
 		ui.MenuOption("2", "内网端口")
-		ui.MenuOptionHint("3", "内网来源名单", "IPv4 / IPv6 地址及网段")
+		ui.MenuOptionHint("3", "内网 IP 范围", "指定使用内网端口策略的 IP / 网段")
 		ui.MenuOptionHint("4", "来源 IP 放行", "指定 IP / 网段可访问的端口与协议")
 		ui.MenuOptionHint("5", "公网与内网同时设置", "批量修改所选 IP 版本和协议的端口")
 		fmt.Println()
@@ -157,9 +157,13 @@ func editPolicyDraft(view *ui.UI, original string, generating bool) (string, err
 				}
 			case "3":
 				ui.ClearScreen()
-				ui.MenuTitle("防火墙管理", "访问规则管理", "内网来源名单")
-				ui.MenuOption("1", "IPv4 内网来源名单")
-				ui.MenuOption("2", "IPv6 内网来源名单")
+				ui.MenuTitle("防火墙管理", "访问规则管理", "内网 IP 范围")
+				ui.PrintInfoCard("按来源地址划分内网",
+					ui.CardField{Label: "范围内的来源", Value: "使用内网端口策略"},
+					ui.CardField{Label: "其他来源", Value: "使用公网端口策略"},
+				)
+				ui.MenuOption("1", "IPv4 内网范围")
+				ui.MenuOption("2", "IPv6 内网范围")
 				ui.MenuExit("0/q", "返回访问规则草稿")
 				var family string
 				family, err = askRuleChoice(view, "请选择 IP 版本", "", map[string]string{"1": "ipv4", "2": "ipv6"})
@@ -312,11 +316,11 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 		ui.MenuOption("3", "替换全部业务端口")
 		ui.MenuOptionHint("4", "清空业务端口", "只保留 SSH 端口")
 	} else {
-		ui.MenuOptionHint("2", "删除名单条目", "精确匹配规范化后的地址 / CIDR")
-		ui.MenuOption("3", "替换整个名单")
-		ui.MenuOption("4", "恢复默认内网名单")
+		ui.MenuOptionHint("2", "删除地址 / 网段", "精确匹配规范化后的地址 / CIDR")
+		ui.MenuOption("3", "替换整个范围")
+		ui.MenuOption("4", "恢复默认内网 IP 范围")
 		ui.MenuOption("5", "按序号编辑单个条目")
-		ui.PrintField("名单说明", "支持单个 IP 和 CIDR，逗号分隔；自动规范化并合并重复及被包含条目；至少保留一项")
+		ui.PrintField("范围说明", "支持单个 IP 和 CIDR，逗号分隔；自动规范化并合并重复及被包含条目；至少保留一项")
 	}
 	ui.MenuExit("0/q", "取消并返回草稿")
 	choices := map[string]string{"1": "add", "2": "remove", "3": "replace", "4": "reset"}
@@ -463,7 +467,7 @@ func changePolicyValue(list policyList, current, operation, value string, editIn
 			}
 		}
 		if len(entries) == 0 {
-			return "", fmt.Errorf("内网名单至少保留一项；可替换整个名单或恢复默认")
+			return "", fmt.Errorf("内网 IP 范围至少保留一项；可替换整个范围或恢复默认")
 		}
 	case "edit":
 		if len(entries) != 1 || editIndex < 0 || editIndex >= len(old) {

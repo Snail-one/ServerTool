@@ -487,7 +487,7 @@ func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, er
 			ui.CardField{Label: "附加放行规则", Value: fmt.Sprintf("保留 %d 条，可额外放行来源和端口", len(extraRules))},
 			ui.CardField{Label: "ICMP / ICMPv6 回显", Value: pingState},
 			ui.CardField{Label: "数据包统计", Value: counterState},
-			ui.CardField{Label: "替换范围", Value: "使用当前草稿替换原配置；原端口、内网名单及手写规则不会自动沿用"},
+			ui.CardField{Label: "替换范围", Value: "使用当前草稿替换原配置；原端口、内网 IP 范围及手写规则不会自动沿用"},
 			ui.CardField{Label: "内核规则", Value: "重建 inet snail 表，保留其他表"},
 			ui.CardField{Label: "未匹配入站流量", Value: "丢弃；保留已建立连接、回环、指定 IPv6 控制流量及 DHCPv6"},
 			ui.CardField{Label: "配置文件", Value: configPath, Detail: "整份替换，已有文件先备份；校验成功后写入"},
@@ -498,7 +498,7 @@ func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, er
 		ui.MenuOption("1", "校验、写入并立即加载")
 		ui.MenuOption("2", "预览完整配置")
 		ui.MenuOption("3", "重新选择公网 / 局域网 Web 端口")
-		ui.MenuOptionHint("4", "自定义访问规则", "端口 / 内网名单 / 来源 IP 放行，先调整草稿")
+		ui.MenuOptionHint("4", "自定义访问规则", "端口 / 内网 IP 范围 / 来源 IP 放行，先调整草稿")
 		ui.MenuExit("0/q", "取消并返回")
 		fmt.Println()
 		choice, err := view.Ask("请选择：")
