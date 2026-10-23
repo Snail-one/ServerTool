@@ -30,7 +30,7 @@ func runRuleManager(view *ui.UI) error {
 		ui.MenuTitle("防火墙管理", "放行规则管理")
 		ui.PrintInfoCard("来源入站放行",
 			ui.CardField{Label: "规则数量", Value: fmt.Sprintf("%d 条", len(rules))},
-			ui.CardField{Label: "管理范围", Value: "本页创建的附加放行规则；基础端口和手写规则见完整配置"},
+			ui.CardField{Label: "管理范围", Value: "本页创建的附加放行规则；基础端口和内网名单在防火墙菜单 9 设置"},
 			ui.CardField{Label: "生效方式", Value: "确认后校验、备份、保存并立即加载"},
 		)
 		printRuleOrder(rules, "")

@@ -162,7 +162,6 @@ func sshPortRules(ports []int, counters bool) []string {
 }
 
 var sshDefinitionLine = regexp.MustCompile(`(?m)^[\t ]*define[\t ]+snail_ssh_port[\t ]*=[\t ]*\{([0-9,\t \r\n]+)\}[\t ]*(?:#[^\n]*)?\r?$`)
-var sshPortListLine = regexp.MustCompile(`(?m)^([\t ]*define[\t ]+(snail_(?:public|private)_ipv[46]_(?:tcp|udp)_ports)[\t ]*=[\t ]*\{)([^{}\n]*)(\}[\t ]*(?:#[^\n]*)?\r?)$`)
 
 // withSSHPorts updates only the generated SSH port set. The eight port lists
 // retain the same reference regardless of how many SSH ports are configured.
@@ -192,27 +191,16 @@ func withSSHPorts(content string, ports []int) (string, error) {
 			return "", fmt.Errorf("SSH 端口集合内容无效，请重新生成防火墙配置")
 		}
 	}
-	lists := make(map[string]bool)
-	for _, parts := range sshPortListLine.FindAllStringSubmatch(content, -1) {
-		if lists[parts[2]] {
-			return "", fmt.Errorf("业务端口列表重复，请重新生成防火墙配置")
+	for _, list := range policyLists[:8] {
+		_, _, raw, err := policyDefinition(content, list.name)
+		if err == nil {
+			// SSH updates preserve unrelated nft expressions, including custom
+			// business-port variables that the interactive editor cannot expand.
+			_, err = policyBusinessTerms(raw, list.label)
 		}
-		lists[parts[2]] = true
-		references := 0
-		for _, raw := range strings.Split(parts[3], ",") {
-			value := strings.TrimSpace(raw)
-			if value == "$snail_ssh_port" {
-				references++
-			} else if strings.Contains(value, "$snail_ssh_port") {
-				return "", fmt.Errorf("SSH 端口集合引用异常，请重新生成防火墙配置")
-			}
+		if err != nil {
+			return "", fmt.Errorf("业务端口列表异常，请检查配置: %w", err)
 		}
-		if references != 1 {
-			return "", fmt.Errorf("业务端口列表缺少唯一的 SSH 集合引用，请重新生成防火墙配置")
-		}
-	}
-	if len(lists) != 8 {
-		return "", fmt.Errorf("缺少完整的公网、内网 TCP / UDP 端口列表，请重新生成防火墙配置")
 	}
 	return content[:definition[2]] + " " + portList(ports) + " " + content[definition[3]:], nil
 }

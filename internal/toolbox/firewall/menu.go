@@ -29,6 +29,7 @@ func showMenu() {
 	}
 	ui.MenuOptionHint("7", "常用功能设置", "开机自启 / ICMP 回显 / 数据包统计")
 	ui.MenuOptionHint("8", "实时查看规则", "每秒刷新，支持切换规则表")
+	ui.MenuOptionHint("9", "端口与内网设置", "公网 / 内网端口 · IPv4 / IPv6 内网名单")
 	fmt.Println()
 	ui.MenuShortcutHint("r", "校验加载配置", "使当前配置文件立即生效")
 	ui.MenuExit("0/q", "返回主菜单")

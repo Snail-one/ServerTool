@@ -3,6 +3,7 @@ package firewall
 import (
 	"bytes"
 	_ "embed"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -65,6 +66,10 @@ func Run(view *ui.UI) error {
 		case "3":
 			shared.RunAction(view, "规则管理失败，已返回防火墙管理", func() error {
 				return runRuleManager(view)
+			})
+		case "9":
+			shared.RunAction(view, "端口与内网设置失败，已返回防火墙管理", func() error {
+				return runNetworkPolicy(view)
 			})
 		case "4":
 			shared.RunAction(view, "读取配置文件失败，已返回防火墙管理", showConfigFile)
@@ -371,7 +376,7 @@ func configure(view *ui.UI) error {
 		if err != nil {
 			return err
 		}
-		write, err := confirmConfig(view, content, ports, publicWeb, privateWeb, autostartAction)
+		write, err := confirmConfig(view, &content, autostartAction)
 		if err != nil {
 			return err
 		}
@@ -439,18 +444,11 @@ func askWeb(view *ui.UI, scope string) (bool, error) {
 
 // A false result lets the caller return to the web-port choices; cancellation
 // uses ErrReturnToMenu so RunAction returns directly to the firewall menu.
-func confirmConfig(view *ui.UI, content string, ports []int, publicWeb, privateWeb bool, autostartAction string) (bool, error) {
+func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, error) {
 	for {
+		content := *draft
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理", "确认配置")
-		publicPorts := portList(ports)
-		privatePorts := portList(ports)
-		if publicWeb {
-			publicPorts += ", 80, 443"
-		}
-		if privateWeb {
-			privatePorts += ", 80, 443"
-		}
 		extraRules, err := managedRules(content)
 		if err != nil {
 			return false, err
@@ -471,15 +469,13 @@ func confirmConfig(view *ui.UI, content string, ports []int, publicWeb, privateW
 		if counters {
 			counterState = ui.PrimaryText("已开启")
 		}
+		ui.PrintInfoCard("端口与内网来源", policyFields(content)...)
 		ui.PrintInfoCard("即将写入的配置",
-			ui.CardField{Label: "公网 TCP", Value: publicPorts, Detail: "IPv4 / IPv6 同时应用"},
-			ui.CardField{Label: "公网 UDP", Value: publicPorts, Detail: "与 TCP 同时选择，列表独立保留"},
-			ui.CardField{Label: "局域网 TCP", Value: privatePorts, Detail: "IPv4 私有地址；IPv6 ULA 和链路本地地址"},
-			ui.CardField{Label: "局域网 UDP", Value: privatePorts, Detail: "与 TCP 同时选择，列表独立保留"},
+			ui.CardField{Label: "SSH 端口", Value: strings.TrimSpace(sshDefinitionLine.FindStringSubmatch(content)[1])},
 			ui.CardField{Label: "附加放行规则", Value: fmt.Sprintf("保留 %d 条，可额外放行来源和端口", len(extraRules))},
 			ui.CardField{Label: "ICMP / ICMPv6 回显", Value: pingState},
 			ui.CardField{Label: "数据包统计", Value: counterState},
-			ui.CardField{Label: "手动修改", Value: "端口列表、来源例外等将由新模板覆盖"},
+			ui.CardField{Label: "替换范围", Value: "使用当前草稿替换原配置；原端口、内网名单及手写规则不会自动沿用"},
 			ui.CardField{Label: "内核规则", Value: "重建 inet snail 表，保留其他表"},
 			ui.CardField{Label: "未匹配入站流量", Value: "丢弃；保留已建立连接、回环、指定 IPv6 控制流量及 DHCPv6"},
 			ui.CardField{Label: "配置文件", Value: configPath, Detail: "整份替换，已有文件先备份；校验成功后写入"},
@@ -490,6 +486,7 @@ func confirmConfig(view *ui.UI, content string, ports []int, publicWeb, privateW
 		ui.MenuOption("1", "校验、写入并立即加载")
 		ui.MenuOption("2", "预览完整配置")
 		ui.MenuOption("3", "重新选择公网 / 局域网 Web 端口")
+		ui.MenuOptionHint("4", "自定义端口与内网名单", "编辑八组端口及 IPv4 / IPv6 名单，先调整草稿")
 		ui.MenuExit("0/q", "取消并返回")
 		fmt.Println()
 		choice, err := view.Ask("请选择：")
@@ -509,6 +506,15 @@ func confirmConfig(view *ui.UI, content string, ports []int, publicWeb, privateW
 			view.PauseWithPrompt("按回车返回配置确认…")
 		case "3":
 			return false, nil
+		case "4":
+			updated, err := editPolicyDraft(view, content, true)
+			if errors.Is(err, shared.ErrReturnToMenu) {
+				continue
+			}
+			if err != nil {
+				return false, err
+			}
+			*draft = updated
 		default:
 			ui.InvalidChoice()
 			view.Pause()
