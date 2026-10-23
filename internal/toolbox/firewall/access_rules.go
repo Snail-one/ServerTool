@@ -141,7 +141,7 @@ func editSourceRulesDraft(view *ui.UI, original string) (string, error) {
 		for _, rule := range rules {
 			if rule.Kind == "port" {
 				legacy = true
-				ui.PrintField("已有全来源例外 "+rule.ID, rule.description())
+				break
 			}
 		}
 		ui.MenuOption("1", "添加来源例外")
