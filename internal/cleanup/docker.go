@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strings"
 
 	"snail_tool/internal/container/clientproxy"
+	"snail_tool/internal/container/daemonproxy"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
 )
@@ -23,15 +23,11 @@ var (
 )
 
 type fileCleanup struct {
-	path   string
-	data   []byte
-	remove bool
+	path string
+	data []byte
 }
 
 func (action fileCleanup) apply() error {
-	if action.remove {
-		return shared.RemoveRegularFile(action.path)
-	}
 	return shared.AtomicWriteFile(action.path, action.data, shared.AtomicWriteOptions{Mode: 0644})
 }
 
@@ -67,44 +63,9 @@ func cleanupDocker(account *system.Account) error {
 			actions = append(actions, fileCleanup{path: dockerDaemonPath, data: append(data, '\n')})
 		}
 	}
-	content, exists, err = shared.ReadRegularFile(dockerProxyPath)
+	proxyPlan, err := daemonproxy.PrepareRemoval(dockerProxyPath, dockerManagedStore)
 	if err != nil {
 		return err
-	}
-	proxyChanged := false
-	if exists {
-		var kept []string
-		for _, line := range strings.SplitAfter(string(content), "\n") {
-			trimmed := strings.TrimSpace(line)
-			managed := false
-			for _, name := range []string{"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"} {
-				if strings.HasPrefix(trimmed, `Environment="`+name+`=`) {
-					if !strings.HasSuffix(trimmed, `"`) || strings.Count(trimmed, `"`) != 2 {
-						return fmt.Errorf("Docker 代理配置格式复杂，未清理，请手动检查: %s", dockerProxyPath)
-					}
-					managed = true
-				}
-			}
-			if managed {
-				proxyChanged = true
-			} else {
-				kept = append(kept, line)
-			}
-		}
-		if proxyChanged {
-			if err := requireManagedDockerFile(dockerProxyPath, content); err != nil {
-				return err
-			}
-			cleaned := strings.Join(kept, "")
-			meaningful := false
-			for _, line := range strings.Split(cleaned, "\n") {
-				line = strings.TrimSpace(line)
-				if line != "" && line != "[Service]" && !strings.HasPrefix(line, "#") && !strings.HasPrefix(line, ";") {
-					meaningful = true
-				}
-			}
-			actions = append(actions, fileCleanup{path: dockerProxyPath, data: []byte(cleaned), remove: !meaningful})
-		}
 	}
 	// Preflight service files before changing the user config. Client proxy
 	// cleanup itself never requires restarting Docker.
@@ -119,8 +80,13 @@ func cleanupDocker(account *system.Account) error {
 			return fmt.Errorf("Docker 配置已清理，但移除写入记录失败: %w", err)
 		}
 	}
-	if len(actions) > 0 && cleanupCommandExists("systemctl") {
-		if proxyChanged {
+	if proxyPlan != nil {
+		if err := proxyPlan.Apply(); err != nil {
+			return err
+		}
+	}
+	if (len(actions) > 0 || proxyPlan != nil) && cleanupCommandExists("systemctl") {
+		if proxyPlan != nil {
 			if err := cleanupCommandRun("systemctl", "daemon-reload"); err != nil {
 				return err
 			}

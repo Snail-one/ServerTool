@@ -269,12 +269,8 @@ func Cleanup(account *system.Account) error {
 	if err != nil || !exists || !doc.hasProxy() {
 		return err
 	}
-	managed, err := managedStore.MatchesManaged(path, content)
-	if err != nil {
+	if err := requireManagedConfig(path, content); err != nil {
 		return err
-	}
-	if !managed {
-		return fmt.Errorf("Docker 客户端配置没有本工具写入记录或已被修改，已保留，请手动检查: %s", path)
 	}
 	for _, key := range proxyKeys {
 		delete(doc.defaults, key)
@@ -287,4 +283,15 @@ func Cleanup(account *system.Account) error {
 		return err
 	}
 	return managedStore.ForgetManaged(path)
+}
+
+func requireManagedConfig(path string, content []byte) error {
+	managed, err := managedStore.MatchesManaged(path, content)
+	if err != nil {
+		return err
+	}
+	if !managed {
+		return fmt.Errorf("Docker 客户端配置没有本工具写入记录或已被修改，已保留，请手动检查: %s", path)
+	}
+	return nil
 }

@@ -200,11 +200,18 @@ IP 版本、来源地址、访问权限、端口和协议分为独立页面，�
 
 ## Docker 构建与容器代理
 
-进入“容器管理 → 3 Docker 配置 → 3 配置构建与容器代理”，输入 `192.168.1.100:7890` 或 `username:password@192.168.1.100:7890`。工具在目标用户的 `~/.docker/config.json` 中写入 `proxies.default.httpProxy`、`httpsProxy` 和 `noProxy`；设置了 `DOCKER_CONFIG` 时使用该目录下的 `config.json`。使用 `sudo` 启动工具时，默认目标用户为原用户，页面显示实际用户和配置路径；之后执行 `sudo docker build` 使用的是 root 的客户端配置，需为对应用户单独配置。
+进入“容器管理 → 3 Docker 配置 → 2 配置构建与容器代理”，输入 `192.168.1.100:7890` 或 `username:password@192.168.1.100:7890`。工具在目标用户的 `~/.docker/config.json` 中写入 `proxies.default.httpProxy`、`httpsProxy` 和 `noProxy`；设置了 `DOCKER_CONFIG` 时使用该目录下的 `config.json`。使用 `sudo` 启动工具时，默认目标用户为原用户，页面显示实际用户和配置路径；之后执行 `sudo docker build` 使用的是 root 的客户端配置，需为对应用户单独配置。
 
 保存后，该客户端后续执行 `docker build` 会自动传入 HTTP/HTTPS 代理和绕过列表，无需重启 Docker；新建容器也会继承代理环境变量，已有容器保持当前配置。基础镜像拉取及独立构建器的网络访问可能仍需要相应的服务代理配置。请填写构建环境及容器能够访问的地址，`127.0.0.1` 通常指向容器自身。此配置的 Docker 原生行为参见 [Docker 客户端代理文档](https://docs.docker.com/engine/cli/proxy/)。
 
 已有默认 HTTP/HTTPS 代理或绕过列表时先确认覆盖；原文件备份到 `/var/lib/snailtool/backups/docker/`，新配置文件权限为 `0600`，保留登录凭据、其他客户端配置、FTP/ALL 代理及按服务单独配置的代理。配置文件包含明文代理地址和可能的认证信息，页面中的代理密码会遮蔽。
+
+“容器管理 → 3 Docker 配置”提供两个独立移除入口：
+
+- `4 移除服务代理`：确认后备份 `/etc/systemd/system/docker.service.d/http-proxy.conf`，移除本工具管理的 HTTP/HTTPS 代理及绕过列表，保留其他 systemd 设置；文件只剩代理配置时删除该文件。随后重新加载 systemd，并在存在 Docker 服务时执行 `systemctl try-restart docker.service`，可能影响运行中容器；已停止的 Docker 服务保持停止。
+- `5 移除构建与容器代理`：确认后备份目标用户的 Docker 客户端配置，移除本工具写入的默认 HTTP/HTTPS 代理及绕过列表，保留登录凭据及其他配置。对后续构建和新建容器生效，无需重启 Docker，已有容器保持当前配置。
+
+两个入口分别处理对应代理，日志轮转配置保持原样。未发现对应代理时提示无需移除；取消操作不写入、不备份、不重启服务；配置无写入记录、已被修改或确认期间发生变化时停止移除并提示检查。
 
 “清理配置 → 清理 Docker 配置”会一并移除本工具写入的三个默认客户端代理字段，保留其他字段；如果文件没有本工具写入记录，或保存后被 `docker login` 等操作修改，则保留文件并提示手动检查。仅清理客户端代理无需重启 Docker；同时清理服务代理或日志轮转时仍按服务配置流程应用变更。
 

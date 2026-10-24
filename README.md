@@ -49,7 +49,7 @@ snail --version
 | SSH 管理 | 查看、添加和删除公钥，配置随机端口、禁用密码登录，查看生效配置 |
 | 配置管理 | 一键初始化 SSH 公钥、安全策略、Vim 和 Bash；单独管理 Vim、Bash、Bash 自动补全、HTTP/HTTPS 代理和 tmux 状态栏 |
 | 系统工具 | 单独或批量安装常用命令行工具，安装、更新、切换、修复和卸载 Go 官方稳定版本并管理用户 PATH，配置 UPS（NUT），查看本次启动信息 |
-| 容器管理 | 管理 Docker/Podman 容器和 Compose 项目，配置 Docker 服务代理、构建与容器代理及日志轮转，清理资源 |
+| 容器管理 | 管理 Docker/Podman 容器和 Compose 项目，配置或单独移除 Docker 服务代理及构建与容器代理，配置日志轮转，清理资源 |
 | 清理配置 | 按项或全部清理 SSH、Vim、Bash、代理、tmux、防火墙、UPS、Docker、Go 环境配置，支持统一备份及旧备份清理 |
 
 详细操作与行为说明见 [使用指南](docs/USAGE.md)。

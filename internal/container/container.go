@@ -46,7 +46,7 @@ func Run(view *ui.UI) error {
 		ui.PrintInfoCard("容器运行时状态", runtimeStatusFields(installedRuntimes, logSummary, proxySummary, clientProxySummary)...)
 		fmt.Println()
 		ui.MenuOptionHint("1", "管理容器", "查看状态、日志与生命周期操作")
-		ui.MenuOptionHint("2", "管理 Compose 项目", "查看、更新与重建项目")
+		ui.MenuOptionHint("2", "Compose", "查看、更新与重建项目")
 		if hasDocker {
 			ui.MenuOptionHint("3", "Docker 配置", "服务代理、构建与容器代理、日志轮转")
 		} else {
@@ -128,7 +128,7 @@ func runtimeStatusFields(installedRuntimes []runtime.Runtime, logSummary, proxyS
 func runComposeMenu(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
-		ui.MenuTitle("容器管理", "Compose 项目")
+		ui.MenuTitle("容器管理", "Compose")
 		ui.MenuOptionHint("1", "管理运行中项目", "docker compose ls")
 		ui.MenuOptionHint("2", "扫描 Compose 项目", "扫描 Compose 配置目录")
 		ui.MenuOptionHint("3", "更新运行中应用", "docker compose pull && docker compose up -d")
@@ -147,19 +147,19 @@ func runComposeMenu(view *ui.UI) error {
 		}
 		switch strings.ToLower(choice) {
 		case "1":
-			shared.RunAction(view, "Compose 项目管理失败，已返回 Compose 项目", func() error {
+			shared.RunAction(view, "Compose 项目管理失败，已返回 Compose", func() error {
 				return list.ManageComposeLS(view)
 			})
 		case "2":
-			shared.RunAction(view, "Compose 项目管理失败，已返回 Compose 项目", func() error {
+			shared.RunAction(view, "Compose 项目管理失败，已返回 Compose", func() error {
 				return list.ManageComposeScan(view)
 			})
 		case "3":
-			shared.RunAction(view, "Compose 应用更新失败，已返回 Compose 项目", func() error {
+			shared.RunAction(view, "Compose 应用更新失败，已返回 Compose", func() error {
 				return update.Run(view)
 			})
 		case "4":
-			shared.RunAction(view, "Compose 项目重建失败，已返回 Compose 项目", func() error {
+			shared.RunAction(view, "Compose 项目重建失败，已返回 Compose", func() error {
 				return update.RebuildRunningComposeProjects(view)
 			})
 		default:
@@ -174,8 +174,10 @@ func runDockerConfigMenu(view *ui.UI) error {
 		ui.ClearScreen()
 		ui.MenuTitle("容器管理", "Docker 配置")
 		ui.MenuOptionHint("1", "配置服务代理", "systemd 服务代理")
-		ui.MenuOptionHint("2", "配置日志轮转", "/etc/docker/daemon.json")
-		ui.MenuOptionHint("3", "配置构建与容器代理", "用户配置；用于后续构建及新建容器，无需重启 Docker")
+		ui.MenuOptionHint("2", "配置构建与容器代理", "用户配置；用于后续构建及新建容器，无需重启 Docker")
+		ui.MenuOptionHint("3", "配置日志轮转", "/etc/docker/daemon.json")
+		ui.MenuOptionHint("4", "移除服务代理", "移除后重新加载 systemd，并尝试重启 Docker")
+		ui.MenuOptionHint("5", "移除构建与容器代理", "用于后续构建及新建容器，无需重启 Docker")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -194,12 +196,20 @@ func runDockerConfigMenu(view *ui.UI) error {
 				return daemonproxy.Run(view)
 			})
 		case "2":
+			shared.RunAction(view, "Docker 构建与容器代理配置失败，已返回 Docker 配置", func() error {
+				return clientproxy.Run(view)
+			})
+		case "3":
 			shared.RunAction(view, "Docker 日志轮转配置失败，已返回 Docker 配置", func() error {
 				return daemonlog.Run(view)
 			})
-		case "3":
-			shared.RunAction(view, "Docker 构建与容器代理配置失败，已返回 Docker 配置", func() error {
-				return clientproxy.Run(view)
+		case "4":
+			shared.RunAction(view, "Docker 服务代理移除失败，已返回 Docker 配置", func() error {
+				return daemonproxy.Remove(view)
+			})
+		case "5":
+			shared.RunAction(view, "Docker 构建与容器代理移除失败，已返回 Docker 配置", func() error {
+				return clientproxy.Remove(view)
 			})
 		default:
 			ui.InvalidChoice()
