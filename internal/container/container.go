@@ -173,6 +173,12 @@ func runDockerConfigMenu(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("容器管理", "Docker 配置")
+		ui.PrintSectionCard("当前配置",
+			ui.CardField{Label: "服务代理", Value: daemonproxy.CurrentSummary()},
+			ui.CardField{Label: "构建与容器代理", Value: clientproxy.CurrentSummary()},
+			ui.CardField{Label: "日志轮转", Value: daemonlog.CurrentSummary()},
+		)
+		fmt.Println()
 		ui.MenuOptionHint("1", "配置服务代理", "systemd 服务代理")
 		ui.MenuOptionHint("2", "配置构建与容器代理", "用户配置；用于后续构建及新建容器，无需重启 Docker")
 		ui.MenuOptionHint("3", "配置日志轮转", "/etc/docker/daemon.json")
