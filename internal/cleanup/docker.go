@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"snail_tool/internal/container/clientproxy"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
 )
@@ -18,6 +19,7 @@ var (
 	cleanupCommandRun    = system.Run
 	cleanupCommandExists = system.CommandExists
 	dockerManagedStore   = shared.BackupStore{Root: shared.DataDir, Module: "docker"}
+	cleanupClientProxy   = clientproxy.Cleanup
 )
 
 type fileCleanup struct {
@@ -33,7 +35,7 @@ func (action fileCleanup) apply() error {
 	return shared.AtomicWriteFile(action.path, action.data, shared.AtomicWriteOptions{Mode: 0644})
 }
 
-func cleanupDocker(_ *system.Account) error {
+func cleanupDocker(account *system.Account) error {
 	var actions []fileCleanup
 	content, exists, err := shared.ReadRegularFile(dockerDaemonPath)
 	if err != nil {
@@ -103,6 +105,11 @@ func cleanupDocker(_ *system.Account) error {
 			}
 			actions = append(actions, fileCleanup{path: dockerProxyPath, data: []byte(cleaned), remove: !meaningful})
 		}
+	}
+	// Preflight service files before changing the user config. Client proxy
+	// cleanup itself never requires restarting Docker.
+	if err := cleanupClientProxy(account); err != nil {
+		return err
 	}
 	for _, action := range actions {
 		if err := action.apply(); err != nil {

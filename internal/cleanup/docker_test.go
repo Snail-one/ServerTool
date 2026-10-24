@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"snail_tool/internal/shared"
+	"snail_tool/internal/system"
 )
 
 func setupDockerCleanup(t *testing.T, daemon, proxy string) {
@@ -134,5 +135,31 @@ func TestDockerCleanupRefusesUnownedAndManuallyChangedFiles(t *testing.T) {
 				t.Fatal("ambiguous cleanup changed files")
 			}
 		})
+	}
+}
+
+func TestDockerClientProxyCleanupDoesNotRestartService(t *testing.T) {
+	setupDockerCleanup(t, "{}", "[Service]\n")
+	previous := cleanupClientProxy
+	t.Cleanup(func() { cleanupClientProxy = previous })
+	called := false
+	account := &system.Account{Name: "tester"}
+	cleanupClientProxy = func(got *system.Account) error {
+		called = got == account
+		return nil
+	}
+	if err := cleanupDocker(account); err != nil || !called {
+		t.Fatalf("client cleanup was not applied: %v", err)
+	}
+}
+
+func TestDockerClientProxyCleanupFailurePreservesServiceFiles(t *testing.T) {
+	setupDockerCleanup(t, `{"log-driver":"json-file"}`, "[Service]\n")
+	previous := cleanupClientProxy
+	t.Cleanup(func() { cleanupClientProxy = previous })
+	cleanupClientProxy = func(*system.Account) error { return errors.New("client config changed") }
+	original := shared.ReadFileString(dockerDaemonPath)
+	if err := cleanupDocker(&system.Account{}); err == nil || shared.ReadFileString(dockerDaemonPath) != original {
+		t.Fatalf("service files changed despite client cleanup failure: %v", err)
 	}
 }

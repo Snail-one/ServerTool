@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	containercleanup "snail_tool/internal/container/cleanup"
+	"snail_tool/internal/container/clientproxy"
 	"snail_tool/internal/container/daemonlog"
 	"snail_tool/internal/container/daemonproxy"
 	"snail_tool/internal/container/list"
@@ -36,19 +37,20 @@ func Run(view *ui.UI) error {
 		}
 		ui.ClearScreen()
 		ui.MenuTitle("容器管理")
-		logSummary, proxySummary := "", ""
+		logSummary, proxySummary, clientProxySummary := "", "", ""
 		if hasDocker {
 			logSummary = daemonlog.CurrentSummary()
 			proxySummary = daemonproxy.CurrentSummary()
+			clientProxySummary = clientproxy.CurrentSummary()
 		}
-		ui.PrintInfoCard("容器运行时状态", runtimeStatusFields(installedRuntimes, logSummary, proxySummary)...)
+		ui.PrintInfoCard("容器运行时状态", runtimeStatusFields(installedRuntimes, logSummary, proxySummary, clientProxySummary)...)
 		fmt.Println()
 		ui.MenuOptionHint("1", "管理容器", "查看状态、日志与生命周期操作")
 		ui.MenuOptionHint("2", "管理 Compose 项目", "查看、更新与重建项目")
 		if hasDocker {
-			ui.MenuOptionHint("3", "配置 Docker 服务", "服务代理与日志轮转")
+			ui.MenuOptionHint("3", "Docker 配置", "服务代理、构建与容器代理、日志轮转")
 		} else {
-			ui.MenuOptionHint("3", "配置 Docker 服务", "仅 Docker 可用；服务代理与日志轮转")
+			ui.MenuOptionHint("3", "Docker 配置", "仅 Docker 可用；代理与日志轮转")
 		}
 		ui.MenuOptionHint("4", "清理容器资源", "容器、网络、镜像、数据卷与构建缓存")
 		ui.MenuOptionHint("5", fmt.Sprintf("卸载 %s", uninstallName), "可选择保留或永久删除数据")
@@ -76,12 +78,12 @@ func Run(view *ui.UI) error {
 			})
 		case "3":
 			if !hasDocker {
-				fmt.Println("Docker 服务配置仅 Docker 可用")
+				fmt.Println("Docker 配置仅 Docker 可用")
 				view.Pause()
 				continue
 			}
-			shared.RunAction(view, "Docker 服务配置失败，已返回容器管理", func() error {
-				return runDockerDaemonMenu(view)
+			shared.RunAction(view, "Docker 配置失败，已返回容器管理", func() error {
+				return runDockerConfigMenu(view)
 			})
 		case "4":
 			shared.RunAction(view, "容器资源清理失败，已返回容器管理", func() error {
@@ -105,7 +107,7 @@ func Run(view *ui.UI) error {
 	}
 }
 
-func runtimeStatusFields(installedRuntimes []runtime.Runtime, logSummary, proxySummary string) []ui.CardField {
+func runtimeStatusFields(installedRuntimes []runtime.Runtime, logSummary, proxySummary, clientProxySummary string) []ui.CardField {
 	fields := []ui.CardField{{
 		Label: "当前运行时",
 		Value: runtime.DisplaySummary(installedRuntimes),
@@ -117,6 +119,7 @@ func runtimeStatusFields(installedRuntimes []runtime.Runtime, logSummary, proxyS
 		return append(fields,
 			ui.CardField{Label: "容器日志", Value: logSummary},
 			ui.CardField{Label: "服务代理", Value: proxySummary},
+			ui.CardField{Label: "构建与容器代理", Value: clientProxySummary},
 		)
 	}
 	return fields
@@ -166,12 +169,13 @@ func runComposeMenu(view *ui.UI) error {
 	}
 }
 
-func runDockerDaemonMenu(view *ui.UI) error {
+func runDockerConfigMenu(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
-		ui.MenuTitle("容器管理", "Docker 服务配置")
+		ui.MenuTitle("容器管理", "Docker 配置")
 		ui.MenuOptionHint("1", "配置服务代理", "systemd 服务代理")
 		ui.MenuOptionHint("2", "配置日志轮转", "/etc/docker/daemon.json")
+		ui.MenuOptionHint("3", "配置构建与容器代理", "用户配置；用于后续构建及新建容器，无需重启 Docker")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -186,12 +190,16 @@ func runDockerDaemonMenu(view *ui.UI) error {
 		}
 		switch strings.ToLower(choice) {
 		case "1":
-			shared.RunAction(view, "Docker 服务代理配置失败，已返回 Docker 服务配置", func() error {
+			shared.RunAction(view, "Docker 服务代理配置失败，已返回 Docker 配置", func() error {
 				return daemonproxy.Run(view)
 			})
 		case "2":
-			shared.RunAction(view, "Docker 日志轮转配置失败，已返回 Docker 服务配置", func() error {
+			shared.RunAction(view, "Docker 日志轮转配置失败，已返回 Docker 配置", func() error {
 				return daemonlog.Run(view)
+			})
+		case "3":
+			shared.RunAction(view, "Docker 构建与容器代理配置失败，已返回 Docker 配置", func() error {
+				return clientproxy.Run(view)
 			})
 		default:
 			ui.InvalidChoice()

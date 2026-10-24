@@ -92,7 +92,7 @@ func Run(view *ui.UI) error {
 				ui.CardField{Label: "tmux", Value: "移除目标用户的托管配置块；已有会话保持当前设置"},
 				ui.CardField{Label: "防火墙", Value: "恢复首次快照中的配置和自启状态；无快照时移除托管区块；删除 inet snail 表，解除本工具限制"},
 				ui.CardField{Label: "UPS", Value: "停用相关 NUT 服务，恢复首次备份或移除可识别的工具配置"},
-				ui.CardField{Label: "Docker", Value: "移除日志轮转和服务代理，可能重启 Docker 并影响容器"},
+				ui.CardField{Label: "Docker", Value: "移除日志轮转、服务代理及目标用户的构建与容器代理；服务配置清理可能重启 Docker 并影响容器"},
 				ui.CardField{Label: "Go 环境", Value: "移除托管 PATH 和命令链接，保留已安装版本"},
 				ui.CardField{Label: "其他范围", Value: "软件、容器数据和旧位置备份使用独立清理入口"},
 				ui.CardField{Label: "备份清理", Value: plan.Summary(), Detail: "永久删除全部模块备份，包含防火墙和 UPS 首次快照"},
@@ -161,7 +161,7 @@ func allCleanupSteps() []cleanupStep {
 		{name: "tmux", label: "tmux 配置", run: commontmux.Cleanup, detail: "移除托管配置块；已有 tmux 会话保持当前设置"},
 		{name: "代理", label: "HTTP/HTTPS 代理配置", run: cleanupproxy.Run},
 		{name: "UPS", label: "UPS 配置", run: commonups.Cleanup, detail: "停用相关 NUT 服务，恢复首次备份或移除可识别的工具配置"},
-		{name: "Docker", label: "Docker 配置", run: cleanupDocker, detail: "移除日志轮转和服务代理，可能重启 Docker 并影响容器"},
+		{name: "Docker", label: "Docker 配置", run: cleanupDocker, detail: "移除日志轮转、服务代理及目标用户的构建与容器代理；服务配置清理可能重启 Docker 并影响容器"},
 		{name: "Go 环境", label: "Go 环境配置", run: goenvironment.CleanupEnvironment, detail: "移除托管 PATH 和命令链接，保留已安装 Go 版本"},
 		{name: "防火墙", label: "防火墙配置", run: firewall.Cleanup, confirm: firewall.CleanupWithConfirm, detail: "恢复首次快照中的完整配置和自启状态，覆盖接入后的文件修改；无快照时只移除托管区块；删除 inet snail 表，解除本工具限制"},
 	}
