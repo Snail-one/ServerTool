@@ -184,6 +184,7 @@ func runDockerConfigMenu(view *ui.UI) error {
 		ui.MenuOptionHint("3", "配置日志轮转", "/etc/docker/daemon.json")
 		ui.MenuOptionHint("4", "移除服务代理", "移除后重新加载 systemd，并尝试重启 Docker")
 		ui.MenuOptionHint("5", "移除构建与容器代理", "用于后续构建及新建容器，无需重启 Docker")
+		ui.MenuOptionHint("6", "移除日志轮转", "恢复默认日志设置，并尝试重启 Docker")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -216,6 +217,10 @@ func runDockerConfigMenu(view *ui.UI) error {
 		case "5":
 			shared.RunAction(view, "Docker 构建与容器代理移除失败，已返回 Docker 配置", func() error {
 				return clientproxy.Remove(view)
+			})
+		case "6":
+			shared.RunAction(view, "Docker 日志轮转移除失败，已返回 Docker 配置", func() error {
+				return daemonlog.Remove(view)
 			})
 		default:
 			ui.InvalidChoice()
