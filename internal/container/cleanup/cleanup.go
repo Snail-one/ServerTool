@@ -67,8 +67,7 @@ func runDockerCleanup(view *ui.UI, rt runtime.Runtime) error {
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("容器管理", "清理容器资源")
-		log.Info("当前 ", rt.Display, " 磁盘占用")
-		printContainerDiskUsage(rt)
+		printContainerDiskUsage(rt, "当前 "+rt.Display+" 磁盘占用")
 		fmt.Println()
 		for index := 1; index <= 10; index++ {
 			key := strconv.Itoa(index)
@@ -139,8 +138,7 @@ func runDockerCleanup(view *ui.UI, rt runtime.Runtime) error {
 			ui.CardField{Label: "操作", Value: plan.name},
 		)
 		fmt.Println()
-		fmt.Println(ui.PrimaryBoldText("清理后 " + rt.Display + " 磁盘占用："))
-		printContainerDiskUsage(rt)
+		printContainerDiskUsage(rt, "清理后 "+rt.Display+" 磁盘占用")
 		return nil
 	}
 }
@@ -274,10 +272,4 @@ func resolvePodmanVolumePlan(plan dockerCleanupPlan, output func(string, ...stri
 		plan.args = []string{"volume", "prune", "-a", "-f"}
 	}
 	return plan, nil
-}
-
-func printContainerDiskUsage(runtime runtime.Runtime) {
-	if err := system.Run(runtime.Name, "system", "df"); err != nil {
-		log.Warn("无法获取 ", runtime.Display, " 磁盘占用：", err)
-	}
 }
