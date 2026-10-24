@@ -35,14 +35,7 @@ func ConfigureDockerDaemonProxy(view *ui.UI) error {
 	log.Info("配置 Docker 服务代理")
 	fmt.Println()
 	if currentContent := shared.ReadFileString(dockerProxyPath); strings.TrimSpace(currentContent) != "" {
-		ui.PrintInfoCard("当前 Docker 服务代理",
-			ui.CardField{Label: "配置文件", Value: dockerProxyPath},
-		)
-		fmt.Println(ui.PrimaryBoldText("当前配置内容："))
-		fmt.Print(currentContent)
-		if !strings.HasSuffix(currentContent, "\n") {
-			fmt.Println()
-		}
+		ui.PrintInfoCard("当前 Docker 服务代理", proxyConfigFields(dockerProxyPath, currentContent)...)
 		fmt.Println()
 	}
 	fmt.Println("支持 ip:port 格式，或 username:password@ip:port 格式")
@@ -85,6 +78,29 @@ func ConfigureDockerDaemonProxy(view *ui.UI) error {
 		ui.CardField{Label: "已执行", Value: "systemctl restart docker"},
 	)
 	return nil
+}
+
+func proxyConfigFields(path, content string) []ui.CardField {
+	fields := []ui.CardField{{Label: "配置文件", Value: path}}
+	httpProxy, httpOK := dockerEnvironmentValue(content, "HTTP_PROXY")
+	httpsProxy, httpsOK := dockerEnvironmentValue(content, "HTTPS_PROXY")
+	if httpOK && httpsOK && httpProxy == httpsProxy {
+		fields = append(fields, ui.CardField{Label: "HTTP/HTTPS 代理", Value: commonproxy.MaskProxyURL(httpProxy)})
+	} else {
+		if httpOK {
+			fields = append(fields, ui.CardField{Label: "HTTP 代理", Value: commonproxy.MaskProxyURL(httpProxy)})
+		}
+		if httpsOK {
+			fields = append(fields, ui.CardField{Label: "HTTPS 代理", Value: commonproxy.MaskProxyURL(httpsProxy)})
+		}
+	}
+	if noProxy, ok := dockerEnvironmentValue(content, "NO_PROXY"); ok {
+		fields = append(fields, ui.CardField{Label: "绕过代理", Value: noProxy})
+	}
+	if len(fields) == 1 {
+		fields = append(fields, ui.CardField{Label: "配置状态", Value: "未识别代理设置"})
+	}
+	return fields
 }
 
 func writeDockerProxyConfig(path, proxyURL string) error {
