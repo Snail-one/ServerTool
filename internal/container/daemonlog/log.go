@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -79,6 +80,8 @@ func configureDockerLogRotation(
 	run systemRunFunc,
 	rebuildRunningCompose rebuildRunningComposeFunc,
 ) error {
+	ui.ClearScreen()
+	ui.MenuTitle("容器管理", "Docker 配置", "配置日志轮转")
 	if !isRoot() {
 		return fmt.Errorf("配置 Docker 日志轮转需要 root 权限，请使用 sudo 运行本工具")
 	}
@@ -86,9 +89,17 @@ func configureDockerLogRotation(
 		return fmt.Errorf("未检测到 docker.service，无法配置 Docker 日志轮转")
 	}
 
-	log.Info("配置 Docker 日志轮转")
-	fmt.Println()
-	printDockerDaemonJSON(daemonPath)
+	config, _, err := readDockerDaemonJSON(daemonPath)
+	if err != nil {
+		return err
+	}
+	status, _ := dockerLogConfigStatus(config)
+	fields := []ui.CardField{{Label: "配置文件", Value: daemonPath}}
+	fields = append(fields, logStatusFields(status)...)
+	fields = append(fields,
+		ui.CardField{Label: "应用方式", Value: "保存后重启 Docker；对新建容器生效，已有容器需重建"},
+	)
+	ui.PrintSectionCard("当前配置", fields...)
 	fmt.Println()
 
 	rotation, skip, err := promptLogRotationConfig(view)
@@ -99,10 +110,7 @@ func configureDockerLogRotation(
 		return shared.ErrReturnToMenu
 	}
 
-	result, err := writeDockerDaemonLogConfig(daemonPath, rotation, func(status dockerLogStatus) (bool, error) {
-		fmt.Println()
-		fmt.Println(ui.PrimaryBoldText("检测到当前 daemon.json 已包含 Docker 日志配置："))
-		printDockerLogStatus(status)
+	result, err := writeDockerDaemonLogConfig(daemonPath, rotation, func(dockerLogStatus) (bool, error) {
 		fmt.Println()
 		return view.Confirm("是否覆盖当前 Docker 日志配置？(y/N)：")
 	})
@@ -120,7 +128,7 @@ func configureDockerLogRotation(
 	}
 
 	fmt.Println()
-	fields := []ui.CardField{
+	fields = []ui.CardField{
 		{Label: "配置文件", Value: daemonPath},
 		{Label: "写入目录", Value: daemonDir},
 	}
@@ -143,17 +151,17 @@ func configureDockerLogRotation(
 }
 
 func promptLogRotationConfig(view promptReader) (logRotationConfig, bool, error) {
-	for {
-		ui.MenuSection("请选择 Docker 日志轮转配置")
-		ui.MenuOptionHint("1", "推荐配置", "100m × 3")
-		ui.MenuOptionHint("2", "保守配置", "50m × 5")
-		ui.MenuOptionHint("3", "节省空间", "10m × 3")
-		ui.MenuOptionHint("4", "自定义配置", "max-size / max-file")
-		ui.MenuExit("0/q", "返回")
-		fmt.Println()
-		ui.PrintField("说明", "log-driver 固定为 json-file")
-		fmt.Println()
+	ui.MenuSection("请选择 Docker 日志轮转配置")
+	ui.MenuOptionHint("1", "推荐配置", "100m × 3")
+	ui.MenuOptionHint("2", "保守配置", "50m × 5")
+	ui.MenuOptionHint("3", "节省空间", "10m × 3")
+	ui.MenuOptionHint("4", "自定义配置", "max-size / max-file")
+	ui.MenuExit("0/q", "返回")
+	fmt.Println()
+	ui.PrintField("说明", "日志驱动固定为 json-file")
+	fmt.Println()
 
+	for {
 		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return logRotationConfig{}, false, err
@@ -390,45 +398,33 @@ func scalarString(value any) string {
 	}
 }
 
-func printDockerDaemonJSON(path string) {
-	ui.PrintField("当前配置文件", path)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			ui.PrintField("当前配置内容", "文件不存在，将创建新文件")
-			return
-		}
-		ui.PrintField("当前配置内容", fmt.Sprintf("读取失败：%v", err))
-		return
-	}
-	if strings.TrimSpace(string(data)) == "" {
-		ui.PrintField("当前配置内容", "（空文件）")
-		return
-	}
-	fmt.Println(ui.PrimaryBoldText("当前配置内容："))
-	fmt.Print(string(data))
-	if !strings.HasSuffix(string(data), "\n") {
-		fmt.Println()
-	}
-}
-
-func printDockerLogStatus(status dockerLogStatus) {
+func logStatusFields(status dockerLogStatus) []ui.CardField {
+	driver := "未设置"
 	if status.hasLogDriver {
-		fmt.Printf("log-driver: %s\n", jsonValueString(status.logDriver))
-	} else {
-		fmt.Println("log-driver: 未设置")
+		driver = scalarString(status.logDriver)
 	}
-	if status.hasLogOpts {
-		fmt.Printf("log-opts: %s\n", jsonValueString(status.logOpts))
-	} else {
-		fmt.Println("log-opts: 未设置")
+	fields := []ui.CardField{{Label: "日志驱动", Value: driver}}
+	if opts, ok := status.logOpts.(map[string]any); ok && len(opts) > 0 {
+		keys := make([]string, 0, len(opts))
+		for key := range opts {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			label := key
+			switch key {
+			case "max-size":
+				label = "单文件大小"
+			case "max-file":
+				label = "保留文件数"
+			}
+			fields = append(fields, ui.CardField{Label: label, Value: scalarString(opts[key])})
+		}
+		return fields
 	}
-}
-
-func jsonValueString(value any) string {
-	data, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		return fmt.Sprint(value)
+	options := "未设置"
+	if status.hasLogOpts && status.logOpts != nil {
+		options = scalarString(status.logOpts)
 	}
-	return string(data)
+	return append(fields, ui.CardField{Label: "日志选项", Value: options})
 }

@@ -46,6 +46,8 @@ func Run(view *ui.UI) error {
 }
 
 func configure(view promptReader, account *system.Account) error {
+	ui.ClearScreen()
+	ui.MenuTitle("容器管理", "Docker 配置", "配置构建与容器代理")
 	path, err := ConfigPath(account)
 	if err != nil {
 		return err
@@ -54,14 +56,20 @@ func configure(view promptReader, account *system.Account) error {
 	if err != nil {
 		return err
 	}
-	ui.PrintInfoCard("Docker 构建与容器代理",
-		ui.CardField{Label: "目标用户", Value: account.Name},
-		ui.CardField{Label: "配置文件", Value: path},
-		ui.CardField{Label: "当前代理", Value: doc.summary()},
+	fields := []ui.CardField{
+		{Label: "目标用户", Value: account.Name},
+		{Label: "配置文件", Value: path},
+	}
+	fields = append(fields, doc.proxyFields()...)
+	fields = append(fields,
+		ui.CardField{Label: "生效范围", Value: "后续构建及新建容器；无需重启 Docker"},
 	)
-	fmt.Println("保存后自动用于后续 docker build 和新建容器，无需重启 Docker。")
+	ui.PrintSectionCard("当前配置", fields...)
+	fmt.Println()
 	fmt.Println("请使用构建环境和容器可访问的代理地址；127.0.0.1 通常指向容器自身。")
 	fmt.Println("支持 ip:port 或 username:password@ip:port 格式。")
+	ui.MenuExit("0/q", "返回")
+	fmt.Println()
 	raw, err := view.Ask("请输入构建与容器代理地址：")
 	if err != nil {
 		return err
@@ -79,7 +87,7 @@ func configure(view promptReader, account *system.Account) error {
 	if err != nil {
 		return err
 	}
-	fields := []ui.CardField{
+	fields = []ui.CardField{
 		{Label: "目标用户", Value: account.Name},
 		{Label: "配置文件", Value: path},
 		{Label: "代理地址", Value: commonproxy.MaskProxyURL(proxyURL)},
@@ -253,6 +261,35 @@ func (doc document) summary() string {
 		return "未配置"
 	}
 	return strings.Join(fields, "，")
+}
+
+func (doc document) proxyFields() []ui.CardField {
+	var httpProxy, httpsProxy, noProxy string
+	_ = json.Unmarshal(doc.defaults["httpProxy"], &httpProxy)
+	_ = json.Unmarshal(doc.defaults["httpsProxy"], &httpsProxy)
+	_ = json.Unmarshal(doc.defaults["noProxy"], &noProxy)
+	var fields []ui.CardField
+	if httpProxy != "" && httpProxy == httpsProxy {
+		fields = append(fields, ui.CardField{Label: "HTTP/HTTPS 代理", Value: commonproxy.MaskProxyURL(httpProxy)})
+	} else {
+		if httpProxy != "" {
+			fields = append(fields, ui.CardField{Label: "HTTP 代理", Value: commonproxy.MaskProxyURL(httpProxy)})
+		}
+		if httpsProxy != "" {
+			fields = append(fields, ui.CardField{Label: "HTTPS 代理", Value: commonproxy.MaskProxyURL(httpsProxy)})
+		}
+	}
+	if noProxy != "" {
+		fields = append(fields, ui.CardField{Label: "绕过代理", Value: noProxy})
+	}
+	if len(fields) == 0 {
+		status := "未配置"
+		if doc.hasProxy() {
+			status = "未识别代理设置"
+		}
+		fields = append(fields, ui.CardField{Label: "配置状态", Value: status})
+	}
+	return fields
 }
 
 // Cleanup removes only the three default proxy keys written by this module.

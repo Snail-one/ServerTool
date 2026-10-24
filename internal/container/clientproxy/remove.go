@@ -18,6 +18,8 @@ func Remove(view *ui.UI) error {
 }
 
 func remove(view promptReader, account *system.Account) error {
+	ui.ClearScreen()
+	ui.MenuTitle("容器管理", "Docker 配置", "移除构建与容器代理")
 	path, err := ConfigPath(account)
 	if err != nil {
 		return err
@@ -27,18 +29,27 @@ func remove(view promptReader, account *system.Account) error {
 		return err
 	}
 	if !exists || !doc.hasProxy() {
-		ui.PrintInfoCard("无需移除 Docker 构建与容器代理", ui.CardField{Label: "配置文件", Value: path})
+		ui.PrintSectionCard("无需移除",
+			ui.CardField{Label: "目标用户", Value: account.Name},
+			ui.CardField{Label: "配置文件", Value: path},
+			ui.CardField{Label: "配置状态", Value: "未发现构建与容器代理设置"},
+		)
 		return nil
 	}
 	if err := requireManagedConfig(path, original); err != nil {
 		return err
 	}
-	ui.PrintInfoCard("移除 Docker 构建与容器代理",
-		ui.CardField{Label: "目标用户", Value: account.Name},
-		ui.CardField{Label: "配置文件", Value: path},
-		ui.CardField{Label: "当前代理", Value: doc.summary()},
-		ui.CardField{Label: "操作范围", Value: "移除默认 HTTP/HTTPS 代理及绕过列表；用于后续构建及新建容器，无需重启 Docker"},
+	fields := []ui.CardField{
+		{Label: "目标用户", Value: account.Name},
+		{Label: "配置文件", Value: path},
+	}
+	fields = append(fields, doc.proxyFields()...)
+	fields = append(fields,
+		ui.CardField{Label: "操作范围", Value: "移除默认 HTTP/HTTPS 代理及绕过列表"},
+		ui.CardField{Label: "生效范围", Value: "后续构建及新建容器；无需重启 Docker"},
 	)
+	ui.PrintSectionCard("移除确认", fields...)
+	fmt.Println()
 	ok, err := view.Confirm("确认移除 Docker 构建与容器代理？(y/N)：")
 	if err != nil {
 		return err

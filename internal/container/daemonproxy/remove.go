@@ -106,6 +106,8 @@ func Remove(view *ui.UI) error {
 }
 
 func remove(view confirmer, path string, isRoot func() bool, unitExists func(string) bool, run func(string, ...string) error) error {
+	ui.ClearScreen()
+	ui.MenuTitle("容器管理", "Docker 配置", "移除服务代理")
 	if !isRoot() {
 		return fmt.Errorf("移除 Docker 服务代理需要 root 权限，请使用 sudo 运行本工具")
 	}
@@ -114,7 +116,10 @@ func remove(view confirmer, path string, isRoot func() bool, unitExists func(str
 		return err
 	}
 	if plan == nil {
-		ui.PrintInfoCard("无需移除 Docker 服务代理", ui.CardField{Label: "配置文件", Value: path})
+		ui.PrintSectionCard("无需移除",
+			ui.CardField{Label: "配置文件", Value: path},
+			ui.CardField{Label: "配置状态", Value: "未发现服务代理设置"},
+		)
 		return nil
 	}
 	hasService := unitExists("docker.service")
@@ -122,11 +127,11 @@ func remove(view confirmer, path string, isRoot func() bool, unitExists func(str
 	if hasService {
 		impact += "；尝试重启 Docker，可能影响运行中容器"
 	}
-	ui.PrintDangerCard("移除 Docker 服务代理",
-		ui.CardField{Label: "配置文件", Value: path},
-		ui.CardField{Label: "当前代理", Value: summarizeProxyConfig(path)},
-		ui.CardField{Label: "操作范围", Value: impact},
+	fields := append(proxyConfigFields(path, string(plan.original)),
+		ui.CardField{Label: "操作范围", Value: ui.DangerText(impact)},
 	)
+	ui.PrintSectionCard("移除确认", fields...)
+	fmt.Println()
 	ok, err := view.Confirm("确认移除 Docker 服务代理？(y/N)：")
 	if err != nil {
 		return err

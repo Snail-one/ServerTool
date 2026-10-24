@@ -13,10 +13,7 @@ import (
 	"snail_tool/internal/ui"
 )
 
-const (
-	dockerProxyDir  = "/etc/systemd/system/docker.service.d"
-	dockerProxyPath = "/etc/systemd/system/docker.service.d/http-proxy.conf"
-)
+const dockerProxyPath = "/etc/systemd/system/docker.service.d/http-proxy.conf"
 
 var managedStore = shared.BackupStore{Root: shared.DataDir, Module: "docker"}
 
@@ -25,6 +22,8 @@ func Run(view *ui.UI) error {
 }
 
 func ConfigureDockerDaemonProxy(view *ui.UI) error {
+	ui.ClearScreen()
+	ui.MenuTitle("容器管理", "Docker 配置", "配置服务代理")
 	if !system.IsRoot() {
 		return fmt.Errorf("配置 Docker 服务代理需要 root 权限，请使用 sudo 运行本工具")
 	}
@@ -32,13 +31,17 @@ func ConfigureDockerDaemonProxy(view *ui.UI) error {
 		return fmt.Errorf("未检测到 docker.service，无法配置 Docker 服务代理")
 	}
 
-	log.Info("配置 Docker 服务代理")
-	fmt.Println()
-	if currentContent := shared.ReadFileString(dockerProxyPath); strings.TrimSpace(currentContent) != "" {
-		ui.PrintInfoCard("当前 Docker 服务代理", proxyConfigFields(dockerProxyPath, currentContent)...)
-		fmt.Println()
+	content, _, err := shared.ReadRegularFile(dockerProxyPath)
+	if err != nil {
+		return err
 	}
+	fields := append(proxyConfigFields(dockerProxyPath, string(content)),
+		ui.CardField{Label: "应用方式", Value: "保存后重新加载 systemd 并重启 Docker"},
+	)
+	ui.PrintSectionCard("当前配置", fields...)
+	fmt.Println()
 	fmt.Println("支持 ip:port 格式，或 username:password@ip:port 格式")
+	ui.MenuExit("0/q", "返回")
 	fmt.Println()
 
 	raw, err := view.Ask("请输入 Docker 代理地址：")
@@ -72,10 +75,8 @@ func ConfigureDockerDaemonProxy(view *ui.UI) error {
 	fmt.Println()
 	ui.PrintSuccessCard("Docker 服务代理配置完成",
 		ui.CardField{Label: "配置文件", Value: dockerProxyPath},
-		ui.CardField{Label: "写入目录", Value: dockerProxyDir},
 		ui.CardField{Label: "代理地址", Value: commonproxy.MaskProxyURL(proxyURL)},
-		ui.CardField{Label: "已执行", Value: "systemctl daemon-reload"},
-		ui.CardField{Label: "已执行", Value: "systemctl restart docker"},
+		ui.CardField{Label: "应用结果", Value: "systemd 已重新加载，Docker 已重启"},
 	)
 	return nil
 }
@@ -98,7 +99,11 @@ func proxyConfigFields(path, content string) []ui.CardField {
 		fields = append(fields, ui.CardField{Label: "绕过代理", Value: noProxy})
 	}
 	if len(fields) == 1 {
-		fields = append(fields, ui.CardField{Label: "配置状态", Value: "未识别代理设置"})
+		status := "未识别代理设置"
+		if strings.TrimSpace(content) == "" {
+			status = "未配置"
+		}
+		fields = append(fields, ui.CardField{Label: "配置状态", Value: status})
 	}
 	return fields
 }
