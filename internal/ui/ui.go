@@ -234,7 +234,7 @@ func PrimaryBoldText(text string) string {
 }
 
 func InfoText(text string) string {
-	return paint(blue, text)
+	return paint(orange, text)
 }
 
 func SuccessBoldText(text string) string {
@@ -336,7 +336,7 @@ func StatusBadge(text string) string {
 	case "风险":
 		color = red
 	case "信息":
-		color = blue
+		color = orange
 	}
 	return paint(color, "["+text+"]")
 }

@@ -170,7 +170,7 @@ func TestReportPaletteUsesSemanticColors(t *testing.T) {
 	if got := PrimaryBoldText("标题"); got != bold+orange+"标题"+reset {
 		t.Fatalf("PrimaryBoldText() = %q", got)
 	}
-	if got := InfoText("字段"); got != blue+"字段"+reset {
+	if got := InfoText("字段"); got != orange+"字段"+reset {
 		t.Fatalf("InfoText() = %q", got)
 	}
 	if got := SuccessBoldText("完成"); got != bold+green+"完成"+reset {
@@ -183,7 +183,7 @@ func TestReportPaletteUsesSemanticColors(t *testing.T) {
 	want := map[string]string{
 		"安全": green,
 		"风险": red,
-		"信息": blue,
+		"信息": orange,
 		"未知": yellow,
 	}
 	for status, color := range want {
@@ -241,8 +241,8 @@ func TestSemanticCardsUseSharedLayoutAndColors(t *testing.T) {
 	if !strings.Contains(output, bold+red+"永久删除"+reset) {
 		t.Fatalf("危险卡片标题未使用红色加粗：%q", output)
 	}
-	if !strings.Contains(output, blue+"端口："+reset+"30948") {
-		t.Fatalf("卡片字段名未使用蓝色：%q", output)
+	if !strings.Contains(output, orange+"端口："+reset+"30948") {
+		t.Fatalf("卡片字段名未使用橙色主视觉：%q", output)
 	}
 	if !strings.Contains(output, gray+"实际生效配置"+reset) {
 		t.Fatalf("卡片详情未使用灰色：%q", output)
