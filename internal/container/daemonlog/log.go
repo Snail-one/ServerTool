@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"snail_tool/internal/container/update"
+	"snail_tool/internal/input"
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
@@ -225,14 +226,33 @@ func defaultLogRotationConfig() logRotationConfig {
 }
 
 func normalizeMaxSize(raw string) (string, error) {
+	if err := input.Text(raw); err != nil {
+		return "", err
+	}
 	value := strings.TrimSpace(raw)
 	if !maxSizePattern.MatchString(value) {
 		return "", fmt.Errorf("max-size 格式无效：%s（示例：100m，单位支持 k/m/g）", raw)
+	}
+	// Docker parses sizes into an int64 byte count. Check multiplication before
+	// saving rather than letting an oversized setting prevent Docker startup.
+	amount, err := strconv.ParseInt(value[:len(value)-1], 10, 64)
+	multiplier := int64(1024)
+	switch strings.ToLower(value[len(value)-1:]) {
+	case "m":
+		multiplier *= 1024
+	case "g":
+		multiplier *= 1024 * 1024
+	}
+	if err != nil || amount > (1<<63-1)/multiplier {
+		return "", fmt.Errorf("max-size 过大，换算后的字节数不能超过 int64 范围")
 	}
 	return strings.ToLower(value), nil
 }
 
 func normalizeMaxFile(raw string) (string, error) {
+	if err := input.Text(raw); err != nil {
+		return "", err
+	}
 	value := strings.TrimSpace(raw)
 	if !maxFilePattern.MatchString(value) {
 		return "", fmt.Errorf("max-file 必须是正整数：%s", raw)

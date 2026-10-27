@@ -67,7 +67,8 @@ func configure(view promptReader, account *system.Account) error {
 	ui.PrintSectionCard("当前配置", fields...)
 	fmt.Println()
 	fmt.Println("请使用构建环境和容器可访问的代理地址；127.0.0.1 通常指向容器自身。")
-	fmt.Println("支持 ip:port 或 username:password@ip:port 格式。")
+	fmt.Println("支持 IP/主机名:端口或 [IPv6]:端口，可带 http:// 或 https://。")
+	fmt.Println("认证格式：用户名:密码@地址；密码中的 @、#、% 等字符请使用 URL 编码。")
 	ui.MenuExit("0/q", "返回")
 	fmt.Println()
 	raw, err := view.Ask("请输入构建与容器代理地址：")
@@ -151,6 +152,10 @@ func (doc document) marshal() ([]byte, error) {
 }
 
 func writeConfig(path string, account *system.Account, proxyURL string, confirm func() (bool, error)) (string, error) {
+	proxyURL, err := commonproxy.NormalizeProxy(proxyURL)
+	if err != nil {
+		return "", err
+	}
 	doc, original, exists, err := readDocument(path)
 	if err != nil {
 		return "", err

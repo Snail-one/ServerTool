@@ -35,6 +35,31 @@ func TestDockerProxyURLAddsTrailingSlash(t *testing.T) {
 	}
 }
 
+func TestEncodedCredentialsSurviveSystemdSpecifierEscaping(t *testing.T) {
+	proxyURL := "https://user:pa%40ss%23%25@proxy.example:8080/"
+	content := buildDockerProxyConfig(proxyURL)
+	if !strings.Contains(content, "pa%%40ss%%23%%25") {
+		t.Fatalf("URL percent escapes were not protected from systemd expansion: %s", content)
+	}
+	for _, name := range []string{"HTTP_PROXY", "HTTPS_PROXY"} {
+		if got, ok := dockerEnvironmentValue(content, name); !ok || got != proxyURL {
+			t.Fatalf("encoded credentials changed: %q, %v", got, ok)
+		}
+	}
+}
+
+func TestInvalidProxyDoesNotCreateServiceConfiguration(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing", "http-proxy.conf")
+	for _, raw := range []string{"http://proxy\ufffd:8080", "http://proxy:8080/path", "http://user:secret%0a@proxy:8080"} {
+		if err := writeDockerProxyConfig(path, raw); err == nil {
+			t.Fatalf("invalid service proxy accepted: %q", raw)
+		}
+		if _, err := os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
+			t.Fatalf("invalid input created configuration directories: %v", err)
+		}
+	}
+}
+
 func TestWriteDockerProxyConfig(t *testing.T) {
 	previous := managedStore
 	managedStore = shared.BackupStore{Root: filepath.Join(t.TempDir(), "snailtool"), Module: "docker"}

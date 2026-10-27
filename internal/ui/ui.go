@@ -2,9 +2,12 @@ package ui
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
+
+	"snail_tool/internal/input"
 )
 
 const (
@@ -37,29 +40,66 @@ func New() *UI {
 
 func (u *UI) Ask(prompt string) (string, error) {
 	prompt = normalizePrompt(prompt)
-	fmt.Print(paint(bold+orange, "❯ ") + paint(bold, prompt) + " ")
-	return u.ReadLine()
+	for {
+		fmt.Print(paint(bold+orange, "❯ ") + paint(bold, prompt) + " ")
+		value, err := u.ReadLine()
+		if !errors.Is(err, input.ErrInvalid) {
+			return value, err
+		}
+		fmt.Println(WarningText(err.Error()))
+	}
 }
 
 // ReadLine consumes one response without printing over a refreshing display.
 func (u *UI) ReadLine() (string, error) {
-	value, err := u.reader.ReadString('\n')
-	if err != nil {
+	var line []byte
+	tooLong := false
+	for {
+		part, err := u.reader.ReadSlice('\n')
+		if !tooLong {
+			if len(line)+len(part) > input.MaxLength+2 {
+				tooLong = true
+				line = nil
+			} else {
+				line = append(line, part...)
+			}
+		}
+		if errors.Is(err, bufio.ErrBufferFull) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		break
+	}
+	if tooLong {
+		return "", fmt.Errorf("%w：单行内容不能超过 64 KiB", input.ErrInvalid)
+	}
+	value := strings.TrimSuffix(strings.TrimSuffix(string(line), "\n"), "\r")
+	if err := input.Text(value); err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(value), nil
 }
 
 func (u *UI) Confirm(prompt string) (bool, error) {
-	value, err := u.Ask(prompt)
-	if err != nil {
-		return false, err
+	for {
+		value, err := u.Ask(prompt)
+		if err != nil {
+			return false, err
+		}
+		if IsReturnChoice(value) {
+			return false, ErrReturnToMenu
+		}
+		switch strings.ToLower(value) {
+		case "y", "yes":
+			return true, nil
+		case "", "n", "no":
+			return false, nil
+		default:
+			fmt.Println(WarningText("请输入 y 或 n，或输入 0/q 返回"))
+		}
 	}
-	value = strings.TrimSpace(value)
-	if IsReturnChoice(value) {
-		return false, ErrReturnToMenu
-	}
-	return strings.EqualFold(value, "y") || strings.EqualFold(value, "yes"), nil
 }
 
 func (u *UI) Pause() {
@@ -73,7 +113,7 @@ func (u *UI) PauseWithPrompt(prompt string) {
 	}
 	fmt.Println()
 	fmt.Print(paint(dim, prompt) + " ")
-	_, _ = u.reader.ReadString('\n')
+	_, _ = u.ReadLine()
 	fmt.Println()
 }
 

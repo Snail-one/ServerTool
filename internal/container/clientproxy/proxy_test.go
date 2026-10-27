@@ -235,6 +235,39 @@ func TestConfigureReturnAndOverwriteCancellationLeaveConfigUntouched(t *testing.
 	}
 }
 
+func TestConfigureRejectsCorruptedAddressBeforeWriting(t *testing.T) {
+	for _, answer := range []string{"192.168.31.108\xff:52013", "192.168.31.108\ufffd:52013"} {
+		t.Run(answer, func(t *testing.T) {
+			account, path := setup(t)
+			original := `{"auths":{"registry":{"auth":"keep"}},"proxies":{"default":{"httpProxy":"http://keep:8080"}}}`
+			putFile(t, path, original)
+			err := configure(fakePrompt{answer: answer, ok: true}, account)
+			if err == nil || shared.ReadFileString(path) != original {
+				t.Fatalf("corrupted input was not rejected without changes: %v", err)
+			}
+			entries, err := managedStore.List()
+			if err != nil || len(entries) != 0 {
+				t.Fatalf("unexpected backup on invalid input: %v, %v", entries, err)
+			}
+		})
+	}
+}
+
+func TestClientProxyWriterValidatesBeforeBackupOrWrite(t *testing.T) {
+	account, path := setup(t)
+	original := `{"auths":{"registry":{"auth":"keep"}}}`
+	putFile(t, path, original)
+	for _, raw := range []string{"http://proxy\ufffd:8080", "http://proxy:8080/path", "http://user:secret%0a@proxy:8080"} {
+		backup, err := writeConfig(path, account, raw, accept)
+		if err == nil || backup != "" || shared.ReadFileString(path) != original {
+			t.Fatalf("invalid input changed or backed up configuration: %q, %v", backup, err)
+		}
+	}
+	if entries, err := managedStore.List(); err != nil || len(entries) != 0 {
+		t.Fatalf("invalid input created persistent records: %v, %v", entries, err)
+	}
+}
+
 func TestConcurrentChangeDuringOverwriteConfirmationIsPreserved(t *testing.T) {
 	account, path := setup(t)
 	putFile(t, path, `{"proxies":{"default":{"httpProxy":"http://old:8080"}}}`)

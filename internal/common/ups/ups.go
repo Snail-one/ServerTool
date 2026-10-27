@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	"snail_tool/internal/input"
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
@@ -320,9 +321,9 @@ func askUPSDeviceConfig(view *ui.UI) (upsDeviceConfig, error) {
 	if shared.IsReturnChoice(desc) {
 		return upsDeviceConfig{}, shared.ErrReturnToMenu
 	}
-	desc = normalizeUPSDescription(desc)
-	if desc == "" {
-		return upsDeviceConfig{}, fmt.Errorf("desc 不能为空")
+	desc, err = normalizeUPSDescription(desc)
+	if err != nil {
+		return upsDeviceConfig{}, err
 	}
 
 	return upsDeviceConfig{
@@ -347,12 +348,20 @@ func askUSBID(view *ui.UI, prompt string) (string, error) {
 	return value, nil
 }
 
-func normalizeUPSDescription(desc string) string {
+func normalizeUPSDescription(desc string) (string, error) {
+	if err := input.Text(desc); err != nil {
+		return "", err
+	}
 	desc = strings.TrimSpace(desc)
-	desc = strings.Trim(desc, `"'`)
+	if len(desc) >= 2 && (desc[0] == '"' && desc[len(desc)-1] == '"' || desc[0] == '\'' && desc[len(desc)-1] == '\'') {
+		desc = strings.TrimSpace(desc[1 : len(desc)-1])
+	}
+	if desc == "" {
+		return "", fmt.Errorf("desc 不能为空")
+	}
 	desc = strings.ReplaceAll(desc, `\`, `\\`)
 	desc = strings.ReplaceAll(desc, `"`, `\"`)
-	return desc
+	return desc, nil
 }
 
 func writeUPSConfigFiles(device upsDeviceConfig, password string) error {

@@ -91,14 +91,27 @@ func TestFindComposeDirsInRootsDedupesAcrossRoots(t *testing.T) {
 
 func TestParseComposeRootsUsesDefaultsAndSplitsInput(t *testing.T) {
 	defaults := []string{"/opt/apps", "/docker"}
-	if got := parseComposeRoots("", defaults); !reflect.DeepEqual(got, defaults) {
-		t.Fatalf("default roots mismatch: got %#v, want %#v", got, defaults)
+	if got, err := parseComposeRoots("", defaults); err != nil || !reflect.DeepEqual(got, defaults) {
+		t.Fatalf("default roots mismatch: got %#v, want %#v, err %v", got, defaults, err)
 	}
 
-	got := parseComposeRoots("/opt/apps, /docker /opt/apps//", defaults)
+	got, err := parseComposeRoots("/opt/apps, /docker /opt/apps//", defaults)
 	want := []string{"/opt/apps", "/docker"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("parsed roots mismatch: got %#v, want %#v", got, want)
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("parsed roots mismatch: got %#v, want %#v, err %v", got, want, err)
+	}
+}
+
+func TestComposeScanRootsAcceptQuotedPathsAndRejectInvalidInput(t *testing.T) {
+	got, err := parseComposeRoots(`"/docker/my app"，'/opt/项目,数据' /docker/my-app "/docker/trailing "`, nil)
+	want := []string{"/docker/my app", "/opt/项目,数据", "/docker/my-app", "/docker/trailing "}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("quoted paths: got %#v err %v", got, err)
+	}
+	for _, raw := range []string{",，", `"/docker/my app`, `''`, `"  "`, "/docker\u200b", "/docker\xff", "/docker\r"} {
+		if got, err := parseComposeRoots(raw, []string{"/must-not-scan"}); err == nil || len(got) != 0 {
+			t.Fatalf("invalid input must not fall back to default scanning: %q: %#v, %v", raw, got, err)
+		}
 	}
 }
 

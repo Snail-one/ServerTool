@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"snail_tool/internal/input"
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/ui"
@@ -348,7 +349,7 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 			if shared.IsReturnChoice(value) {
 				return "", shared.ErrReturnToMenu
 			}
-			number, err := strconv.Atoi(value)
+			number, err := input.Number(value, 1, len(entries))
 			if err == nil && number >= 1 && number <= len(entries) {
 				editIndex = number - 1
 				break

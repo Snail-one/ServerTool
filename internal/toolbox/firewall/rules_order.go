@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"snail_tool/internal/input"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/ui"
 )
@@ -89,7 +90,7 @@ func reorderAllowRulesDraft(view *ui.UI, rules []allowRule) ([]allowRule, error)
 		if found {
 			continue
 		}
-		if number, err := strconv.Atoi(choice); err == nil && number >= 1 && number <= len(draft) {
+		if number, err := input.Number(choice, 1, len(draft)); err == nil && number >= 1 && number <= len(draft) {
 			selected = draft[number-1].ID
 			continue
 		}

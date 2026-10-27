@@ -323,8 +323,13 @@ func TestParseAuthorizedKeySelection(t *testing.T) {
 		t.Fatalf("selection mismatch: got %#v, want %#v", got, want)
 	}
 
-	if _, err := parseAuthorizedKeySelection("4", 3); err == nil {
-		t.Fatal("expected out-of-range selection to fail")
+	if got, err := parseAuthorizedKeySelection("2，1", 3); err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("Chinese comma selection mismatch: %#v, %v", got, err)
+	}
+	for _, raw := range []string{"4", "+1", "1\u200b", "1\n2"} {
+		if _, err := parseAuthorizedKeySelection(raw, 3); err == nil {
+			t.Fatalf("invalid selection accepted: %q", raw)
+		}
 	}
 }
 

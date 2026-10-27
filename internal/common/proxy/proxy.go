@@ -2,12 +2,17 @@ package proxy
 
 import (
 	"fmt"
+	"net"
+	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
+	"snail_tool/internal/input"
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
@@ -21,8 +26,6 @@ const (
 )
 
 var (
-	proxyWithAuth     = regexp.MustCompile(`^([^:]+):([^@]+)@([^:]+):([0-9]+)$`)
-	proxyPlain        = regexp.MustCompile(`^([^:]+):([0-9]+)$`)
 	proxyShellEnvLine = regexp.MustCompile(`^[ \t]*(?:export[ \t]+)?(http_proxy|https_proxy|HTTP_PROXY|HTTPS_PROXY|no_proxy|NO_PROXY)=(?:"([^"]*)"|'([^']*)'|([^ \t\r\n;]*))`)
 	proxyEnvNames     = []string{"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"}
 )
@@ -75,7 +78,8 @@ func ConfigureProxy(view *ui.UI) error {
 		return shared.ErrReturnToMenu
 	}
 
-	log.Info("支持 ip:port 或 username:password@ip:port 格式")
+	log.Info("支持 IP/主机名:端口或 [IPv6]:端口，可带 http:// 或 https://")
+	log.Info("认证格式：用户名:密码@地址；密码中的 @、#、% 等字符请使用 URL 编码")
 	fmt.Println()
 
 	raw, err := view.Ask("请输入代理地址：")
@@ -193,29 +197,75 @@ func proxyURLFromShellContent(content string) (string, bool) {
 }
 
 func normalizeProxy(raw string) (string, error) {
+	if err := input.Text(raw); err != nil {
+		return "", err
+	}
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", fmt.Errorf("错误：代理地址不能为空")
 	}
-
-	port := ""
-	if match := proxyWithAuth.FindStringSubmatch(raw); match != nil {
-		port = match[4]
-	} else if match := proxyPlain.FindStringSubmatch(raw); match != nil {
-		port = match[2]
-	} else {
-		return "", fmt.Errorf("错误：代理格式不正确\n\n支持格式：\n127.0.0.1:8888\n192.168.1.1:8888\nadmin:123456@192.168.1.1:8888")
+	if strings.ContainsFunc(raw, unicode.IsSpace) {
+		return "", fmt.Errorf("错误：代理地址不能包含空白字符；认证信息中的空格请使用 %%20")
 	}
-
-	number, err := strconv.Atoi(port)
-	if err != nil || number < 1 || number > 65535 {
+	if !strings.Contains(raw, "://") {
+		raw = "http://" + raw
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Opaque != "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", fmt.Errorf("错误：请输入有效的 HTTP/HTTPS 代理地址，例如 192.168.1.1:7890")
+	}
+	if (parsed.EscapedPath() != "" && parsed.EscapedPath() != "/") || parsed.RawQuery != "" || parsed.ForceQuery || strings.Contains(raw, "#") {
+		return "", fmt.Errorf("错误：代理地址不能包含路径、查询参数或片段；认证信息中的特殊字符请使用 URL 编码")
+	}
+	host, port, err := net.SplitHostPort(parsed.Host)
+	if err != nil || !validProxyHost(host) {
+		return "", fmt.Errorf("错误：代理主机或端口格式无效；支持 IP、主机名和 [IPv6]:端口")
+	}
+	number, err := input.Number(port, 1, 65535)
+	if err != nil {
 		return "", fmt.Errorf("错误：代理端口范围必须是 1-65535")
 	}
+	if parsed.User != nil {
+		password, hasPassword := parsed.User.Password()
+		if parsed.User.Username() == "" || !hasPassword || password == "" {
+			return "", fmt.Errorf("错误：代理认证必须同时提供非空用户名和密码")
+		}
+		if input.Text(parsed.User.Username()) != nil || input.Text(password) != nil || strings.ContainsFunc(parsed.User.Username()+password, unicode.IsControl) {
+			return "", fmt.Errorf("错误：代理认证包含乱码、控制字符或不可见字符")
+		}
+		parsed.User = url.UserPassword(parsed.User.Username(), password)
+	}
+	parsed.Host = net.JoinHostPort(strings.ToLower(host), strconv.Itoa(number))
+	parsed.Path = ""
+	return parsed.String(), nil
+}
 
-	return "http://" + raw, nil
+func validProxyHost(host string) bool {
+	if addr, err := netip.ParseAddr(host); err == nil {
+		return addr.Zone() == ""
+	}
+	name := strings.TrimSuffix(host, ".")
+	if name == "" || len(name) > 253 || strings.Trim(name, "0123456789.") == "" {
+		return false
+	}
+	for _, label := range strings.Split(name, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, char := range label {
+			if !(char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || char == '-') {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func writeProxyBlockReplacingUnmanaged(path, proxyURL string) error {
+	proxyURL, err := normalizeProxy(proxyURL)
+	if err != nil {
+		return err
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -235,6 +285,9 @@ export HTTPS_PROXY="%s"
 export no_proxy="%s"
 export NO_PROXY="%s"
 `, proxyURL, proxyURL, proxyURL, proxyURL, noProxy, noProxy)
+	// A URL may contain literal shell characters in its credentials. Escape them
+	// for double-quoted assignments so sourcing .bashrc preserves the exact value.
+	body = strings.NewReplacer("\\", "\\\\", "`", "\\`", "$", "\\$").Replace(body)
 	block := shared.FormatManagedBlock(proxyBegin, body, proxyEnd)
 
 	return shared.AtomicWriteFile(path, []byte(shared.AppendBlock(content, block)), shared.AtomicWriteOptions{Mode: 0644})
@@ -310,6 +363,9 @@ func proxyAssignmentsFromContent(content string) []proxyAssignment {
 			name:  match[1],
 			value: firstNonEmpty(match[2:]...),
 		})
+		if match[2] != "" {
+			assignments[len(assignments)-1].value = strings.NewReplacer(`\\`, `\`, `\$`, `$`, "\\`", "`").Replace(match[2])
+		}
 	}
 	return assignments
 }
@@ -332,19 +388,7 @@ func removeUnmanagedProxyLines(content string) string {
 }
 
 func maskProxyURL(proxyURL string) string {
-	prefix := "http://"
-	raw := strings.TrimPrefix(proxyURL, prefix)
-	suffix := ""
-	if strings.HasSuffix(raw, "/") {
-		raw = strings.TrimSuffix(raw, "/")
-		suffix = "/"
-	}
-
-	match := proxyWithAuth.FindStringSubmatch(raw)
-	if match == nil {
-		return proxyURL
-	}
-	return fmt.Sprintf("%s%s:******@%s:%s%s", prefix, match[1], match[3], match[4], suffix)
+	return maskProxyValue(proxyURL)
 }
 
 func maskProxyValue(value string) string {

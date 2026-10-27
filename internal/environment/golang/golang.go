@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"snail_tool/internal/input"
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/ui"
@@ -175,7 +176,7 @@ func selectRelease(view *ui.UI, releases []release, arch string) (release, error
 				continue
 			}
 		default:
-			index, parseErr := strconv.Atoi(raw)
+			index, parseErr := input.Number(raw, 1, end-start)
 			if parseErr == nil && index >= 1 && start+index <= end {
 				return releases[start+index-1], nil
 			}
@@ -252,7 +253,7 @@ func selectInstalled(view *ui.UI, versions []string, prompt string) (string, err
 		if shared.IsReturnChoice(raw) {
 			return "", shared.ErrReturnToMenu
 		}
-		index, err := strconv.Atoi(raw)
+		index, err := input.Number(raw, 1, len(versions))
 		if err != nil || index < 1 || index > len(versions) {
 			ui.InvalidChoice()
 			fmt.Println()
@@ -297,7 +298,7 @@ func uninstallSelected(view *ui.UI) error {
 		if shared.IsReturnChoice(raw) {
 			return shared.ErrReturnToMenu
 		}
-		index, err := strconv.Atoi(raw)
+		index, err := input.Number(raw, 1, len(versions)+offset)
 		if err != nil || index < 1 || index > len(versions)+offset {
 			ui.InvalidChoice()
 			fmt.Println()

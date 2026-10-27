@@ -2,6 +2,7 @@ package firewall
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"time"
 	"unicode"
 
+	"snail_tool/internal/input"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/ui"
 )
@@ -145,7 +147,7 @@ func chooseTrafficTable(view *ui.UI, current trafficTable) (trafficTable, error)
 		if choice == "" {
 			return defaultTrafficTable, nil
 		}
-		if number, err := strconv.Atoi(choice); err == nil && number >= 1 && number <= len(choices) {
+		if number, err := input.Number(choice, 1, len(choices)); err == nil && number >= 1 && number <= len(choices) {
 			return choices[number-1], nil
 		}
 		if !strings.EqualFold(choice, "r") {
@@ -267,6 +269,9 @@ func monitorTrafficTable(view *ui.UI, interval time.Duration, table trafficTable
 	defer func() { cancel(); <-done }()
 	for {
 		choice, err := view.ReadLine()
+		if errors.Is(err, input.ErrInvalid) {
+			continue
+		}
 		if err != nil {
 			return err
 		}

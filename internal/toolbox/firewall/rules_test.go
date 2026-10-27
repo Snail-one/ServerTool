@@ -38,7 +38,7 @@ func TestRulePortsNormalizeRangesAndRejectInvalidInput(t *testing.T) {
 			t.Fatalf("ports %q: got=%q err=%v", item.input, got, err)
 		}
 	}
-	for _, invalid := range []string{"0", "-1", "65536", "8100-8000", "80-65536", "80,443", "80; accept", "", "80-90-100"} {
+	for _, invalid := range []string{"0", "-1", "+80", "80-+90", "65536", "8100-8000", "80-65536", "80,443", "80; accept", "", "80-90-100", "80\r", "80\u200b"} {
 		if _, _, _, err := parseRulePorts(invalid); err == nil {
 			t.Fatalf("invalid ports accepted: %q", invalid)
 		}

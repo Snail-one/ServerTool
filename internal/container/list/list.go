@@ -12,6 +12,7 @@ import (
 
 	"snail_tool/internal/container/runtime"
 	"snail_tool/internal/container/update"
+	"snail_tool/internal/input"
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
@@ -123,7 +124,7 @@ func manageContainers(view *ui.UI, rt runtime.Runtime) error {
 			return shared.ErrReturnToMenu
 		}
 
-		idx, err := strconv.Atoi(strings.TrimSpace(raw))
+		idx, err := input.Number(raw, 1, len(conts))
 		if err != nil || idx < 1 || idx > len(conts) {
 			ui.InvalidChoice()
 			view.Pause()
@@ -404,7 +405,7 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 		if shared.IsReturnChoice(raw) {
 			return nil
 		}
-		index, err := strconv.Atoi(strings.TrimSpace(raw))
+		index, err := input.Number(raw, 1, len(actions))
 		if err != nil || index < 1 || index > len(actions) {
 			ui.InvalidChoice()
 			view.PauseWithPrompt("按回车返回容器操作...")
@@ -1117,7 +1118,7 @@ func manageComposeProjects(view *ui.UI, rt runtime.Runtime, useLS bool) error {
 			return shared.ErrReturnToMenu
 		}
 
-		idx, err := strconv.Atoi(strings.TrimSpace(raw))
+		idx, err := input.Number(raw, 1, len(projects))
 		if err != nil || idx < 1 || idx > len(projects) {
 			ui.InvalidChoice()
 			view.Pause()

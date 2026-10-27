@@ -269,6 +269,10 @@ func TestNormalizeMaxSize(t *testing.T) {
 		{raw: "100mb", wantErr: true},
 		{raw: "m", wantErr: true},
 		{raw: "-1m", wantErr: true},
+		{raw: "9223372036854775808k", wantErr: true},
+		{raw: "8589934592g", wantErr: true},
+		{raw: "100m\r", wantErr: true},
+		{raw: "100m\u200b", wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -303,6 +307,9 @@ func TestNormalizeMaxFile(t *testing.T) {
 		{raw: "-1", wantErr: true},
 		{raw: "+1", wantErr: true},
 		{raw: "abc", wantErr: true},
+		{raw: "99999999999999999999999", wantErr: true},
+		{raw: "3\r", wantErr: true},
+		{raw: "3\u200b", wantErr: true},
 	}
 
 	for _, tt := range tests {

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"snail_tool/internal/input"
 	"snail_tool/internal/tempguard"
 )
 
@@ -180,17 +181,17 @@ func RandomFreePort() int {
 }
 
 func ValidatePort(raw string) (int, error) {
-	port, err := strconv.Atoi(raw)
+	port, err := input.Number(raw, 1, 65535)
 	if err != nil {
-		return 0, errors.New("端口必须是数字")
-	}
-	if port < 1 || port > 65535 {
-		return 0, errors.New("端口范围必须是 1-65535")
+		return 0, fmt.Errorf("端口无效：%w", err)
 	}
 	return port, nil
 }
 
 func ValidateSSHPublicKey(pubkey string) error {
+	if err := input.Text(pubkey); err != nil {
+		return fmt.Errorf("公钥无效：%w", err)
+	}
 	if strings.TrimSpace(pubkey) == "" {
 		return errors.New("公钥不能为空")
 	}

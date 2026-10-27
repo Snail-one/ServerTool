@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	containerruntime "snail_tool/internal/container/runtime"
+	"snail_tool/internal/input"
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
@@ -278,7 +279,7 @@ func AskComposeScanDirs(view *ui.UI, defaultRoots []string) ([]string, []string,
 		}
 		fmt.Println()
 
-		rawRoots, err := view.Ask("请输入扫描目录（直接回车使用默认目录，多个用空格或逗号分隔，0/q 返回）：")
+		rawRoots, err := view.Ask("请输入扫描目录（回车使用默认目录，多个用空格或逗号分隔，路径含空格请加引号，0/q 返回）：")
 		if err != nil {
 			return nil, nil, err
 		}
@@ -287,7 +288,11 @@ func AskComposeScanDirs(view *ui.UI, defaultRoots []string) ([]string, []string,
 			return nil, nil, shared.ErrReturnToMenu
 		}
 
-		roots := parseComposeRoots(rawRoots, defaultRoots)
+		roots, err := parseComposeRoots(rawRoots, defaultRoots)
+		if err != nil {
+			log.Warn(err)
+			continue
+		}
 		existingRoots := filterExistingComposeRoots(roots)
 		if len(existingRoots) == 0 {
 			fmt.Println("没有可扫描的 Docker Compose 目录")
@@ -319,14 +324,57 @@ func DefaultComposeRoots() []string {
 	return dedupeCleanPaths(roots)
 }
 
-func parseComposeRoots(raw string, defaultRoots []string) []string {
-	parts := strings.FieldsFunc(raw, func(r rune) bool {
-		return r == ',' || r == ' ' || r == '\t' || r == '\n' || r == '\r'
-	})
-	if len(parts) == 0 {
-		return defaultRoots
+func parseComposeRoots(raw string, defaultRoots []string) ([]string, error) {
+	if err := input.Text(raw); err != nil {
+		return nil, err
 	}
-	return dedupeCleanPaths(parts)
+	if strings.TrimSpace(raw) == "" {
+		return append([]string(nil), defaultRoots...), nil
+	}
+	var parts []string
+	var part strings.Builder
+	var quote rune
+	started := false
+	flush := func() error {
+		if started {
+			if strings.TrimSpace(part.String()) == "" {
+				return fmt.Errorf("扫描目录不能为空")
+			}
+			parts = append(parts, part.String())
+			part.Reset()
+			started = false
+		}
+		return nil
+	}
+	for _, char := range raw {
+		switch {
+		case quote != 0:
+			if char == quote {
+				quote = 0
+			} else {
+				part.WriteRune(char)
+			}
+		case char == '\'' || char == '"':
+			quote, started = char, true
+		case char == ',' || char == '，' || char == ' ' || char == '\t':
+			if err := flush(); err != nil {
+				return nil, err
+			}
+		default:
+			part.WriteRune(char)
+			started = true
+		}
+	}
+	if quote != 0 {
+		return nil, fmt.Errorf("扫描目录的引号未闭合，请重新输入")
+	}
+	if err := flush(); err != nil {
+		return nil, err
+	}
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("请输入有效的扫描目录，或直接回车使用默认目录")
+	}
+	return dedupeCleanPaths(parts), nil
 }
 
 func filterExistingComposeRoots(roots []string) []string {
@@ -345,7 +393,6 @@ func dedupeCleanPaths(paths []string) []string {
 	result := make([]string, 0, len(paths))
 	seen := make(map[string]struct{}, len(paths))
 	for _, path := range paths {
-		path = strings.TrimSpace(path)
 		if path == "" {
 			continue
 		}

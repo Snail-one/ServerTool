@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"snail_tool/internal/input"
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/ui"
@@ -27,7 +28,7 @@ func chooseRuleID(view *ui.UI, rules []allowRule) (string, error) {
 				return rule.ID, nil
 			}
 		}
-		if number, err := strconv.Atoi(id); err == nil && number >= 1 && number <= len(rules) {
+		if number, err := input.Number(id, 1, len(rules)); err == nil && number >= 1 && number <= len(rules) {
 			return rules[number-1].ID, nil
 		}
 		fmt.Println("未找到该序号或规则 ID，请从当前列表选择")

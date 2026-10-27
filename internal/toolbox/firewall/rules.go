@@ -7,6 +7,9 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+
+	"snail_tool/internal/input"
+	"snail_tool/internal/system"
 )
 
 type allowRule struct {
@@ -20,6 +23,9 @@ type allowRule struct {
 }
 
 func normalizeSource(raw string) (string, error) {
+	if err := input.Text(raw); err != nil {
+		return "", err
+	}
 	raw = strings.TrimSpace(raw)
 	if addr, err := netip.ParseAddr(raw); err == nil {
 		if addr.Zone() != "" {
@@ -82,17 +88,20 @@ func sourceRange(source string) string {
 }
 
 func parseRulePorts(raw string) (string, int, int, error) {
+	if err := input.Text(raw); err != nil {
+		return "", 0, 0, err
+	}
 	parts := strings.Split(strings.TrimSpace(raw), "-")
 	if len(parts) < 1 || len(parts) > 2 {
 		return "", 0, 0, fmt.Errorf("请输入单端口或端口范围，例如 443 或 8000-8100")
 	}
-	start, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	start, err := system.ValidatePort(strings.TrimSpace(parts[0]))
 	if err != nil || start < 1 || start > 65535 {
 		return "", 0, 0, fmt.Errorf("端口必须在 1-65535 之间")
 	}
 	end := start
 	if len(parts) == 2 {
-		end, err = strconv.Atoi(strings.TrimSpace(parts[1]))
+		end, err = system.ValidatePort(strings.TrimSpace(parts[1]))
 		if err != nil || end < start || end > 65535 {
 			return "", 0, 0, fmt.Errorf("端口范围必须递增且位于 1-65535 之间")
 		}

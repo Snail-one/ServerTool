@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"snail_tool/internal/container/runtime"
+	"snail_tool/internal/input"
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
@@ -55,7 +56,7 @@ func selectCleanupRuntime(view interface{ Ask(string) (string, error) }, runtime
 		if shared.IsReturnChoice(choice) {
 			return runtime.Runtime{}, shared.ErrReturnToMenu
 		}
-		index, err := strconv.Atoi(strings.TrimSpace(choice))
+		index, err := input.Number(choice, 1, len(runtimes))
 		if err == nil && index > 0 && index <= len(runtimes) {
 			return runtimes[index-1], nil
 		}

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"snail_tool/internal/input"
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
@@ -658,8 +659,11 @@ func replaceAuthorizedKeyIndex(content string, index int, pubkey string) string 
 }
 
 func parseAuthorizedKeySelection(raw string, max int) ([]int, error) {
+	if err := input.Text(raw); err != nil {
+		return nil, err
+	}
 	parts := strings.FieldsFunc(raw, func(r rune) bool {
-		return r == ',' || r == ' ' || r == '\t' || r == '\n' || r == '\r'
+		return r == ',' || r == '，' || r == ' ' || r == '\t' || r == '\n' || r == '\r'
 	})
 	if len(parts) == 0 {
 		return nil, fmt.Errorf("未选择 SSH 公钥编号")
@@ -668,7 +672,7 @@ func parseAuthorizedKeySelection(raw string, max int) ([]int, error) {
 	indexes := make([]int, 0, len(parts))
 	seen := make(map[int]struct{}, len(parts))
 	for _, part := range parts {
-		index, err := strconv.Atoi(part)
+		index, err := input.Number(part, 1, max)
 		if err != nil {
 			return nil, fmt.Errorf("无效公钥编号: %s", part)
 		}

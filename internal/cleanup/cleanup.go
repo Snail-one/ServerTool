@@ -15,6 +15,7 @@ import (
 	commontmux "snail_tool/internal/common/tmux"
 	commonups "snail_tool/internal/common/ups"
 	goenvironment "snail_tool/internal/environment/golang"
+	"snail_tool/internal/input"
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
@@ -66,7 +67,7 @@ func Run(view *ui.UI) error {
 		if shared.IsReturnChoice(choice) {
 			return shared.ErrReturnToMenu
 		}
-		if key, err := strconv.Atoi(choice); err == nil && key >= 1 && key <= len(steps) {
+		if key, err := input.Number(choice, 1, len(steps)); err == nil && key >= 1 && key <= len(steps) {
 			err := runCleanupStepWithConfirm(view, account, steps[key-1])
 			if errors.Is(err, shared.ErrReturnToMenu) {
 				continue

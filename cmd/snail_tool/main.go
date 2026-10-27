@@ -8,6 +8,7 @@ import (
 	"snail_tool/internal/app"
 	"snail_tool/internal/cleanup"
 	cleanupbackups "snail_tool/internal/cleanup/backups"
+	"snail_tool/internal/input"
 	"snail_tool/internal/log"
 	"snail_tool/internal/selfupdate"
 	"snail_tool/internal/startup"
@@ -42,6 +43,12 @@ func main() {
 func handleArgs(args []string) bool {
 	if len(args) == 0 {
 		return false
+	}
+	for _, arg := range args {
+		if err := input.Text(arg); err != nil {
+			log.Error("命令行参数无效：", err)
+			os.Exit(2)
+		}
 	}
 
 	switch strings.ToLower(args[0]) {

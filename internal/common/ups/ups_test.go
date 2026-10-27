@@ -33,6 +33,23 @@ func TestNUTSystemdServicesOrder(t *testing.T) {
 	}
 }
 
+func TestUPSDescriptionPreservesTextAndEscapesConfigurationCharacters(t *testing.T) {
+	for _, item := range []struct{ raw, want string }{
+		{`  "中文 USB UPS"  `, "中文 USB UPS"},
+		{`John's UPS`, `John's UPS`},
+		{`UPS "A" \ USB`, `UPS \"A\" \\ USB`},
+	} {
+		if got, err := normalizeUPSDescription(item.raw); err != nil || got != item.want {
+			t.Fatalf("description %q: got %q, err %v", item.raw, got, err)
+		}
+	}
+	for _, raw := range []string{"", `""`, `"  "`, "UPS\xff", "UPS\ufffd", "UPS\n[other]", "UPS\u200b"} {
+		if _, err := normalizeUPSDescription(raw); err == nil {
+			t.Fatalf("invalid description accepted: %q", raw)
+		}
+	}
+}
+
 func TestApplyNUTStandaloneModeReplacesExistingMode(t *testing.T) {
 	input := "# sample\nMODE=netserver\n"
 	got := applyNUTStandaloneMode(input)

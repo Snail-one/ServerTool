@@ -40,7 +40,8 @@ func ConfigureDockerDaemonProxy(view *ui.UI) error {
 	)
 	ui.PrintSectionCard("当前配置", fields...)
 	fmt.Println()
-	fmt.Println("支持 ip:port 格式，或 username:password@ip:port 格式")
+	fmt.Println("支持 IP/主机名:端口或 [IPv6]:端口，可带 http:// 或 https://。")
+	fmt.Println("认证格式：用户名:密码@地址；密码中的 @、#、% 等字符请使用 URL 编码。")
 	ui.MenuExit("0/q", "返回")
 	fmt.Println()
 
@@ -109,6 +110,11 @@ func proxyConfigFields(path, content string) []ui.CardField {
 }
 
 func writeDockerProxyConfig(path, proxyURL string) error {
+	proxyURL, err := commonproxy.NormalizeProxy(proxyURL)
+	if err != nil {
+		return err
+	}
+	proxyURL = dockerProxyURL(proxyURL)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
@@ -120,6 +126,9 @@ func writeDockerProxyConfig(path, proxyURL string) error {
 }
 
 func buildDockerProxyConfig(proxyURL string) string {
+	// Environment= expands systemd specifiers, including in URL-encoded
+	// credentials. Double percent signs to preserve literal URL escapes.
+	proxyURL = strings.ReplaceAll(proxyURL, "%", "%%")
 	return fmt.Sprintf(`[Service]
 Environment="HTTP_PROXY=%s"
 Environment="HTTPS_PROXY=%s"
@@ -166,6 +175,7 @@ func dockerEnvironmentValue(content, name string) (string, bool) {
 			continue
 		}
 		value := strings.TrimSuffix(strings.TrimPrefix(line, prefix), `"`)
+		value = strings.ReplaceAll(value, "%%", "%")
 		if strings.TrimSpace(value) != "" {
 			return value, true
 		}
