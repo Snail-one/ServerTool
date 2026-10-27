@@ -115,7 +115,7 @@ func TestDetectStatusReadsProxyFileEnv(t *testing.T) {
 
 	home := t.TempDir()
 	account := &system.Account{Name: "test", Home: home}
-	if err := os.WriteFile(filepath.Join(home, ".bashrc"), []byte("https_proxy='http://192.168.31.108:52013'\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(home, ".bashrc"), []byte("https_proxy='http://203.0.113.10:8080'\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -127,7 +127,7 @@ func TestDetectStatusReadsProxyFileEnv(t *testing.T) {
 
 func TestDetectStatusIgnoresTemporaryProxyEnv(t *testing.T) {
 	clearProxyEnv(t)
-	t.Setenv("HTTP_PROXY", "http://192.168.31.108:52013")
+	t.Setenv("HTTP_PROXY", "http://203.0.113.10:8080")
 
 	account := &system.Account{Name: "test", Home: t.TempDir()}
 	status := DetectStatusWithProgress(account, nil)

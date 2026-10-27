@@ -21,7 +21,7 @@ func TestReadLineAcceptsCRLFAndReadableUnicode(t *testing.T) {
 }
 
 func TestReadLineRejectsEntireInvalidLineAndPreservesNext(t *testing.T) {
-	for _, raw := range []string{"192.168.31.108\xff:52013", "bad\ufffd", "bad\x00", "bad\rvalue", "bad\x1b[31m", "bad\u200b", strings.Repeat("x", input.MaxLength+1), strings.Repeat("x", input.MaxLength*3)} {
+	for _, raw := range []string{"203.0.113.10\xff:8080", "bad\ufffd", "bad\x00", "bad\rvalue", "bad\x1b[31m", "bad\u200b", strings.Repeat("x", input.MaxLength+1), strings.Repeat("x", input.MaxLength*3)} {
 		view := &UI{reader: bufio.NewReaderSize(strings.NewReader(raw+"\nnext\n"), 32)}
 		if got, err := view.ReadLine(); got != "" || !errors.Is(err, input.ErrInvalid) {
 			t.Fatalf("invalid line was accepted: len=%d got=%q err=%v", len(raw), got, err)

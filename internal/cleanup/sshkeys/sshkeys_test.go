@@ -18,7 +18,7 @@ func TestRunRemovesManagedBlockOnly(t *testing.T) {
 
 	authKeys := filepath.Join(sshDir, "authorized_keys")
 	existingKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexisting user@example"
-	managedKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAImanaged snail@example"
+	managedKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAImanaged user@example.com"
 	content := existingKey + "\n\n" +
 		sshAuthorizedKeysBegin + "\n" +
 		managedKey + "\n" +
@@ -49,7 +49,7 @@ func TestRunKeepsEmptyFileAndDir(t *testing.T) {
 	}
 
 	authKeys := filepath.Join(sshDir, "authorized_keys")
-	managedKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAImanaged snail@example"
+	managedKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAImanaged user@example.com"
 	content := sshAuthorizedKeysBegin + "\n" + managedKey + "\n" + sshAuthorizedKeysEnd + "\n"
 	if err := os.WriteFile(authKeys, []byte(content), 0600); err != nil {
 		t.Fatal(err)

@@ -157,9 +157,9 @@ func TestNormalizeProxy(t *testing.T) {
 		want string
 	}{
 		{name: "plain", raw: "127.0.0.1:8888", want: "http://127.0.0.1:8888"},
-		{name: "reported address without corruption", raw: "192.168.31.108:52013", want: "http://192.168.31.108:52013"},
+		{name: "ipv4", raw: "203.0.113.10:8080", want: "http://203.0.113.10:8080"},
 		{name: "auth", raw: "admin:secret@192.168.1.1:8888", want: "http://admin:secret@192.168.1.1:8888"},
-		{name: "url", raw: " http://192.168.31.108:52013/ ", want: "http://192.168.31.108:52013"},
+		{name: "url", raw: " http://203.0.113.10:8080/ ", want: "http://203.0.113.10:8080"},
 		{name: "hostname", raw: "Proxy.Example.COM:07890", want: "http://proxy.example.com:7890"},
 		{name: "https", raw: "https://proxy.example:443/", want: "https://proxy.example:443"},
 		{name: "ipv6", raw: "[2001:db8::1]:7890", want: "http://[2001:db8::1]:7890"},
@@ -184,13 +184,13 @@ func TestNormalizeProxy(t *testing.T) {
 func TestNormalizeProxyRejectsInvalidInput(t *testing.T) {
 	for _, raw := range []string{
 		"", "127.0.0.1", "127.0.0.1:0", "127.0.0.1:70000",
-		"192.168.31.108\xff:52013",
-		"192.168.31.108\xef\xbf:52013",
-		"192.168.31.108\ufffd:52013",
-		"admin:secret@192.168.31.108\xff:52013",
-		"admin:secret@192.168.31.108\ufffd:52013",
-		"admin:sec\xffret@192.168.31.108:52013",
-		"admin:sec\ufffdret@192.168.31.108:52013",
+		"203.0.113.10\xff:8080",
+		"203.0.113.10\xef\xbf:8080",
+		"203.0.113.10\ufffd:8080",
+		"admin:secret@203.0.113.10\xff:8080",
+		"admin:secret@203.0.113.10\ufffd:8080",
+		"admin:sec\xffret@203.0.113.10:8080",
+		"admin:sec\ufffdret@203.0.113.10:8080",
 		"proxy:8080/path", "proxy:8080?x=1", "proxy:8080?", "proxy:8080#fragment", "proxy:8080#",
 		"proxy:8080/%2F", "socks5://proxy:1080", "http://proxy", "http://proxy:", "proxy:+8080",
 		"192.168.999.1:8080", "192.168.1:8080", "-proxy:8080", "proxy-:8080", "proxy..example:8080",

@@ -7,7 +7,7 @@ import (
 )
 
 func TestTextPreservesReadableInput(t *testing.T) {
-	for _, value := range []string{"", "192.168.31.108:52013", "中文 UPS 描述", "/docker/项目 空格", "user\tcomment", "密码@$%:!", strings.Repeat("a", MaxLength)} {
+	for _, value := range []string{"", "203.0.113.10:8080", "中文 UPS 描述", "/docker/项目 空格", "user\tcomment", "密码@$%:!", strings.Repeat("a", MaxLength)} {
 		if err := Text(value); err != nil {
 			t.Fatalf("Text(%q): %v", value, err)
 		}

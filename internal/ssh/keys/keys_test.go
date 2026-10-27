@@ -359,8 +359,8 @@ func TestRemoveAuthorizedKeyIndexesRemovesSelectedKeysOnly(t *testing.T) {
 func TestWriteManagedAuthorizedKeyIsIdempotent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "authorized_keys")
 	existingKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexisting user@example"
-	firstKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIfirst snail@example"
-	secondKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIsecond snail@example"
+	firstKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIfirst user@example.com"
+	secondKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIsecond user@example.com"
 
 	if err := os.WriteFile(path, []byte(existingKey+"\n"), 0600); err != nil {
 		t.Fatal(err)

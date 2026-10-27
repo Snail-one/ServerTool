@@ -236,7 +236,7 @@ func TestConfigureReturnAndOverwriteCancellationLeaveConfigUntouched(t *testing.
 }
 
 func TestConfigureRejectsCorruptedAddressBeforeWriting(t *testing.T) {
-	for _, answer := range []string{"192.168.31.108\xff:52013", "192.168.31.108\ufffd:52013"} {
+	for _, answer := range []string{"203.0.113.10\xff:8080", "203.0.113.10\ufffd:8080"} {
 		t.Run(answer, func(t *testing.T) {
 			account, path := setup(t)
 			original := `{"auths":{"registry":{"auth":"keep"}},"proxies":{"default":{"httpProxy":"http://keep:8080"}}}`

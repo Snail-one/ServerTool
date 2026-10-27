@@ -16,7 +16,7 @@ COMMIT="${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 LDFLAGS="-s -w -X snail_tool/internal/version.Version=$VERSION -X snail_tool/internal/version.Commit=$COMMIT -X snail_tool/internal/version.BuildDate=$BUILD_DATE"
 
-CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -ldflags="$LDFLAGS" -o "$OUTPUT" ./cmd/snail_tool
+CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -trimpath -ldflags="$LDFLAGS" -o "$OUTPUT" ./cmd/snail_tool
 
 echo "Build completed: $OUTPUT"
 echo "Run: sudo ./$OUTPUT"
