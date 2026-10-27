@@ -182,6 +182,7 @@ func runDockerConfigMenu(view *ui.UI) error {
 		ui.MenuOptionHint("1", "配置服务代理", "systemd 服务代理")
 		ui.MenuOptionHint("2", "配置构建与容器代理", "用户配置；用于后续构建及新建容器，无需重启 Docker")
 		ui.MenuOptionHint("3", "配置日志轮转", "/etc/docker/daemon.json")
+		fmt.Println()
 		ui.MenuOptionHint("4", "移除服务代理", "移除后重新加载 systemd，并尝试重启 Docker")
 		ui.MenuOptionHint("5", "移除构建与容器代理", "用于后续构建及新建容器，无需重启 Docker")
 		ui.MenuOptionHint("6", "移除日志轮转", "恢复默认日志设置，并尝试重启 Docker")
