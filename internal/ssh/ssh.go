@@ -21,6 +21,7 @@ func Run(view *ui.UI) error {
 		ui.MenuOptionStatus("1", "SSH 公钥", ui.ConfiguredBadge(status.keys))
 		ui.MenuOptionStatus("2", "SSH 安全策略", ui.ConfiguredBadge(status.security))
 		ui.MenuOption("3", "查看生效配置")
+		ui.MenuOption("4", "Root SSH 登录策略")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -45,6 +46,10 @@ func Run(view *ui.UI) error {
 		case "3":
 			shared.RunAction(view, "查看 SSH 生效配置失败，已返回 SSH 管理", func() error {
 				return sshstatus.Show()
+			})
+		case "4":
+			shared.RunAction(view, "Root SSH 登录策略配置失败，已返回 SSH 管理", func() error {
+				return security.ConfigureRootLogin(view)
 			})
 		default:
 			ui.InvalidChoice()

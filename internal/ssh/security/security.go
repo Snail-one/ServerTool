@@ -206,11 +206,12 @@ func configureSSHDHardening(view *ui.UI, account *system.Account) error {
 		return err
 	}
 
-	permitRootLogin := "no"
-	if account.Name == "root" {
-		permitRootLogin = "prohibit-password"
-		log.Warn("当前配置用户是 root：保留 root 公钥登录，不禁用 root 登录")
+	settingsBefore, _, err := readSettingsForReload()
+	if err != nil {
+		return fmt.Errorf("无法读取当前 Root SSH 登录策略，未写入配置: %w", err)
 	}
+	permitRootLogin := rootLoginForHardening(settingsBefore)
+	log.Info("Root SSH 登录策略不随配置用户切换；如需修改，请进入 SSH 管理 → Root SSH 登录策略")
 
 	disableSSHDConfigPorts, err := confirmDisableSSHDConfigPorts(view, port)
 	if err != nil {
