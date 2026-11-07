@@ -1,6 +1,7 @@
 package keys
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -116,6 +117,9 @@ func ensureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 			}
 		case "2":
 			if _, err := openAuthorizedKeysWithPreferredEditor(view, account); err != nil {
+				if errors.Is(err, shared.ErrReturnToMenu) {
+					continue
+				}
 				return err
 			}
 			if !IsConfigured(account) {
@@ -186,26 +190,24 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		if shared.IsReturnChoice(choice) {
 			return shared.ErrReturnToMenu
 		}
+		var actionErr error
 		switch strings.ToLower(choice) {
 		case "1":
-			if err := addSSHAuthorizedKeys(view, account); err != nil {
-				return err
-			}
+			actionErr = addSSHAuthorizedKeys(view, account)
 		case "2":
-			if err := replaceSSHAuthorizedKey(view, account); err != nil {
-				return err
-			}
+			actionErr = replaceSSHAuthorizedKey(view, account)
 		case "3":
-			if _, err := openAuthorizedKeysWithPreferredEditor(view, account); err != nil {
-				return err
-			}
+			_, actionErr = openAuthorizedKeysWithPreferredEditor(view, account)
 		case "4":
-			if err := deleteSSHAuthorizedKeys(view, account); err != nil {
-				return err
-			}
+			actionErr = deleteSSHAuthorizedKeys(view, account)
 		default:
 			ui.InvalidChoice()
 			view.Pause()
+		}
+		// Cancelling a key operation belongs to this menu; only its own
+		// return choice should propagate navigation to the SSH menu.
+		if actionErr != nil && !errors.Is(actionErr, shared.ErrReturnToMenu) {
+			return actionErr
 		}
 		fmt.Println()
 	}
