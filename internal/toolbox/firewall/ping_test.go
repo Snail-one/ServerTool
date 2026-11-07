@@ -149,7 +149,7 @@ func TestConfigurePingValidationBackupLoadAndConcurrentEdits(t *testing.T) {
 }
 
 func TestPingCancelDoesNotWriteOrConsumeNextInput(t *testing.T) {
-	for _, input := range []string{"q\n", "返回\n", "1\nn\n", "2\n\n", "1\nq\n", "3\nn\n", "3\nq\n"} {
+	for _, input := range []string{"q\n", "返回\n", "1\nn\n", "2\n\n", "1\nq\nq\n", "3\nn\n", "3\nq\nq\n"} {
 		t.Run(input, func(t *testing.T) {
 			setupTest(t)
 			version := ruleTestConfig(t, nil)

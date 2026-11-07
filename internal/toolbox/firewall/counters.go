@@ -1,6 +1,7 @@
 package firewall
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -316,51 +317,56 @@ func configurePacketCounters(view *ui.UI) error {
 	} else if counted > 0 {
 		state = "部分开启"
 	}
-	ui.ClearScreen()
-	ui.MenuTitle("防火墙管理", "常用功能设置", "数据包统计")
-	ui.PrintInfoCard("数据包统计",
-		ui.CardField{Label: "配置状态", Value: state},
-		ui.CardField{Label: "作用范围", Value: "本工具 inet snail 规则表"},
-		ui.CardField{Label: "已统计规则", Value: fmt.Sprintf("%d / %d 条", counted, rules)},
-		ui.CardField{Label: "统计内容", Value: "匹配规则的数据包数量和字节数"},
-		ui.CardField{Label: "切换影响", Value: "保存并加载当前完整配置，现有累计计数可能重置"},
-	)
-	ui.MenuOption("1", "开启数据包统计")
-	ui.MenuOption("2", "关闭数据包统计")
-	ui.MenuExit("0/q", "返回常用功能设置")
-	choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "on", "2": "off"})
-	if err != nil {
-		return err
+	for {
+		ui.ClearScreen()
+		ui.MenuTitle("防火墙管理", "常用功能设置", "数据包统计")
+		ui.PrintInfoCard("数据包统计",
+			ui.CardField{Label: "配置状态", Value: state},
+			ui.CardField{Label: "作用范围", Value: "本工具 inet snail 规则表"},
+			ui.CardField{Label: "已统计规则", Value: fmt.Sprintf("%d / %d 条", counted, rules)},
+			ui.CardField{Label: "统计内容", Value: "匹配规则的数据包数量和字节数"},
+			ui.CardField{Label: "切换影响", Value: "保存并加载当前完整配置，现有累计计数可能重置"},
+		)
+		ui.MenuOption("1", "开启数据包统计")
+		ui.MenuOption("2", "关闭数据包统计")
+		ui.MenuExit("0/q", "返回常用功能设置")
+		choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "on", "2": "off"})
+		if err != nil {
+			return err
+		}
+		enabled := choice == "on"
+		updated, err := withPacketCounters(content, enabled)
+		if err != nil {
+			return err
+		}
+		action := "关闭"
+		if enabled {
+			action = "开启"
+		}
+		ui.ClearScreen()
+		ui.MenuTitle("防火墙管理", "常用功能设置", "数据包统计", "确认变更")
+		ui.PrintInfoCard("即将应用的数据包统计设置",
+			ui.CardField{Label: "当前配置", Value: state},
+			ui.CardField{Label: "操作", Value: action + "数据包统计"},
+			ui.CardField{Label: "影响", Value: "保存并加载整份当前配置，现有累计计数可能重置"},
+		)
+		confirmed, err := view.Confirm("确认" + action + "本工具数据包统计并加载当前配置？(y/N，0/q 返回)：")
+		if errors.Is(err, shared.ErrReturnToMenu) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			return shared.ErrReturnToMenu
+		}
+		if err := writeConfig(updated, version); err != nil {
+			return err
+		}
+		if err := applyConfig([]byte(updated)); err != nil {
+			return fmt.Errorf("数据包统计配置已保存，但未成功加载；原配置已备份，可输入 r 重试: %w", err)
+		}
+		ui.PrintSuccessCard("数据包统计已"+action, ui.CardField{Label: "生效状态", Value: "配置已保存并加载"})
+		return nil
 	}
-	enabled := choice == "on"
-	updated, err := withPacketCounters(content, enabled)
-	if err != nil {
-		return err
-	}
-	action := "关闭"
-	if enabled {
-		action = "开启"
-	}
-	ui.ClearScreen()
-	ui.MenuTitle("防火墙管理", "常用功能设置", "数据包统计", "确认变更")
-	ui.PrintInfoCard("即将应用的数据包统计设置",
-		ui.CardField{Label: "当前配置", Value: state},
-		ui.CardField{Label: "操作", Value: action + "数据包统计"},
-		ui.CardField{Label: "影响", Value: "保存并加载整份当前配置，现有累计计数可能重置"},
-	)
-	confirmed, err := view.Confirm("确认" + action + "本工具数据包统计并加载当前配置？(y/N，0/q 返回)：")
-	if err != nil {
-		return err
-	}
-	if !confirmed {
-		return shared.ErrReturnToMenu
-	}
-	if err := writeConfig(updated, version); err != nil {
-		return err
-	}
-	if err := applyConfig([]byte(updated)); err != nil {
-		return fmt.Errorf("数据包统计配置已保存，但未成功加载；原配置已备份，可输入 r 重试: %w", err)
-	}
-	ui.PrintSuccessCard("数据包统计已"+action, ui.CardField{Label: "生效状态", Value: "配置已保存并加载"})
-	return nil
 }

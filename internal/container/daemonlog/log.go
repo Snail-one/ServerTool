@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -103,17 +104,26 @@ func configureDockerLogRotation(
 	ui.PrintSectionCard("当前配置", fields...)
 	fmt.Println()
 
-	rotation, skip, err := promptLogRotationConfig(view)
-	if err != nil {
+	var rotation logRotationConfig
+	steps := logRotationPromptSteps(view, &rotation)
+	steps = append(steps, ui.PromptStep{Enabled: func() bool { return status.hasLogDriver || status.hasLogOpts }, Run: func() error {
+		confirmed, err := view.Confirm("是否覆盖当前 Docker 日志配置？(y/N，0/q 返回上一步)：")
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			return ui.ErrCancelAction
+		}
+		return nil
+	}})
+	if err := ui.RunPromptSteps(steps...); err != nil {
 		return err
 	}
-	if skip {
-		return shared.ErrReturnToMenu
-	}
-
-	result, err := writeDockerDaemonLogConfig(daemonPath, rotation, func(dockerLogStatus) (bool, error) {
-		fmt.Println()
-		return view.Confirm("是否覆盖当前 Docker 日志配置？(y/N)：")
+	result, err := writeDockerDaemonLogConfig(daemonPath, rotation, func(current dockerLogStatus) (bool, error) {
+		if !reflect.DeepEqual(current, status) {
+			return false, fmt.Errorf("Docker 日志配置已变化，请重新进入配置")
+		}
+		return true, nil
 	})
 	if err != nil {
 		return err
@@ -152,60 +162,67 @@ func configureDockerLogRotation(
 }
 
 func promptLogRotationConfig(view promptReader) (logRotationConfig, bool, error) {
-	ui.MenuSection("请选择 Docker 日志轮转配置")
-	ui.MenuOptionHint("1", "推荐配置", "100m × 3")
-	ui.MenuOptionHint("2", "保守配置", "50m × 5")
-	ui.MenuOptionHint("3", "节省空间", "10m × 3")
-	ui.MenuOptionHint("4", "自定义配置", "max-size / max-file")
-	ui.MenuExit("0/q", "返回")
-	fmt.Println()
-	ui.PrintField("说明", "日志驱动固定为 json-file")
-	fmt.Println()
+	var rotation logRotationConfig
+	err := ui.RunPromptSteps(logRotationPromptSteps(view, &rotation)...)
+	if errors.Is(err, shared.ErrReturnToMenu) {
+		return rotation, true, nil
+	}
+	return rotation, false, err
+}
 
-	for {
-		choice, err := view.Ask("请选择：")
-		if err != nil {
-			return logRotationConfig{}, false, err
-		}
-
-		if shared.IsReturnChoice(choice) {
-			return logRotationConfig{}, true, nil
-		}
-		if rotation, ok := logRotationPreset(strings.TrimSpace(choice)); ok {
-			return rotation, false, nil
-		}
-		if strings.TrimSpace(choice) == "4" {
-			break
-		}
-		ui.InvalidChoice()
-		fmt.Println()
+func logRotationPromptSteps(view promptReader, rotation *logRotationConfig) []ui.PromptStep {
+	custom := false
+	return []ui.PromptStep{
+		{Run: func() error {
+			ui.MenuSection("请选择 Docker 日志轮转配置")
+			ui.MenuOptionHint("1", "推荐配置", "100m × 3")
+			ui.MenuOptionHint("2", "保守配置", "50m × 5")
+			ui.MenuOptionHint("3", "节省空间", "10m × 3")
+			ui.MenuOptionHint("4", "自定义配置", "max-size / max-file")
+			ui.MenuExit("0/q", "返回 Docker 配置")
+			for {
+				choice, err := view.Ask("请选择：")
+				if err != nil {
+					return err
+				}
+				if shared.IsReturnChoice(choice) {
+					return shared.ErrReturnToMenu
+				}
+				if preset, ok := logRotationPreset(choice); ok {
+					*rotation = preset
+					custom = false
+					return nil
+				}
+				if choice == "4" {
+					custom = true
+					return nil
+				}
+				ui.InvalidChoice()
+			}
+		}},
+		{Enabled: func() bool { return custom }, Run: func() error {
+			value, err := view.Ask("请输入 max-size（正整数 + k/m/g，例如 100m，q 返回配置选择）：")
+			if err != nil {
+				return err
+			}
+			if value != "0" && shared.IsReturnChoice(value) {
+				return shared.ErrReturnToMenu
+			}
+			rotation.maxSize, err = normalizeMaxSize(value)
+			return err
+		}},
+		{Enabled: func() bool { return custom }, Run: func() error {
+			value, err := view.Ask("请输入 max-file（正整数，建议 1-99，q 返回 max-size）：")
+			if err != nil {
+				return err
+			}
+			if value != "0" && shared.IsReturnChoice(value) {
+				return shared.ErrReturnToMenu
+			}
+			rotation.maxFile, err = normalizeMaxFile(value)
+			return err
+		}},
 	}
-
-	maxSize, err := view.Ask("请输入 max-size（正整数 + k/m/g，例如 100m）：")
-	if err != nil {
-		return logRotationConfig{}, false, err
-	}
-	if strings.TrimSpace(maxSize) != "0" && shared.IsReturnChoice(maxSize) {
-		return logRotationConfig{}, true, nil
-	}
-	maxSize, err = normalizeMaxSize(maxSize)
-	if err != nil {
-		return logRotationConfig{}, false, err
-	}
-
-	maxFile, err := view.Ask("请输入 max-file（正整数，建议 1-99）：")
-	if err != nil {
-		return logRotationConfig{}, false, err
-	}
-	if strings.TrimSpace(maxFile) != "0" && shared.IsReturnChoice(maxFile) {
-		return logRotationConfig{}, true, nil
-	}
-	maxFile, err = normalizeMaxFile(maxFile)
-	if err != nil {
-		return logRotationConfig{}, false, err
-	}
-
-	return logRotationConfig{maxSize: maxSize, maxFile: maxFile}, false, nil
 }
 
 func logRotationPreset(choice string) (logRotationConfig, bool) {

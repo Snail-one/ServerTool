@@ -3,6 +3,7 @@ package clientproxy
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -71,34 +72,42 @@ func configure(view promptReader, account *system.Account) error {
 	fmt.Println("认证格式：用户名:密码@地址；密码中的 @、#、% 等字符请使用 URL 编码。")
 	ui.MenuExit("0/q", "返回")
 	fmt.Println()
-	raw, err := view.Ask("请输入构建与容器代理地址：")
-	if err != nil {
-		return err
+	for {
+		raw, err := view.Ask("请输入构建与容器代理地址：")
+		if err != nil {
+			return err
+		}
+		if shared.IsReturnChoice(raw) {
+			return shared.ErrReturnToMenu
+		}
+		proxyURL, err := commonproxy.NormalizeProxy(raw)
+		if err != nil {
+			return err
+		}
+		back := false
+		backup, err := writeConfig(path, account, proxyURL, func() (bool, error) {
+			confirmed, err := view.Confirm("已存在默认 HTTP/HTTPS 代理或绕过列表，是否覆盖？(y/N，0/q 返回代理地址)：")
+			back = errors.Is(err, shared.ErrReturnToMenu)
+			return confirmed, err
+		})
+		if back {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		fields = []ui.CardField{
+			{Label: "目标用户", Value: account.Name},
+			{Label: "配置文件", Value: path},
+			{Label: "代理地址", Value: commonproxy.MaskProxyURL(proxyURL)},
+			{Label: "生效范围", Value: "后续构建及新建容器；无需重启 Docker"},
+		}
+		if backup != "" {
+			fields = append(fields, ui.CardField{Label: "备份文件", Value: backup})
+		}
+		ui.PrintSuccessCard("Docker 构建与容器代理配置完成", fields...)
+		return nil
 	}
-	if shared.IsReturnChoice(raw) {
-		return shared.ErrReturnToMenu
-	}
-	proxyURL, err := commonproxy.NormalizeProxy(raw)
-	if err != nil {
-		return err
-	}
-	backup, err := writeConfig(path, account, proxyURL, func() (bool, error) {
-		return view.Confirm("已存在默认 HTTP/HTTPS 代理或绕过列表，是否覆盖？(y/N)：")
-	})
-	if err != nil {
-		return err
-	}
-	fields = []ui.CardField{
-		{Label: "目标用户", Value: account.Name},
-		{Label: "配置文件", Value: path},
-		{Label: "代理地址", Value: commonproxy.MaskProxyURL(proxyURL)},
-		{Label: "生效范围", Value: "后续构建及新建容器；无需重启 Docker"},
-	}
-	if backup != "" {
-		fields = append(fields, ui.CardField{Label: "备份文件", Value: backup})
-	}
-	ui.PrintSuccessCard("Docker 构建与容器代理配置完成", fields...)
-	return nil
 }
 
 func readObject(raw []byte, label string) (map[string]json.RawMessage, error) {

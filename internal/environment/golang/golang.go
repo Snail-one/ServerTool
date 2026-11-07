@@ -101,7 +101,7 @@ func goStatusFields(active string, installedCount int, official bool) []ui.CardF
 }
 
 func installSelected(view *ui.UI) error {
-	removeOfficial, err := confirmOfficialInstallRemoval(view)
+	migration, err := officialMigrationState()
 	if err != nil {
 		return err
 	}
@@ -109,23 +109,37 @@ func installSelected(view *ui.UI) error {
 	if err != nil {
 		return err
 	}
-	log.Info("检测运行平台：linux/", fileArch)
-	releases, err := fetchReleases()
+	removeOfficial := false
+	var available []release
+	var selected release
+	err = ui.RunPromptSteps(
+		ui.PromptStep{Enabled: func() bool { return migration }, Run: func() error {
+			var err error
+			removeOfficial, err = confirmOfficialInstallRemoval(view)
+			return err
+		}},
+		ui.PromptStep{Run: func() error {
+			if available == nil {
+				log.Info("检测运行平台：linux/", fileArch)
+				releases, err := fetchReleases()
+				if err != nil {
+					return err
+				}
+				available = availableReleases(releases, fileArch)
+				if len(available) == 0 {
+					return fmt.Errorf("Go 官方 API 未返回适用于 linux/%s 的稳定版本", runtime.GOARCH)
+				}
+				log.Info("筛选完成，可安装稳定版本：", len(available), " 个")
+			}
+			var err error
+			selected, err = selectRelease(view, available, runtime.GOARCH)
+			return err
+		}},
+	)
 	if err != nil {
 		return err
 	}
-	log.Info("筛选适用于 linux/", fileArch, " 的稳定归档...")
-	available := availableReleases(releases, fileArch)
-	if len(available) == 0 {
-		return fmt.Errorf("Go 官方 API 未返回适用于 linux/%s 的稳定版本", runtime.GOARCH)
-	}
-	log.Info("筛选完成，可安装稳定版本：", len(available), " 个")
-	fmt.Println()
 
-	selected, err := selectRelease(view, available, runtime.GOARCH)
-	if err != nil {
-		return err
-	}
 	if err := installRelease(selected); err != nil {
 		return err
 	}
@@ -276,51 +290,12 @@ func uninstallSelected(view *ui.UI) error {
 		return errors.New("未发现可卸载的 Go 安装")
 	}
 
-	offset := 0
-	if official {
-		offset = 1
-	}
-	selected := ""
-	for {
-		ui.MenuSection("请选择要卸载的 Go")
-		if official {
-			ui.MenuOptionHint("1", "官方位置 Go", officialRoot)
-		}
-		for i, version := range versions {
-			ui.MenuOptionHint(strconv.Itoa(i+1+offset), version, versionInstallPath(version))
-		}
-		ui.MenuExit("0/q", "返回")
-		fmt.Println()
-		raw, err := view.Ask("请选择卸载项：")
-		if err != nil {
-			return err
-		}
-		if shared.IsReturnChoice(raw) {
-			return shared.ErrReturnToMenu
-		}
-		index, err := input.Number(raw, 1, len(versions)+offset)
-		if err != nil || index < 1 || index > len(versions)+offset {
-			ui.InvalidChoice()
-			fmt.Println()
-			continue
-		}
-		if official && index == 1 {
-			return uninstallOfficialGo(view)
-		}
-		selected = versions[index-1-offset]
-		break
-	}
-	selectedInfo, err := os.Lstat(filepath.Join(installRoot, selected))
+	selected, selectedOfficial, selectedInfo, err := promptGoUninstall(view, versions, official, installRoot)
 	if err != nil {
 		return err
 	}
-	confirmed, err := view.Confirm(fmt.Sprintf("确认卸载 %s？(y/N)：", selected))
-	if err != nil {
-		return err
-	}
-	if !confirmed {
-		log.Info("已取消卸载")
-		return shared.ErrReturnToMenu
+	if selectedOfficial {
+		return removeOfficialGoAndEnv()
 	}
 
 	wasActive := activeVersion(currentLink) == selected
@@ -361,6 +336,70 @@ func uninstallSelected(view *ui.UI) error {
 	return nil
 }
 
+func promptGoUninstall(view *ui.UI, versions []string, official bool, root string) (string, bool, os.FileInfo, error) {
+	offset := 0
+	if official {
+		offset = 1
+	}
+	selected := ""
+	selectedOfficial := false
+	var selectedInfo os.FileInfo
+	err := ui.RunPromptSteps(
+		ui.PromptStep{Run: func() error {
+			for {
+				ui.MenuSection("请选择要卸载的 Go")
+				if official {
+					ui.MenuOptionHint("1", "官方位置 Go", officialRoot)
+				}
+				for i, version := range versions {
+					ui.MenuOptionHint(strconv.Itoa(i+1+offset), version, versionInstallPath(version))
+				}
+				ui.MenuExit("0/q", "返回")
+				fmt.Println()
+				raw, err := view.Ask("请选择卸载项：")
+				if err != nil {
+					return err
+				}
+				if shared.IsReturnChoice(raw) {
+					return shared.ErrReturnToMenu
+				}
+				index, err := input.Number(raw, 1, len(versions)+offset)
+				if err != nil || index < 1 || index > len(versions)+offset {
+					ui.InvalidChoice()
+					fmt.Println()
+					continue
+				}
+				selectedOfficial = official && index == 1
+				if !selectedOfficial {
+					selected = versions[index-1-offset]
+				}
+				break
+			}
+			if selectedOfficial {
+				return nil
+			}
+			var err error
+			selectedInfo, err = os.Lstat(filepath.Join(root, selected))
+			return err
+		}},
+		ui.PromptStep{Run: func() error {
+			prompt := fmt.Sprintf("确认卸载 %s？(y/N，0/q 返回版本选择)：", selected)
+			if selectedOfficial {
+				prompt = "确认卸载 /usr/local/go 并清理 ~/.bashrc 中的官方 Go 环境变量？(y/N，0/q 返回版本选择)："
+			}
+			confirmed, err := view.Confirm(prompt)
+			if err != nil {
+				return err
+			}
+			if !confirmed {
+				return ui.ErrCancelAction
+			}
+			return nil
+		}},
+	)
+	return selected, selectedOfficial, selectedInfo, err
+}
+
 func uninstallOfficialGo(view *ui.UI) error {
 	confirmed, err := view.Confirm("确认卸载 /usr/local/go 并清理 ~/.bashrc 中的官方 Go 环境变量？(y/N)：")
 	if err != nil {
@@ -378,18 +417,32 @@ func repairCurrent(view *ui.UI) error {
 	if current == "" {
 		return errors.New("当前没有可修复的工具管理 Go 版本，请先安装 Go")
 	}
-	confirmed, err := view.Confirm(fmt.Sprintf("将重新下载并替换当前版本 %s，同时修复 PATH，是否继续？(y/N)：", current))
+	migration, err := officialMigrationState()
 	if err != nil {
 		return err
 	}
-	if !confirmed {
-		log.Info("已取消修复")
-		return shared.ErrReturnToMenu
-	}
-	removeOfficial, err := confirmOfficialInstallRemoval(view)
+	removeOfficial := false
+	err = ui.RunPromptSteps(
+		ui.PromptStep{Run: func() error {
+			confirmed, err := view.Confirm(fmt.Sprintf("将重新下载并替换当前版本 %s，同时修复 PATH，是否继续？(y/N)：", current))
+			if err != nil {
+				return err
+			}
+			if !confirmed {
+				return ui.ErrCancelAction
+			}
+			return nil
+		}},
+		ui.PromptStep{Enabled: func() bool { return migration }, Run: func() error {
+			var err error
+			removeOfficial, err = confirmOfficialInstallRemoval(view)
+			return err
+		}},
+	)
 	if err != nil {
 		return err
 	}
+
 	fileArch, err := supportedArch(runtime.GOARCH)
 	if err != nil {
 		return err

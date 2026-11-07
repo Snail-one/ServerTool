@@ -299,7 +299,7 @@ func TestConfigureCancellationAndDetectionFailureDoNotWrite(t *testing.T) {
 				input = "n\n"
 			}
 			if scenario == "cancel write" {
-				input = "y\ny\nq\n"
+				input = "y\ny\nq\nq\nq\n"
 			}
 			calls := 0
 			commandOutput = func(name string, args ...string) (string, error) {

@@ -79,15 +79,9 @@ func UninstallDocker(view *ui.UI) (bool, error) {
 	if !system.IsRoot() {
 		return false, fmt.Errorf("卸载 Docker 需要 root 权限，请使用 sudo 运行本工具")
 	}
-	removeData, proceed, err := selectDockerUninstallMode(view)
-	if err != nil {
-		return false, err
-	}
-	if !proceed {
-		log.Info("已取消 Docker 卸载，未修改系统")
-		return false, nil
-	}
-	return newDockerUninstaller(view, removeData).uninstall()
+	return runUninstallMode(view, selectDockerUninstallMode, func(removeData bool) (bool, error) {
+		return newDockerUninstaller(view, removeData).uninstall()
+	})
 }
 
 func selectDockerUninstallMode(view dockerUninstallPrompter) (bool, bool, error) {

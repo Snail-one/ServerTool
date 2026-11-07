@@ -1,6 +1,7 @@
 package firewall
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -136,91 +137,96 @@ func configurePing(view *ui.UI) error {
 	if _, _, _, err := inputChainBounds(string(version.content)); err != nil {
 		return err
 	}
-	ui.ClearScreen()
-	ui.MenuTitle("防火墙管理", "常用功能设置", "ICMP 回显（Ping）")
-	state := "未设置"
-	if found {
-		state = pingLabel(enabled)
-	}
-	installed := commandExists("nft")
-	live := liveRules{}
-	if installed {
-		live = inspectLiveRules()
-	}
-	fields := echoStateFields(installed, live)
-	fields = append(fields, ui.CardField{Label: "保存的开关", Value: state})
-	sync := configSyncField(version.content, nil, installed, live)
-	sync.Value, _, _ = strings.Cut(sync.Value, " · ")
-	if sync.Value == "已同步" || sync.Value == "未同步" {
-		sync.Detail = ""
-	}
-	if sync.Value == "已同步" {
-		sync.Value = ui.PrimaryText(sync.Value)
-	}
-	fields = append(fields, sync)
-	ui.PrintInfoCard("ICMP 回显（Ping）", fields...)
-	ui.MenuOption("1", "允许 ICMP 回显")
-	ui.MenuOption("2", "禁止 ICMP 回显")
-	ui.MenuOptionHint("3", "移除回显配置", "删除专用规则，沿用原有规则")
-	ui.MenuExit("0/q", "返回常用功能设置")
-	choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "on", "2": "off", "3": "remove"})
-	if err != nil {
-		return err
-	}
-	target := choice == "on"
-	var updated string
-	if choice == "remove" {
-		if !found {
-			ui.PrintInfoCard("无需移除", ui.CardField{Label: "回显配置", Value: "未设置专用规则，当前沿用原有规则"})
-			return nil
+	for {
+		ui.ClearScreen()
+		ui.MenuTitle("防火墙管理", "常用功能设置", "ICMP 回显（Ping）")
+		state := "未设置"
+		if found {
+			state = pingLabel(enabled)
 		}
-		updated, err = withoutPingSetting(string(version.content))
-	} else {
-		updated, err = withPingSetting(string(version.content), target)
-	}
-	if err != nil {
-		return err
-	}
-	action := "禁止"
-	if target {
-		action = "允许"
-	}
-	ui.ClearScreen()
-	ui.MenuTitle("防火墙管理", "常用功能设置", "ICMP 回显（Ping）", "确认变更")
-	operation := action + "外部 ICMP / ICMPv6 回显请求"
-	if choice == "remove" {
-		operation = "移除专用回显配置"
-	}
-	ui.PrintInfoCard("即将应用的回显设置",
-		ui.CardField{Label: "当前配置", Value: state},
-		ui.CardField{Label: "操作", Value: operation},
-		ui.CardField{Label: "生效方式", Value: "保存并加载整份当前配置，包括其他待加载修改"},
-	)
-	prompt := "确认" + action + "外部 ICMP / ICMPv6 回显请求并加载当前配置？(y/N，0/q 返回)："
-	if choice == "remove" {
-		ui.PrintInfoCard("移除回显配置",
-			ui.CardField{Label: "移除内容", Value: "仅删除专用 ICMP / ICMPv6 回显规则及其标记"},
-			ui.CardField{Label: "移除后", Value: "由原有规则决定，项目默认规则通常仍拦截外部 Ping"},
+		installed := commandExists("nft")
+		live := liveRules{}
+		if installed {
+			live = inspectLiveRules()
+		}
+		fields := echoStateFields(installed, live)
+		fields = append(fields, ui.CardField{Label: "保存的开关", Value: state})
+		sync := configSyncField(version.content, nil, installed, live)
+		sync.Value, _, _ = strings.Cut(sync.Value, " · ")
+		if sync.Value == "已同步" || sync.Value == "未同步" {
+			sync.Detail = ""
+		}
+		if sync.Value == "已同步" {
+			sync.Value = ui.PrimaryText(sync.Value)
+		}
+		fields = append(fields, sync)
+		ui.PrintInfoCard("ICMP 回显（Ping）", fields...)
+		ui.MenuOption("1", "允许 ICMP 回显")
+		ui.MenuOption("2", "禁止 ICMP 回显")
+		ui.MenuOptionHint("3", "移除回显配置", "删除专用规则，沿用原有规则")
+		ui.MenuExit("0/q", "返回常用功能设置")
+		choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "on", "2": "off", "3": "remove"})
+		if err != nil {
+			return err
+		}
+		target := choice == "on"
+		var updated string
+		if choice == "remove" {
+			if !found {
+				ui.PrintInfoCard("无需移除", ui.CardField{Label: "回显配置", Value: "未设置专用规则，当前沿用原有规则"})
+				return nil
+			}
+			updated, err = withoutPingSetting(string(version.content))
+		} else {
+			updated, err = withPingSetting(string(version.content), target)
+		}
+		if err != nil {
+			return err
+		}
+		action := "禁止"
+		if target {
+			action = "允许"
+		}
+		ui.ClearScreen()
+		ui.MenuTitle("防火墙管理", "常用功能设置", "ICMP 回显（Ping）", "确认变更")
+		operation := action + "外部 ICMP / ICMPv6 回显请求"
+		if choice == "remove" {
+			operation = "移除专用回显配置"
+		}
+		ui.PrintInfoCard("即将应用的回显设置",
+			ui.CardField{Label: "当前配置", Value: state},
+			ui.CardField{Label: "操作", Value: operation},
+			ui.CardField{Label: "生效方式", Value: "保存并加载整份当前配置，包括其他待加载修改"},
 		)
-		prompt = "确认移除专用回显配置并加载当前配置？(y/N，0/q 返回)："
+		prompt := "确认" + action + "外部 ICMP / ICMPv6 回显请求并加载当前配置？(y/N，0/q 返回)："
+		if choice == "remove" {
+			ui.PrintInfoCard("移除回显配置",
+				ui.CardField{Label: "移除内容", Value: "仅删除专用 ICMP / ICMPv6 回显规则及其标记"},
+				ui.CardField{Label: "移除后", Value: "由原有规则决定，项目默认规则通常仍拦截外部 Ping"},
+			)
+			prompt = "确认移除专用回显配置并加载当前配置？(y/N，0/q 返回)："
+		}
+		confirmed, err := view.Confirm(prompt)
+		if errors.Is(err, shared.ErrReturnToMenu) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			return shared.ErrReturnToMenu
+		}
+		if err := writeConfig(updated, version); err != nil {
+			return err
+		}
+		if err := applyConfig([]byte(updated)); err != nil {
+			return fmt.Errorf("ICMP 回显配置已保存，但未成功加载；原配置已备份，可输入 r 重试: %w", err)
+		}
+		if choice == "remove" {
+			ui.PrintSuccessCard("回显配置已移除并加载", ui.CardField{Label: "保存的开关", Value: "未设置，沿用原有规则"})
+		} else {
+			ui.PrintSuccessCard("ICMP 回显配置已保存并加载", ui.CardField{Label: "ICMP / ICMPv6 回显", Value: pingLabel(target)})
+		}
+		return nil
 	}
-	confirmed, err := view.Confirm(prompt)
-	if err != nil {
-		return err
-	}
-	if !confirmed {
-		return shared.ErrReturnToMenu
-	}
-	if err := writeConfig(updated, version); err != nil {
-		return err
-	}
-	if err := applyConfig([]byte(updated)); err != nil {
-		return fmt.Errorf("ICMP 回显配置已保存，但未成功加载；原配置已备份，可输入 r 重试: %w", err)
-	}
-	if choice == "remove" {
-		ui.PrintSuccessCard("回显配置已移除并加载", ui.CardField{Label: "保存的开关", Value: "未设置，沿用原有规则"})
-	} else {
-		ui.PrintSuccessCard("ICMP 回显配置已保存并加载", ui.CardField{Label: "ICMP / ICMPv6 回显", Value: pingLabel(target)})
-	}
-	return nil
 }

@@ -47,15 +47,9 @@ func UninstallPodman(view *ui.UI) (bool, error) {
 	if !system.IsRoot() {
 		return false, fmt.Errorf("卸载 Podman 需要 root 权限，请使用 sudo 运行本工具")
 	}
-	removeData, proceed, err := selectPodmanUninstallMode(view)
-	if err != nil {
-		return false, err
-	}
-	if !proceed {
-		log.Info("已取消 Podman 卸载，未修改系统")
-		return false, nil
-	}
-	return newPodmanUninstaller(view, removeData).uninstall()
+	return runUninstallMode(view, selectPodmanUninstallMode, func(removeData bool) (bool, error) {
+		return newPodmanUninstaller(view, removeData).uninstall()
+	})
 }
 
 func selectPodmanUninstallMode(view dockerUninstallPrompter) (bool, bool, error) {

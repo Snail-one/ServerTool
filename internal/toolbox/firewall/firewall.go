@@ -347,41 +347,50 @@ func configure(view *ui.UI) error {
 	}
 	var content string
 	for {
-		publicWeb, err := askWeb(view, "公网", sshFields...)
-		if err != nil {
-			return err
-		}
-		privateFields := append([]ui.CardField(nil), sshFields...)
-		publicState := "关闭"
-		if publicWeb {
-			publicState = "开放 80、443"
-		}
-		privateFields = append(privateFields, ui.CardField{Label: "已选公网 Web", Value: publicState})
-		privateWeb, err := askWeb(view, "局域网", privateFields...)
-		if err != nil {
-			return err
-		}
-		content, err = buildConfig(ports, publicWeb, privateWeb)
-		if err != nil {
-			return err
-		}
-		content, err = replaceManagedRules(content, preserved)
-		if err != nil {
-			return err
-		}
-		if version.exists && !pingFound {
-			content, err = withoutPingSetting(content)
-		} else {
-			content, err = withPingSetting(content, pingEnabled)
-		}
-		if err != nil {
-			return err
-		}
-		content, err = withPacketCounters(content, countersEnabled)
-		if err != nil {
-			return err
-		}
-		write, err := confirmConfig(view, &content, autostartAction)
+		publicWeb, privateWeb, write := false, false, false
+		err = ui.RunPromptSteps(
+			ui.PromptStep{Run: func() error {
+				var err error
+				publicWeb, err = askWeb(view, "公网", sshFields...)
+				return err
+			}},
+			ui.PromptStep{Run: func() error {
+				privateFields := append([]ui.CardField(nil), sshFields...)
+				publicState := "关闭"
+				if publicWeb {
+					publicState = "开放 80、443"
+				}
+				privateFields = append(privateFields, ui.CardField{Label: "已选公网 Web", Value: publicState})
+				var err error
+				privateWeb, err = askWeb(view, "局域网", privateFields...)
+				return err
+			}},
+			ui.PromptStep{Run: func() error {
+				content, err = buildConfig(ports, publicWeb, privateWeb)
+				if err != nil {
+					return err
+				}
+				content, err = replaceManagedRules(content, preserved)
+				if err != nil {
+					return err
+				}
+				if version.exists && !pingFound {
+					content, err = withoutPingSetting(content)
+				} else {
+					content, err = withPingSetting(content, pingEnabled)
+				}
+				if err != nil {
+					return err
+				}
+				content, err = withPacketCounters(content, countersEnabled)
+				if err != nil {
+					return err
+				}
+				var err error
+				write, err = confirmConfig(view, &content, autostartAction)
+				return err
+			}},
+		)
 		if err != nil {
 			return err
 		}
@@ -434,7 +443,11 @@ func askWeb(view *ui.UI, scope string, fields ...ui.CardField) (bool, error) {
 	ui.PrintInfoCard("生成基础配置", fields...)
 	ui.MenuOption("y", "开放 Web 端口 80、443")
 	ui.MenuOptionHint("n", "保持关闭", "默认，直接回车选择")
-	ui.MenuExit("0/q", "取消生成，返回防火墙管理")
+	backLabel := "返回防火墙管理"
+	if scope == "局域网" {
+		backLabel = "返回公网 Web 端口选择"
+	}
+	ui.MenuExit("0/q", backLabel)
 	for {
 		choice, err := view.Ask(fmt.Sprintf("是否开放%s Web 80、443（TCP / UDP、IPv4 / IPv6 同时开放）？[y/N，0/q 返回]：", scope))
 		if err != nil {
@@ -455,7 +468,7 @@ func askWeb(view *ui.UI, scope string, fields ...ui.CardField) (bool, error) {
 }
 
 // A false result lets the caller return to the web-port choices; cancellation
-// uses ErrReturnToMenu so RunAction returns directly to the firewall menu.
+// uses ErrReturnToMenu so the generation wizard returns to its preceding step.
 func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, error) {
 	for {
 		content := *draft
@@ -499,7 +512,7 @@ func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, er
 		ui.MenuOption("2", "预览完整配置")
 		ui.MenuOption("3", "重新选择公网 / 局域网 Web 端口")
 		ui.MenuOptionHint("4", "自定义访问规则", "端口 / 内网 IP 范围 / 来源 IP 放行，先调整草稿")
-		ui.MenuExit("0/q", "取消并返回")
+		ui.MenuExit("0/q", "返回局域网 Web 端口选择")
 		fmt.Println()
 		choice, err := view.Ask("请选择：")
 		if err != nil {

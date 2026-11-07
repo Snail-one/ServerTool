@@ -1081,59 +1081,67 @@ func manageComposeProjects(view *ui.UI, rt runtime.Runtime, useLS bool) error {
 		return err
 	}
 
-	var projects []composeProjectInfo
-	if useLS {
-		projects, err = listComposeProjectsFromLS(compose)
-		if err != nil {
-			return err
-		}
-	} else {
-		var dirs []string
-		_, dirs, err = update.AskComposeScanDirs(view, update.DefaultComposeRoots())
-		if err != nil {
-			return err
-		}
-		projects = listComposeProjectsFromDirs(compose, dirs)
-	}
-
-	if len(projects) == 0 {
-		log.Info("未发现 Compose 项目")
-		view.Pause()
-		return shared.ErrReturnToMenu
-	}
-
 	for {
-		ui.ClearScreen()
-		ui.MenuTitle("容器管理", "Compose 项目")
-		printComposeProjects(projects)
-		fmt.Println()
-
-		raw, err := view.Ask("请选择项目编号（0/q 返回）：")
-		if err != nil {
-			return err
+		var projects []composeProjectInfo
+		if useLS {
+			projects, err = listComposeProjectsFromLS(compose)
+			if err != nil {
+				return err
+			}
+		} else {
+			var dirs []string
+			_, dirs, err = update.AskComposeScanDirs(view, update.DefaultComposeRoots())
+			if err != nil {
+				return err
+			}
+			projects = listComposeProjectsFromDirs(compose, dirs)
 		}
-		fmt.Println()
 
-		if shared.IsReturnChoice(raw) {
+		if len(projects) == 0 {
+			log.Info("未发现 Compose 项目")
+			view.Pause()
+			if !useLS {
+				continue
+			}
 			return shared.ErrReturnToMenu
 		}
 
-		idx, err := input.Number(raw, 1, len(projects))
-		if err != nil || idx < 1 || idx > len(projects) {
-			ui.InvalidChoice()
-			view.Pause()
-			continue
-		}
+		for {
+			ui.ClearScreen()
+			ui.MenuTitle("容器管理", "Compose 项目")
+			printComposeProjects(projects)
+			fmt.Println()
 
-		project := projects[idx-1]
-		if err := manageSingleProject(view, compose, project.Dir); err != nil {
-			if errors.Is(err, shared.ErrReturnToMenu) {
+			raw, err := view.Ask("请选择项目编号（0/q 返回）：")
+			if err != nil {
+				return err
+			}
+			fmt.Println()
+
+			if shared.IsReturnChoice(raw) {
+				if !useLS {
+					break
+				}
+				return shared.ErrReturnToMenu
+			}
+
+			idx, err := input.Number(raw, 1, len(projects))
+			if err != nil || idx < 1 || idx > len(projects) {
+				ui.InvalidChoice()
+				view.Pause()
 				continue
 			}
-			return err
+
+			project := projects[idx-1]
+			if err := manageSingleProject(view, compose, project.Dir); err != nil {
+				if errors.Is(err, shared.ErrReturnToMenu) {
+					continue
+				}
+				return err
+			}
+			// Keep the project selector after an operation.
+			continue
 		}
-		// no auto refresh for projects list, return
-		return shared.ErrReturnToMenu
 	}
 }
 

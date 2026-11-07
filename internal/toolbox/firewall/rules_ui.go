@@ -130,41 +130,102 @@ func askRulePorts(view *ui.UI, current string) (string, error) {
 // New rules always specify a source. The older unrestricted rules remain
 // editable, but cannot be created through the current menu.
 func askAllowRule(view *ui.UI, current allowRule) (allowRule, error) {
-	if current.Kind != "port" {
-		return askSourceIPRule(view, current)
-	}
-	sourceRulePage("选择放行类型", current)
-	const fallback = "3"
-	ruleChoiceOption("1", "来源 IP + 端口", "指定来源和端口 / 范围", fallback)
-	ruleChoiceOption("2", "来源 IP 放行", "指定来源的全部 TCP / UDP 端口", fallback)
-	ruleChoiceOption("3", "保留已有全来源端口例外", "也可通过转入基础端口移除此规则", fallback)
-	ui.MenuExit("0/q", "取消本次编辑，返回来源 IP 放行")
-	kind, err := askRuleChoice(view, "请选择类型（回车默认 "+fallback+"）", fallback,
-		map[string]string{"1": "source_port", "2": "source", "3": "port"})
+	rule := current
+	legacy := current.Kind == "port"
+	err := ui.RunPromptSteps(
+		ui.PromptStep{Enabled: func() bool { return legacy }, Run: func() error {
+			sourceRulePage("选择放行类型", rule)
+			ruleChoiceOption("1", "来源 IP + 端口", "指定来源和端口 / 范围", "3")
+			ruleChoiceOption("2", "来源 IP 放行", "指定来源的全部 TCP / UDP 端口", "3")
+			ruleChoiceOption("3", "保留已有全来源端口例外", "也可通过转入基础端口移除此规则", "3")
+			ui.MenuExit("0/q", "返回上一步")
+			kind, err := askRuleChoice(view, "请选择类型（回车默认 3）", "3", map[string]string{"1": "source_port", "2": "source", "3": "port"})
+			if err == nil {
+				rule.Kind = kind
+				if kind == "port" {
+					rule.Source, rule.SourceIPv6 = "", ""
+				}
+				if kind == "source" {
+					rule.Ports = ""
+				}
+			}
+			return err
+		}},
+		ui.PromptStep{Run: func() error {
+			updated, err := askRuleFamily(view, current, rule)
+			if err == nil {
+				rule = updated
+			}
+			return err
+		}},
+		ui.PromptStep{Enabled: func() bool { return rule.Kind != "port" }, Run: func() error {
+			family := rule.Family
+			if family == "both" {
+				family = "ipv4"
+			}
+			fallback := current.Source
+			if family == "ipv6" && current.SourceIPv6 != "" {
+				fallback = current.SourceIPv6
+			}
+			sourceRulePage("填写来源地址", rule)
+			ui.MenuExit("0/q", "返回 IP 版本选择")
+			value, err := askRuleSource(view, fallback, family)
+			if err == nil {
+				rule.Source = value
+				rule.SourceIPv6 = ""
+			}
+			return err
+		}},
+		ui.PromptStep{Enabled: func() bool { return rule.Kind != "port" && rule.Family == "both" }, Run: func() error {
+			fallback := current.SourceIPv6
+			if fallback == "" && current.Source != "" && !sourcePrefix(current.Source).Addr().Is4() {
+				fallback = current.Source
+			}
+			sourceRulePage("填写 IPv6 来源地址", rule)
+			ui.MenuExit("0/q", "返回 IPv4 来源地址")
+			value, err := askRuleSource(view, fallback, "ipv6")
+			if err == nil {
+				rule.SourceIPv6 = value
+			}
+			return err
+		}},
+		ui.PromptStep{Enabled: func() bool { return !legacy }, Run: func() error {
+			sourceRulePage("设置访问权限", rule)
+			fallback := "1"
+			if current.Kind == "source" {
+				fallback = "2"
+			}
+			ruleChoiceOption("1", "指定端口", "仅允许该来源访问填写的端口 / 范围", fallback)
+			ruleChoiceOption("2", "全部端口", "允许该来源访问所选 TCP / UDP 协议的全部端口", fallback)
+			ui.MenuExit("0/q", "返回来源地址")
+			kind, err := askRuleChoice(view, "请选择放行范围（回车默认 "+fallback+"）", fallback, map[string]string{"1": "source_port", "2": "source"})
+			if err == nil {
+				rule.Kind = kind
+				if kind == "source" {
+					rule.Ports = ""
+				}
+			}
+			return err
+		}},
+		ui.PromptStep{Enabled: func() bool { return rule.Kind != "source" }, Run: func() error {
+			sourceRulePage("填写允许访问的端口", rule)
+			ui.MenuExit("0/q", "返回上一步")
+			value, err := askRulePorts(view, current.Ports)
+			if err == nil {
+				rule.Ports = value
+			}
+			return err
+		}},
+		ui.PromptStep{Run: func() error {
+			updated, err := askRuleProtocol(view, current, rule)
+			if err == nil {
+				rule = updated
+			}
+			return err
+		}},
+	)
 	if err != nil {
 		return current, err
-	}
-	rule, err := askRuleFamily(view, current, allowRule{ID: current.ID, Kind: kind})
-	if err != nil {
-		return rule, err
-	}
-	if kind != "port" {
-		rule, err = askRuleSources(view, current, rule)
-		if err != nil {
-			return rule, err
-		}
-	}
-	if kind != "source" {
-		sourceRulePage("填写端口", rule)
-		ui.MenuExit("0/q", "取消本次编辑，返回来源 IP 放行")
-		rule.Ports, err = askRulePorts(view, current.Ports)
-		if err != nil {
-			return rule, err
-		}
-	}
-	rule, err = askRuleProtocol(view, current, rule)
-	if err != nil {
-		return rule, err
 	}
 	return normalizeAllowRule(rule)
 }
@@ -178,44 +239,13 @@ func askRuleFamily(view *ui.UI, current, rule allowRule) (allowRule, error) {
 	ruleChoiceOption("1", "IPv4", "", fallback)
 	ruleChoiceOption("2", "IPv6", "", fallback)
 	ruleChoiceOption("3", "IPv4 + IPv6", "", fallback)
-	ui.MenuExit("0/q", "取消本次编辑，返回来源 IP 放行")
+	ui.MenuExit("0/q", "返回上一步")
 	family, err := askRuleChoice(view, "请选择 IP 版本（回车默认 "+fallback+"，0/q 返回）：", fallback,
 		map[string]string{"1": "ipv4", "2": "ipv6", "3": "both", "ipv4": "ipv4", "ipv6": "ipv6", "ipv4+ipv6": "both", "both": "both"})
 	if err != nil {
 		return rule, err
 	}
 	rule.Family = family
-	return rule, nil
-}
-
-func askRuleSources(view *ui.UI, current, rule allowRule) (allowRule, error) {
-	var err error
-	family := rule.Family
-	if family == "both" {
-		family = "ipv4"
-	}
-	currentSource := current.Source
-	if family == "ipv6" && current.SourceIPv6 != "" {
-		currentSource = current.SourceIPv6
-	}
-	sourceRulePage("填写来源地址", rule)
-	ui.MenuExit("0/q", "取消本次编辑，返回来源 IP 放行")
-	rule.Source, err = askRuleSource(view, currentSource, family)
-	if err != nil {
-		return rule, err
-	}
-	if rule.Family == "both" {
-		currentSource = current.SourceIPv6
-		if currentSource == "" && current.Source != "" && !sourcePrefix(current.Source).Addr().Is4() {
-			currentSource = current.Source
-		}
-		sourceRulePage("填写 IPv6 来源地址", rule)
-		ui.MenuExit("0/q", "取消本次编辑，返回来源 IP 放行")
-		rule.SourceIPv6, err = askRuleSource(view, currentSource, "ipv6")
-		if err != nil {
-			return rule, err
-		}
-	}
 	return rule, nil
 }
 
@@ -228,50 +258,13 @@ func askRuleProtocol(view *ui.UI, current, rule allowRule) (allowRule, error) {
 	ruleChoiceOption("1", "TCP", "", fallback)
 	ruleChoiceOption("2", "UDP", "", fallback)
 	ruleChoiceOption("3", "TCP + UDP", "", fallback)
-	ui.MenuExit("0/q", "取消本次编辑，返回来源 IP 放行")
+	ui.MenuExit("0/q", "返回上一步")
 	protocol, err := askRuleChoice(view, "请选择协议（回车默认 "+fallback+"，0/q 返回）：", fallback, map[string]string{"1": "tcp", "2": "udp", "3": "both", "tcp": "tcp", "udp": "udp", "tcp+udp": "both"})
 	if err != nil {
 		return rule, err
 	}
 	rule.Protocol = protocol
 	return rule, nil
-}
-
-func askSourceIPRule(view *ui.UI, current allowRule) (allowRule, error) {
-	rule, err := askRuleFamily(view, current, allowRule{ID: current.ID})
-	if err != nil {
-		return rule, err
-	}
-	rule, err = askRuleSources(view, current, rule)
-	if err != nil {
-		return rule, err
-	}
-	sourceRulePage("设置访问权限", rule)
-	fallback := "1"
-	if current.Kind == "source" {
-		fallback = "2"
-	}
-	ruleChoiceOption("1", "指定端口", "仅允许该来源访问填写的端口 / 范围", fallback)
-	ruleChoiceOption("2", "全部端口", "允许该来源访问所选 TCP / UDP 协议的全部端口", fallback)
-	ui.MenuExit("0/q", "取消本次编辑，返回来源 IP 放行")
-	rule.Kind, err = askRuleChoice(view, "请选择放行范围（回车默认 "+fallback+"）", fallback,
-		map[string]string{"1": "source_port", "2": "source"})
-	if err != nil {
-		return rule, err
-	}
-	if rule.Kind == "source_port" {
-		sourceRulePage("填写允许访问的端口", rule)
-		ui.MenuExit("0/q", "取消本次编辑，返回来源 IP 放行")
-		rule.Ports, err = askRulePorts(view, current.Ports)
-		if err != nil {
-			return rule, err
-		}
-	}
-	rule, err = askRuleProtocol(view, current, rule)
-	if err != nil {
-		return rule, err
-	}
-	return normalizeAllowRule(rule)
 }
 
 func changeAllowRuleDraft(view *ui.UI, rules []allowRule, id string) ([]allowRule, error) {
@@ -334,7 +327,7 @@ func changeAllowRuleDraft(view *ui.UI, rules []allowRule, id string) ([]allowRul
 
 func queryRulesByPort(view *ui.UI, rules []allowRule) ([]allowRule, error) {
 	sourceRulePage("按端口查询", allowRule{})
-	ui.MenuExit("0/q", "取消查询，返回来源 IP 放行")
+	ui.MenuExit("0/q", "返回删除方式选择")
 	ports, err := askRulePorts(view, "")
 	if err != nil {
 		return nil, err
@@ -357,26 +350,33 @@ func queryRulesByPort(view *ui.UI, rules []allowRule) ([]allowRule, error) {
 }
 
 func deleteAllowRuleDraft(view *ui.UI, rules []allowRule) ([]allowRule, error) {
-	sourceRulePage("删除放行规则", allowRule{})
-	ruleChoiceOption("1", "按序号 / 规则 ID 删除", "", "1")
-	ui.MenuOption("2", "按端口查询后选择规则删除")
-	ui.MenuExit("0/q", "取消删除，返回来源 IP 放行")
-	mode, err := askRuleChoice(view, "请选择删除方式（回车默认 1）：", "1", map[string]string{"1": "id", "2": "port"})
-	if err != nil {
-		return nil, err
-	}
+	mode, id := "", ""
 	candidates := rules
-	if mode == "port" {
-		candidates, err = queryRulesByPort(view, rules)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		sourceRulePage("选择删除放行规则", allowRule{})
-		printRuleOrder(candidates, "")
-	}
-	ui.MenuExit("0/q", "取消删除，返回来源 IP 放行")
-	id, err := chooseRuleID(view, candidates)
+	err := ui.RunPromptSteps(
+		ui.PromptStep{Run: func() error {
+			sourceRulePage("删除放行规则", allowRule{})
+			ruleChoiceOption("1", "按序号 / 规则 ID 删除", "", "1")
+			ui.MenuOption("2", "按端口查询后选择规则删除")
+			ui.MenuExit("0/q", "返回来源 IP 放行")
+			var err error
+			mode, err = askRuleChoice(view, "请选择删除方式（回车默认 1）：", "1", map[string]string{"1": "id", "2": "port"})
+			candidates = rules
+			return err
+		}},
+		ui.PromptStep{Enabled: func() bool { return mode == "port" }, Run: func() error {
+			var err error
+			candidates, err = queryRulesByPort(view, rules)
+			return err
+		}},
+		ui.PromptStep{Run: func() error {
+			sourceRulePage("选择删除放行规则", allowRule{})
+			printRuleOrder(candidates, "")
+			ui.MenuExit("0/q", "返回上一步")
+			var err error
+			id, err = chooseRuleID(view, candidates)
+			return err
+		}},
+	)
 	if err != nil {
 		return nil, err
 	}

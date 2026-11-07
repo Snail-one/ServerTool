@@ -181,16 +181,24 @@ func changeSourceRulesDraft(view *ui.UI, content string, rules []allowRule, choi
 	switch choice {
 	case "1", "2":
 		id := ""
-		if choice == "2" {
-			sourceRulePage("选择编辑放行规则", allowRule{})
-			printRuleOrder(rules, "")
-			ui.MenuExit("0/q", "取消编辑，返回来源 IP 放行")
-			id, err = chooseRuleID(view, rules)
-			if err != nil {
-				return "", err
+		if choice == "1" {
+			updated, err = changeAllowRuleDraft(view, rules, id)
+		} else {
+			for {
+				sourceRulePage("选择编辑放行规则", allowRule{})
+				printRuleOrder(rules, "")
+				ui.MenuExit("0/q", "返回来源 IP 放行")
+				id, err = chooseRuleID(view, rules)
+				if err != nil {
+					return "", err
+				}
+				updated, err = changeAllowRuleDraft(view, rules, id)
+				if errors.Is(err, shared.ErrReturnToMenu) {
+					continue
+				}
+				break
 			}
 		}
-		updated, err = changeAllowRuleDraft(view, rules, id)
 	case "3":
 		updated, err = deleteAllowRuleDraft(view, rules)
 	case "4":

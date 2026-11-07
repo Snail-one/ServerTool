@@ -164,59 +164,67 @@ func printSSHSecurityRows(settings sshdSettings) {
 }
 
 func configureSSHDHardening(view *ui.UI, account *system.Account) error {
-	if account.Name != "root" && !system.UserInAdminGroup(account.Name) {
-		log.Warn("用户 ", account.Name, " 不在 sudo/wheel 用户组中")
-		confirmed, err := view.Confirm("继续配置可能导致无法提权，是否强行继续？(y/N)：")
+	needsAdminConfirmation := account.Name != "root" && !system.UserInAdminGroup(account.Name)
+	existing, _, err := shared.ReadRegularFile(customSSHDConfigPath)
+	if err != nil {
+		return err
+	}
+	paths, err := sshdPortConfigPaths()
+	if err != nil {
+		return err
+	}
+	directives, err := activeSSHDPortDirectivesInFiles(paths)
+	if err != nil {
+		return err
+	}
+	port := 0
+	disableSSHDConfigPorts := false
+	requireConfirmation := func(confirmed bool, err error) error {
 		if err != nil {
 			return err
 		}
 		if !confirmed {
-			return shared.ErrReturnToMenu
+			return ui.ErrCancelAction
 		}
+		return nil
 	}
-
-	authorizedKeysConfirmed, err := confirmAuthorizedKeysPresent(view, account)
+	err = ui.RunPromptSteps(
+		ui.PromptStep{Enabled: func() bool { return needsAdminConfirmation }, Run: func() error {
+			log.Warn("用户 ", account.Name, " 不在 sudo/wheel 用户组中")
+			return requireConfirmation(view.Confirm("继续配置可能导致无法提权，是否强行继续？(y/N)："))
+		}},
+		ui.PromptStep{Enabled: func() bool { return !keys.IsConfigured(account) }, Run: func() error {
+			return requireConfirmation(confirmAuthorizedKeysPresent(view, account))
+		}},
+		ui.PromptStep{Enabled: func() bool { return strings.TrimSpace(string(existing)) != "" }, Run: func() error {
+			return requireConfirmation(confirmSSHDConfigOverwrite(view))
+		}},
+		ui.PromptStep{Run: func() error {
+			raw, err := view.Ask("请输入一个 SSH 端口（直接回车随机生成，q 返回上一步）：")
+			if err != nil {
+				return err
+			}
+			if raw != "0" && shared.IsReturnChoice(raw) {
+				return shared.ErrReturnToMenu
+			}
+			port, err = chooseSSHPort(raw)
+			return err
+		}},
+		ui.PromptStep{Enabled: func() bool { return len(directives) > 0 }, Run: func() error {
+			var err error
+			disableSSHDConfigPorts, err = confirmDisableSSHDConfigPorts(view, port)
+			return err
+		}},
+	)
 	if err != nil {
 		return err
 	}
-	if !authorizedKeysConfirmed {
-		return shared.ErrReturnToMenu
-	}
-
-	shouldWriteConfig, err := confirmSSHDConfigOverwrite(view)
-	if err != nil {
-		return err
-	}
-	if !shouldWriteConfig {
-		fmt.Println()
-		log.Info("已取消 SSH 服务安全配置写入")
-		return shared.ErrReturnToMenu
-	}
-
-	fmt.Println()
-	rawPort, err := view.Ask("请输入一个 SSH 端口（直接回车随机生成）：")
-	if err != nil {
-		return err
-	}
-	if rawPort != "0" && shared.IsReturnChoice(rawPort) {
-		return shared.ErrReturnToMenu
-	}
-	port, err := chooseSSHPort(rawPort)
-	if err != nil {
-		return err
-	}
-
 	settingsBefore, _, err := readSettingsForReload()
 	if err != nil {
 		return fmt.Errorf("无法读取当前 Root SSH 登录策略，未写入配置: %w", err)
 	}
 	permitRootLogin := rootLoginForHardening(settingsBefore)
 	log.Info("Root SSH 登录策略不随配置用户切换；如需修改，请进入 SSH 管理 → Root SSH 登录策略")
-
-	disableSSHDConfigPorts, err := confirmDisableSSHDConfigPorts(view, port)
-	if err != nil {
-		return err
-	}
 
 	if err := writeSSHDConfig(port, permitRootLogin, disableSSHDConfigPorts); err != nil {
 		return err

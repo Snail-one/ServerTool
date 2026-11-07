@@ -14,15 +14,19 @@ import (
 func TestKeyOperationCancellationStaysInKeyMenu(t *testing.T) {
 	oldKey, newKey := generateTestPublicKey(t), generateTestPublicKey(t)
 	for _, answer := range []string{"0", "q", "Q", "exit", "返回", ""} {
+		replaceBacks := "q\nq\n"
+		if answer == "" {
+			replaceBacks = "q\n"
+		}
 		for _, operation := range []struct {
 			name, input string
 		}{
 			{"add", "1\n" + answer + "\n"},
 			{"replace-selection", "2\n" + answer + "\n"},
-			{"replace-key", "2\n1\n" + answer + "\n"},
-			{"replace-confirmation", "2\n1\n" + newKey + "\n" + answer + "\n"},
+			{"replace-key", "2\n1\n" + answer + "\nq\n"},
+			{"replace-confirmation", "2\n1\n" + newKey + "\n" + answer + "\n" + replaceBacks},
 			{"delete-selection", "4\n" + answer + "\n"},
-			{"delete-confirmation", "4\n1\n" + answer + "\n"},
+			{"delete-confirmation", "4\n1\n" + answer + "\nq\n"},
 		} {
 			t.Run(operation.name+"/answer="+answer, func(t *testing.T) {
 				account := &system.Account{Home: t.TempDir()}
@@ -34,8 +38,8 @@ func TestKeyOperationCancellationStaysInKeyMenu(t *testing.T) {
 				if err := os.WriteFile(path, []byte(original), 0600); err != nil {
 					t.Fatal(err)
 				}
-				// The first q after cancelling must leave the key menu. The
-				// parent action must not pause or consume its next response.
+				// Walk back through every selection page, then leave the key
+				// menu without consuming the next parent response.
 				view := newUIWithInput(t, operation.input+"q\nparent-next\n")
 				shared.RunAction(view, "SSH 公钥管理失败", func() error {
 					return configureSSHAuthorizedKeys(view, account)

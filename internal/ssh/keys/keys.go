@@ -233,6 +233,7 @@ func replaceSSHAuthorizedKey(view *ui.UI, account *system.Account) error {
 	}
 
 	printAuthorizedKeyEntries(entries)
+selectKey:
 	for {
 		rawSelection, err := view.Ask("请输入要修改的编号（直接回车返回）：")
 		if err != nil {
@@ -260,7 +261,7 @@ func replaceSSHAuthorizedKey(view *ui.UI, account *system.Account) error {
 				return err
 			}
 			if strings.TrimSpace(pubkey) == "" || shared.IsReturnChoice(pubkey) {
-				return shared.ErrReturnToMenu
+				continue selectKey
 			}
 			if err := system.ValidateSSHPublicKey(pubkey); err != nil {
 				log.Warn(err)
@@ -283,12 +284,15 @@ func replaceSSHAuthorizedKey(view *ui.UI, account *system.Account) error {
 			fmt.Println()
 
 			confirmed, err := view.Confirm("确认替换选中的 SSH 公钥？(y/N)：")
+			if errors.Is(err, shared.ErrReturnToMenu) {
+				continue
+			}
 			if err != nil {
 				return err
 			}
 			if !confirmed {
 				fmt.Println("已取消修改")
-				return shared.ErrReturnToMenu
+				continue selectKey
 			}
 
 			updated := replaceAuthorizedKeyIndex(content, index, pubkey)
@@ -375,12 +379,15 @@ func deleteSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		fmt.Println()
 
 		confirmed, err := view.Confirm("确认删除选中的 SSH 公钥？(y/N)：")
+		if errors.Is(err, shared.ErrReturnToMenu) {
+			continue
+		}
 		if err != nil {
 			return err
 		}
 		if !confirmed {
 			fmt.Println("已取消删除")
-			return shared.ErrReturnToMenu
+			continue
 		}
 
 		selected := make(map[int]struct{}, len(indexes))

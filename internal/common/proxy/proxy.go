@@ -70,27 +70,36 @@ func ConfigureProxy(view *ui.UI) error {
 	}
 
 	bashrc := filepath.Join(account.Home, ".bashrc")
-	replaceUnmanagedProxy, err := confirmUnmanagedProxyOverride(view, bashrc)
+	assignments, err := unmanagedProxyAssignments(bashrc)
 	if err != nil {
 		return err
 	}
-	if !replaceUnmanagedProxy {
-		return shared.ErrReturnToMenu
-	}
-
-	log.Info("支持 IP/主机名:端口或 [IPv6]:端口，可带 http:// 或 https://")
-	log.Info("认证格式：用户名:密码@地址；密码中的 @、#、% 等字符请使用 URL 编码")
-	fmt.Println()
-
-	raw, err := view.Ask("请输入代理地址：")
-	if err != nil {
-		return err
-	}
-
-	if shared.IsReturnChoice(raw) {
-		return shared.ErrReturnToMenu
-	}
-	proxyURL, err := normalizeProxy(raw)
+	proxyURL := ""
+	err = ui.RunPromptSteps(
+		ui.PromptStep{Enabled: func() bool { return len(assignments) > 0 }, Run: func() error {
+			replace, err := confirmUnmanagedProxyOverride(view, bashrc)
+			if err != nil {
+				return err
+			}
+			if !replace {
+				return ui.ErrCancelAction
+			}
+			return nil
+		}},
+		ui.PromptStep{Run: func() error {
+			log.Info("支持 IP/主机名:端口或 [IPv6]:端口，可带 http:// 或 https://")
+			log.Info("认证格式：用户名:密码@地址；密码中的 @、#、% 等字符请使用 URL 编码")
+			raw, err := view.Ask("请输入代理地址（q 返回上一步）：")
+			if err != nil {
+				return err
+			}
+			if shared.IsReturnChoice(raw) {
+				return shared.ErrReturnToMenu
+			}
+			proxyURL, err = normalizeProxy(raw)
+			return err
+		}},
+	)
 	if err != nil {
 		return err
 	}

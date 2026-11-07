@@ -150,29 +150,35 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 					continue
 				}
 				scope := map[string]string{"1": "3", "2": "1", "3": "2"}[choice]
-				var indices []int
-				indices, err = choosePolicyPortScope(view, scope)
-				if err == nil {
-					updated, err = changePolicyLists(view, draft, indices)
-				}
+				_, err = promptPolicyPortScope(view, scope, func(indices []int) error {
+					var editErr error
+					updated, editErr = changePolicyLists(view, draft, indices)
+					return editErr
+				})
 			case "4":
-				ui.ClearScreen()
-				ui.MenuTitle("防火墙管理", "访问规则管理", "内网 IP 范围")
-				ui.PrintInfoCard("按来源地址划分内网",
-					ui.CardField{Label: "范围内的来源", Value: "使用内网端口策略"},
-					ui.CardField{Label: "其他来源", Value: "使用公网端口策略"},
-				)
-				ui.MenuOption("1", "IPv4 内网范围")
-				ui.MenuOption("2", "IPv6 内网范围")
-				ui.MenuExit("0/q", "返回访问规则草稿")
-				var family string
-				family, err = askRuleChoice(view, "请选择 IP 版本", "", map[string]string{"1": "ipv4", "2": "ipv6"})
-				if err == nil {
-					index := 8
-					if family == "ipv6" {
-						index = 9
+				for {
+					ui.ClearScreen()
+					ui.MenuTitle("防火墙管理", "访问规则管理", "内网 IP 范围")
+					ui.PrintInfoCard("按来源地址划分内网",
+						ui.CardField{Label: "范围内的来源", Value: "使用内网端口策略"},
+						ui.CardField{Label: "其他来源", Value: "使用公网端口策略"},
+					)
+					ui.MenuOption("1", "IPv4 内网范围")
+					ui.MenuOption("2", "IPv6 内网范围")
+					ui.MenuExit("0/q", "返回访问规则草稿")
+					var family string
+					family, err = askRuleChoice(view, "请选择 IP 版本", "", map[string]string{"1": "ipv4", "2": "ipv6"})
+					if err == nil {
+						index := 8
+						if family == "ipv6" {
+							index = 9
+						}
+						updated, err = changePolicyLists(view, draft, []int{index})
 					}
-					updated, err = changePolicyLists(view, draft, []int{index})
+					if errors.Is(err, shared.ErrReturnToMenu) && family != "" {
+						continue
+					}
+					break
 				}
 			case "5":
 				updated, err = editSourceRulesDraft(view, draft)
@@ -197,56 +203,56 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 }
 
 func choosePolicyPortScope(view *ui.UI, scope string) ([]int, error) {
+	return promptPolicyPortScope(view, scope, nil)
+}
+
+func promptPolicyPortScope(view *ui.UI, scope string, edit func([]int) error) ([]int, error) {
 	selections := []string{scope, "3", "3"}
-	title := policyScopeTitle(scope)
-	options := []struct{ title, a, b, both string }{
+	var indices []int
+	updateIndices := func() {
+		indices = nil
+		for i := 0; i < 8; i++ {
+			if (selections[0] == "3" || (selections[0] == "1") == (i < 4)) &&
+				(selections[1] == "3" || (selections[1] == "1") == (i%4 < 2)) &&
+				(selections[2] == "3" || (selections[2] == "1") == (i%2 == 0)) {
+				indices = append(indices, i)
+			}
+		}
+	}
+	var steps []ui.PromptStep
+	for index, option := range []struct{ title, a, b, both string }{
 		{"选择 IP 版本", "IPv4", "IPv6", "IPv4 + IPv6"},
 		{"选择协议", "TCP", "UDP", "TCP + UDP"},
-	}
-	for step := 0; step < len(options); {
-		option := options[step]
-		ui.ClearScreen()
-		ui.MenuTitle("防火墙管理", "访问规则管理", title, option.title)
-		fields := []ui.CardField{{Label: "当前步骤", Value: fmt.Sprintf("%d / 3 · %s", step+1, option.title)}}
-		if step == 1 {
-			fields = append(fields, ui.CardField{Label: "IP 版本", Value: map[string]string{"1": "IPv4", "2": "IPv6", "3": "IPv4 + IPv6"}[selections[1]]})
-		}
-		ui.PrintInfoCard(title, fields...)
-		labels := []string{option.a, option.b, option.both}
-		for i, label := range labels {
-			hint := ""
-			if strconv.Itoa(i+1) == selections[step+1] {
-				hint = "默认，直接回车选择"
+	} {
+		index, option := index, option
+		steps = append(steps, ui.PromptStep{Run: func() error {
+			ui.ClearScreen()
+			ui.MenuTitle("防火墙管理", "访问规则管理", policyScopeTitle(scope), option.title)
+			ui.PrintInfoCard(policyScopeTitle(scope), ui.CardField{Label: "当前步骤", Value: fmt.Sprintf("%d / 3 · %s", index+1, option.title)})
+			for i, label := range []string{option.a, option.b, option.both} {
+				ruleChoiceOption(strconv.Itoa(i+1), label, "", selections[index+1])
 			}
-			ui.MenuOptionHint(strconv.Itoa(i+1), label, hint)
-		}
-		if step > 0 {
-			ui.MenuOption("b", "上一步：选择 IP 版本")
-		}
-		ui.MenuExit("0/q", "取消本次操作，返回访问规则草稿")
-		choice, err := askRuleChoice(view, fmt.Sprintf("请选择 [1-3，默认 %s]：", selections[step+1]), selections[step+1],
-			map[string]string{"1": "1", "2": "2", "3": "3", "b": "back"})
-		if err != nil {
-			return nil, err
-		}
-		if choice == "back" {
-			if step > 0 {
-				step--
+			if index > 0 {
+				ui.MenuOption("b", "上一步：选择 IP 版本")
 			}
-			continue
-		}
-		selections[step+1] = choice
-		step++
+			ui.MenuExit("0/q", "返回上一步")
+			choice, err := askRuleChoice(view, "请选择", selections[index+1], map[string]string{"1": "1", "2": "2", "3": "3", "b": "back"})
+			if err != nil {
+				return err
+			}
+			if choice == "back" {
+				return shared.ErrReturnToMenu
+			}
+			selections[index+1] = choice
+			updateIndices()
+			return nil
+		}})
 	}
-	var indices []int
-	for i := 0; i < 8; i++ {
-		if (selections[0] == "3" || (selections[0] == "1") == (i < 4)) &&
-			(selections[1] == "3" || (selections[1] == "1") == (i%4 < 2)) &&
-			(selections[2] == "3" || (selections[2] == "1") == (i%2 == 0)) {
-			indices = append(indices, i)
-		}
+	if edit != nil {
+		steps = append(steps, ui.PromptStep{Run: func() error { return edit(indices) }})
 	}
-	return indices, nil
+	err := ui.RunPromptSteps(steps...)
+	return indices, err
 }
 
 func policyScopeTitle(scope string) string {
@@ -255,7 +261,6 @@ func policyScopeTitle(scope string) string {
 
 func changePolicyLists(view *ui.UI, content string, indices []int) (string, error) {
 	list := policyLists[indices[0]]
-	ui.ClearScreen()
 	title := list.label
 	if list.family == 0 {
 		scope := "1"
@@ -266,7 +271,6 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 		}
 		title = policyScopeTitle(scope)
 	}
-	ui.MenuTitle("防火墙管理", "访问规则管理", title, "选择操作")
 	var fields []ui.CardField
 	for _, index := range indices {
 		value, err := readPolicyValue(content, policyLists[index])
@@ -309,105 +313,112 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 		}
 		fields = append([]ui.CardField{{Label: "当前步骤", Value: "3 / 3 · 选择操作"}}, fields...)
 	}
-	ui.PrintInfoCard("编辑所选列表", fields...)
-	ui.MenuOption("1", "添加")
-	if list.family == 0 {
-		ui.MenuOptionHint("2", "删除端口 / 范围", "从业务列表扣除，SSH 端口始终保留")
-		ui.MenuOption("3", "替换全部业务端口")
-		ui.MenuOptionHint("4", "清空业务端口", "只保留 SSH 端口")
-	} else {
-		ui.MenuOptionHint("2", "删除地址 / 网段", "精确匹配规范化后的地址 / CIDR")
-		ui.MenuOption("3", "替换整个范围")
-		ui.MenuOption("4", "恢复默认内网 IP 范围")
-		ui.MenuOption("5", "按序号编辑单个条目")
-		ui.PrintField("范围说明", "支持单个 IP 和 CIDR，逗号分隔；自动规范化并合并重复及被包含条目；至少保留一项")
-	}
-	ui.MenuExit("0/q", "取消并返回草稿")
-	choices := map[string]string{"1": "add", "2": "remove", "3": "replace", "4": "reset"}
-	if list.family != 0 {
-		choices["5"] = "edit"
-	}
-	operation, err := askRuleChoice(view, "请选择操作", "", choices)
+	operation, value, editIndex := "", "", -1
+	err := ui.RunPromptSteps(
+		ui.PromptStep{Run: func() error {
+			ui.ClearScreen()
+			ui.MenuTitle("防火墙管理", "访问规则管理", title, "选择操作")
+			ui.PrintInfoCard("编辑所选列表", fields...)
+			ui.MenuOption("1", "添加")
+			if list.family == 0 {
+				ui.MenuOptionHint("2", "删除端口 / 范围", "从业务列表扣除，SSH 端口始终保留")
+				ui.MenuOption("3", "替换全部业务端口")
+				ui.MenuOptionHint("4", "清空业务端口", "只保留 SSH 端口")
+			} else {
+				ui.MenuOptionHint("2", "删除地址 / 网段", "精确匹配规范化后的地址 / CIDR")
+				ui.MenuOption("3", "替换整个范围")
+				ui.MenuOption("4", "恢复默认内网 IP 范围")
+				ui.MenuOption("5", "按序号编辑单个条目")
+				ui.PrintField("范围说明", "支持单个 IP 和 CIDR，逗号分隔；自动规范化并合并重复及被包含条目；至少保留一项")
+			}
+			ui.MenuExit("0/q", "返回上一步")
+			choices := map[string]string{"1": "add", "2": "remove", "3": "replace", "4": "reset"}
+			if list.family != 0 {
+				choices["5"] = "edit"
+			}
+			var err error
+			operation, err = askRuleChoice(view, "请选择操作", "", choices)
+			editIndex = -1
+			return err
+		}},
+		ui.PromptStep{Enabled: func() bool { return operation == "edit" }, Run: func() error {
+			current, _ := readPolicyValue(content, list)
+			entries := strings.Split(current, ", ")
+			ui.ClearScreen()
+			ui.MenuTitle("防火墙管理", "访问规则管理", title, "选择编辑条目")
+			for i, entry := range entries {
+				ui.MenuOption(strconv.Itoa(i+1), entry)
+			}
+			ui.MenuExit("0/q", "返回操作选择")
+			for {
+				raw, err := view.Ask("请输入要编辑的条目序号（0/q 返回）：")
+				if err != nil {
+					return err
+				}
+				if shared.IsReturnChoice(raw) {
+					return shared.ErrReturnToMenu
+				}
+				number, err := input.Number(raw, 1, len(entries))
+				if err == nil && number >= 1 && number <= len(entries) {
+					editIndex = number - 1
+					return nil
+				}
+				ui.InvalidChoice()
+			}
+		}},
+		ui.PromptStep{Enabled: func() bool { return operation != "reset" }, Run: func() error {
+			ui.ClearScreen()
+			action := map[string]string{"add": "添加", "remove": "删除", "replace": "替换", "edit": "编辑条目"}[operation]
+			ui.MenuTitle("防火墙管理", "访问规则管理", title, action)
+			inputFields := append([]ui.CardField(nil), fields...)
+			if list.family == 0 {
+				inputFields[0].Value = "3 / 3 · " + action + "端口"
+			}
+			if editIndex >= 0 {
+				current, _ := readPolicyValue(content, list)
+				inputFields = append(inputFields, ui.CardField{Label: "编辑条目", Value: strings.Split(current, ", ")[editIndex], Detail: "回车保留当前条目"})
+			}
+			ui.PrintInfoCard("编辑内容", inputFields...)
+			ui.MenuExit("0/q", "返回上一步")
+			for {
+				prompt := "请输入端口或范围，多个用逗号分隔，例如 80,443,8000-8100（0/q 返回）："
+				if list.family != 0 {
+					prompt = fmt.Sprintf("请输入 IPv%d 地址 / CIDR，多个用逗号分隔（0/q 返回）：", list.family)
+				}
+				if operation == "edit" {
+					prompt = "请输入新的地址 / CIDR（回车保留当前条目，0/q 返回）："
+				}
+				raw, err := view.Ask(prompt)
+				if err != nil {
+					return err
+				}
+				if shared.IsReturnChoice(raw) {
+					return shared.ErrReturnToMenu
+				}
+				if raw == "" {
+					if operation == "edit" {
+						current, _ := readPolicyValue(content, list)
+						raw = strings.Split(current, ", ")[editIndex]
+					} else {
+						if list.family == 0 {
+							log.Warn("输入不能为空；清空业务端口请返回后选择 4")
+						} else {
+							log.Warn("输入不能为空，请填写至少一个地址或 CIDR")
+						}
+						continue
+					}
+				}
+				if _, err := withPolicyChanges(content, indices, operation, raw, editIndex); err != nil {
+					log.Warn(err)
+					continue
+				}
+				value = raw
+				return nil
+			}
+		}},
+	)
 	if err != nil {
 		return "", err
 	}
-	current, _ := readPolicyValue(content, list)
-	editIndex := -1
-	if operation == "edit" {
-		entries := strings.Split(current, ", ")
-		ui.ClearScreen()
-		ui.MenuTitle("防火墙管理", "访问规则管理", title, "选择编辑条目")
-		for i, entry := range entries {
-			ui.MenuOption(strconv.Itoa(i+1), entry)
-		}
-		ui.MenuExit("0/q", "取消本次编辑，返回访问规则草稿")
-		for {
-			value, err := view.Ask("请输入要编辑的条目序号（0/q 返回）：")
-			if err != nil {
-				return "", err
-			}
-			if shared.IsReturnChoice(value) {
-				return "", shared.ErrReturnToMenu
-			}
-			number, err := input.Number(value, 1, len(entries))
-			if err == nil && number >= 1 && number <= len(entries) {
-				editIndex = number - 1
-				break
-			}
-			ui.InvalidChoice()
-		}
-	}
-	if operation != "reset" {
-		action := map[string]string{"add": "添加", "remove": "删除", "replace": "替换", "edit": "编辑条目"}[operation]
-		ui.ClearScreen()
-		ui.MenuTitle("防火墙管理", "访问规则管理", title, action)
-		inputFields := append([]ui.CardField(nil), fields...)
-		if list.family == 0 {
-			inputFields[0].Value = "3 / 3 · " + action + "端口"
-		}
-		if editIndex >= 0 {
-			inputFields = append(inputFields, ui.CardField{Label: "编辑条目", Value: strings.Split(current, ", ")[editIndex], Detail: "回车保留当前条目"})
-		}
-		ui.PrintInfoCard("编辑内容", inputFields...)
-		ui.MenuExit("0/q", "取消本次操作，返回访问规则草稿")
-	}
-	for {
-		value := ""
-		if operation != "reset" {
-			prompt := "请输入端口或范围，多个用逗号分隔，例如 80,443,8000-8100（0/q 返回）："
-			if list.family != 0 {
-				prompt = fmt.Sprintf("请输入 IPv%d 地址 / CIDR，多个用逗号分隔（0/q 返回）：", list.family)
-				if operation == "edit" {
-					prompt = fmt.Sprintf("请输入新的 IPv%d 地址 / CIDR（回车保留当前条目，0/q 返回）：", list.family)
-				}
-			}
-			value, err = view.Ask(prompt)
-			if err != nil {
-				return "", err
-			}
-			if shared.IsReturnChoice(value) {
-				return "", shared.ErrReturnToMenu
-			}
-			if value == "" {
-				if operation == "edit" {
-					value = strings.Split(current, ", ")[editIndex]
-				} else {
-					if list.family == 0 {
-						log.Warn("输入不能为空；清空业务端口请返回后选择 4")
-					} else {
-						log.Warn("输入不能为空，请填写至少一个地址或 CIDR")
-					}
-					continue
-				}
-			}
-		}
-		updated, err := withPolicyChanges(content, indices, operation, value, editIndex)
-		if err == nil {
-			return updated, nil
-		}
-		log.Warn(err)
-		if operation == "reset" {
-			return "", err
-		}
-	}
+	return withPolicyChanges(content, indices, operation, value, editIndex)
 }

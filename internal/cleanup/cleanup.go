@@ -37,7 +37,10 @@ func Run(view *ui.UI) error {
 		return err
 	}
 
-	steps := allCleanupSteps()
+	return runMenu(view, account, allCleanupSteps())
+}
+
+func runMenu(view *ui.UI, account *system.Account, steps []cleanupStep) error {
 	backupChoice := strconv.Itoa(len(steps) + 1)
 	allChoice := strconv.Itoa(len(steps) + 2)
 	dataChoice := strconv.Itoa(len(steps) + 3)
@@ -68,11 +71,11 @@ func Run(view *ui.UI) error {
 			return shared.ErrReturnToMenu
 		}
 		if key, err := input.Number(choice, 1, len(steps)); err == nil && key >= 1 && key <= len(steps) {
-			err := runCleanupStepWithConfirm(view, account, steps[key-1])
-			if errors.Is(err, shared.ErrReturnToMenu) {
-				continue
-			}
-			return err
+			step := steps[key-1]
+			shared.RunAction(view, "配置清理失败，已返回清理配置", func() error {
+				return runCleanupStepWithConfirm(view, account, step)
+			})
+			continue
 		}
 		switch choice {
 		case allChoice:
@@ -110,27 +113,27 @@ func Run(view *ui.UI) error {
 				fmt.Println("已取消清理")
 				continue
 			}
-			return runAllCleanupSteps(account, steps, func() error {
-				if dataInfo == nil {
-					latest, err := inspectSoftwareData(shared.DataDir)
-					if err != nil {
-						return err
+			shared.RunAction(view, "配置清理失败，已返回清理配置", func() error {
+				return runAllCleanupSteps(account, steps, func() error {
+					if dataInfo == nil {
+						latest, err := inspectSoftwareData(shared.DataDir)
+						if err != nil {
+							return err
+						}
+						if latest != nil {
+							return fmt.Errorf("清理期间出现新的软件数据目录，未删除，请检查后重试")
+						}
+						return nil
 					}
-					if latest != nil {
-						return fmt.Errorf("清理期间出现新的软件数据目录，未删除，请检查后重试")
-					}
-					return nil
-				}
-				return deleteSoftwareData(shared.DataDir, dataInfo)
+					return deleteSoftwareData(shared.DataDir, dataInfo)
+				})
 			})
 		case backupChoice:
 			shared.RunAction(view, "备份清理失败，已返回清理配置", func() error { return cleanupbackups.Run(view) })
 		case dataChoice:
-			err := cleanupSoftwareData(view, shared.DataDir)
-			if errors.Is(err, shared.ErrReturnToMenu) {
-				continue
-			}
-			return err
+			shared.RunAction(view, "删除软件数据目录失败，已返回清理配置", func() error {
+				return cleanupSoftwareData(view, shared.DataDir)
+			})
 		case tempChoice:
 			shared.RunAction(view, "中断临时文件清理失败，已返回清理配置", func() error {
 				return temps.Run(view)

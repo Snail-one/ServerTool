@@ -304,33 +304,31 @@ func printLSUSBDevices() {
 }
 
 func askUPSDeviceConfig(view *ui.UI) (upsDeviceConfig, error) {
-	vendorID, err := askUSBID(view, "请输入 vendorid（例如 0463）：")
-	if err != nil {
-		return upsDeviceConfig{}, err
-	}
-
-	productID, err := askUSBID(view, "请输入 productid（例如 ffff）：")
-	if err != nil {
-		return upsDeviceConfig{}, err
-	}
-
-	desc, err := view.Ask("请输入 desc（例如 SANTAK TG-BOX 850 USB UPS）：")
-	if err != nil {
-		return upsDeviceConfig{}, err
-	}
-	if shared.IsReturnChoice(desc) {
-		return upsDeviceConfig{}, shared.ErrReturnToMenu
-	}
-	desc, err = normalizeUPSDescription(desc)
-	if err != nil {
-		return upsDeviceConfig{}, err
-	}
-
-	return upsDeviceConfig{
-		VendorID:  strings.ToLower(vendorID),
-		ProductID: strings.ToLower(productID),
-		Desc:      desc,
-	}, nil
+	var device upsDeviceConfig
+	err := ui.RunPromptSteps(
+		ui.PromptStep{Run: func() error {
+			value, err := askUSBID(view, "请输入 vendorid（例如 0463，0/q 返回 UPS 菜单）：")
+			device.VendorID = strings.ToLower(value)
+			return err
+		}},
+		ui.PromptStep{Run: func() error {
+			value, err := askUSBID(view, "请输入 productid（例如 ffff，0/q 返回 vendorid）：")
+			device.ProductID = strings.ToLower(value)
+			return err
+		}},
+		ui.PromptStep{Run: func() error {
+			value, err := view.Ask("请输入 desc（例如 SANTAK TG-BOX 850 USB UPS，0/q 返回 productid）：")
+			if err != nil {
+				return err
+			}
+			if shared.IsReturnChoice(value) {
+				return shared.ErrReturnToMenu
+			}
+			device.Desc, err = normalizeUPSDescription(value)
+			return err
+		}},
+	)
+	return device, err
 }
 
 func askUSBID(view *ui.UI, prompt string) (string, error) {

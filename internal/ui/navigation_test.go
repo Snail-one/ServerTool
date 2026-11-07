@@ -30,3 +30,47 @@ func TestDecliningOptionalConfirmationRemainsAChoice(t *testing.T) {
 		}
 	}
 }
+
+func TestPromptHistorySkipsPagesThatWereNotShown(t *testing.T) {
+	view := &UI{reader: bufio.NewReader(strings.NewReader("next\nq\nq\nparent-next\n"))}
+	var prompts []string
+	page := func(name string) func() error {
+		return func() error {
+			prompts = append(prompts, name)
+			answer, err := view.Ask(name)
+			if err == nil && IsReturnChoice(answer) {
+				return ErrReturnToMenu
+			}
+			return err
+		}
+	}
+	err := RunPromptSteps(
+		PromptStep{Run: page("first")},
+		PromptStep{Enabled: func() bool { return false }, Run: page("hidden")},
+		PromptStep{Run: page("last")},
+	)
+	if !errors.Is(err, ErrReturnToMenu) || strings.Join(prompts, ",") != "first,last,first" {
+		t.Fatalf("incorrect history: prompts=%v err=%v", prompts, err)
+	}
+	if next, err := view.Ask("parent"); err != nil || next != "parent-next" {
+		t.Fatalf("next=%q err=%v", next, err)
+	}
+}
+
+func TestPromptFailureAndExplicitCancellationStopTheForm(t *testing.T) {
+	failure := errors.New("input unavailable")
+	for _, cause := range []error{failure, ErrCancelAction} {
+		err := RunPromptSteps(
+			PromptStep{Run: func() error { return nil }},
+			PromptStep{Run: func() error { return cause }},
+			PromptStep{Run: func() error { t.Fatal("form continued after failure or cancellation"); return nil }},
+		)
+		want := cause
+		if cause == ErrCancelAction {
+			want = ErrReturnToMenu
+		}
+		if !errors.Is(err, want) {
+			t.Fatalf("got %v, want %v", err, want)
+		}
+	}
+}

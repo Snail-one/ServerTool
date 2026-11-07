@@ -34,47 +34,65 @@ func ConfigureRootLogin(view *ui.UI) error {
 	if err != nil {
 		return err
 	}
-	row := sshdPermitRootLoginRow(settings)
-	ui.PrintField("当前 Root SSH 登录", row.value)
-	ui.MenuOption("1", "仅允许 root 公钥登录")
-	ui.MenuOption("2", "禁用 root SSH 登录（包括公钥）")
-	ui.MenuExit("0/q", "返回")
-	choice, err := view.Ask("请选择：")
+	permitRootLogin, err := promptRootLoginPolicy(view, settings)
 	if err != nil {
 		return err
-	}
-	if shared.IsReturnChoice(choice) {
-		return shared.ErrReturnToMenu
-	}
-	permitRootLogin := "prohibit-password"
-	switch choice {
-	case "1":
-		log.Warn("root 需有可用公钥才能登录；此操作不会添加公钥，也不会开放 root 密码登录。")
-		confirmed, err := view.Confirm("确认仅允许 root 公钥登录？(y/N)：")
-		if err != nil {
-			return err
-		}
-		if !confirmed {
-			return shared.ErrReturnToMenu
-		}
-	case "2":
-		confirmed, err := confirmDisableRootLogin(view)
-		if err != nil {
-			return err
-		}
-		if !confirmed {
-			return shared.ErrReturnToMenu
-		}
-		permitRootLogin = "no"
-	default:
-		ui.InvalidChoice()
-		return shared.ErrReturnToMenu
 	}
 	if err := updateRootLoginPolicy(customSSHDConfigPath, permitRootLogin); err != nil {
 		return err
 	}
 	log.Info("Root SSH 登录策略已更新；请保留当前会话，新开终端测试登录。")
 	return nil
+}
+
+func promptRootLoginPolicy(view *ui.UI, settings sshdSettings) (string, error) {
+	permitRootLogin := "prohibit-password"
+	err := ui.RunPromptSteps(
+		ui.PromptStep{Run: func() error {
+			row := sshdPermitRootLoginRow(settings)
+			ui.PrintField("当前 Root SSH 登录", row.value)
+			ui.MenuOption("1", "仅允许 root 公钥登录")
+			ui.MenuOption("2", "禁用 root SSH 登录（包括公钥）")
+			ui.MenuExit("0/q", "返回 SSH 管理")
+			for {
+				choice, err := view.Ask("请选择：")
+				if err != nil {
+					return err
+				}
+				if shared.IsReturnChoice(choice) {
+					return shared.ErrReturnToMenu
+				}
+				switch choice {
+				case "1":
+					permitRootLogin = "prohibit-password"
+					return nil
+				case "2":
+					permitRootLogin = "no"
+					return nil
+				default:
+					ui.InvalidChoice()
+				}
+			}
+		}},
+		ui.PromptStep{Run: func() error {
+			var confirmed bool
+			var err error
+			if permitRootLogin == "no" {
+				confirmed, err = confirmDisableRootLogin(view)
+			} else {
+				log.Warn("root 需有可用公钥才能登录；此操作不会添加公钥，也不会开放 root 密码登录。")
+				confirmed, err = view.Confirm("确认仅允许 root 公钥登录？(y/N，0/q 返回上一步)：")
+			}
+			if err != nil {
+				return err
+			}
+			if !confirmed {
+				return ui.ErrCancelAction
+			}
+			return nil
+		}},
+	)
+	return permitRootLogin, err
 }
 
 func confirmDisableRootLogin(view *ui.UI) (bool, error) {

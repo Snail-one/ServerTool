@@ -31,12 +31,24 @@ func CleanupDockerResources(view *ui.UI) error {
 	if len(runtimes) == 0 {
 		return fmt.Errorf("未检测到 Docker 或 Podman")
 	}
-	rt, err := selectCleanupRuntime(view, runtimes)
-	if err != nil {
+	return cleanupDetectedRuntimes(view, runtimes, func(rt runtime.Runtime) error {
+		log.Info("清理 ", rt.Display, " 容器与资源")
+		return runDockerCleanup(view, rt)
+	})
+}
+
+func cleanupDetectedRuntimes(view interface{ Ask(string) (string, error) }, runtimes []runtime.Runtime, clean func(runtime.Runtime) error) error {
+	for {
+		rt, err := selectCleanupRuntime(view, runtimes)
+		if err != nil {
+			return err
+		}
+		err = clean(rt)
+		if len(runtimes) > 1 && errors.Is(err, shared.ErrReturnToMenu) {
+			continue
+		}
 		return err
 	}
-	log.Info("清理 ", rt.Display, " 容器与资源")
-	return runDockerCleanup(view, rt)
 }
 
 func selectCleanupRuntime(view interface{ Ask(string) (string, error) }, runtimes []runtime.Runtime) (runtime.Runtime, error) {
