@@ -147,6 +147,7 @@ func currentConfigFields(autostart autostartStatus) []ui.CardField {
 		ownership,
 		{Label: "开机自启", Value: autostartLabel},
 		packetCounterStateField(installed, live),
+		forwardingStateField(inspectForwarding()),
 	}
 	fields = append(fields, echoStateFields(installed, live)...)
 	if installed && live.err == nil {

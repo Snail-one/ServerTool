@@ -220,8 +220,8 @@ func TestCurrentConfigFieldsShowsOnlyFirewallStatus(t *testing.T) {
 			} else if fieldValue(fields, "防火墙") != "未开启（本工具）" || !strings.Contains(fieldValue(fields, "nftables"), "v1.1.3") {
 				t.Fatal("saved config must not imply loaded rules; installed version should be shown")
 			}
-			if scenario != "query failure" && len(fields) != 8 {
-				t.Fatalf("unloaded status card should have eight fields, got %d", len(fields))
+			if scenario != "query failure" && len(fields) != 9 {
+				t.Fatalf("unloaded status card should have nine fields, got %d", len(fields))
 			}
 			if scenario == "managed" && fieldValue(fields, "工具接管") != "已接管" {
 				t.Fatal("owned config should show managed even when not active")

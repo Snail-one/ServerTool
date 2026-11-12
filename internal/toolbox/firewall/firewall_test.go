@@ -18,15 +18,19 @@ func setupTest(t *testing.T) {
 	previousExists, previousRun, previousOutput, previousRoot, previousPath := commandExists, commandRun, commandOutput, isRoot, configPath
 	previousDataDir := dataDir
 	previousPreserve := preserveOriginal
+	previousProcRoot, previousForwardingPath := forwardingProcRoot, forwardingConfigPath
 	preserveOriginal = func() error { return nil }
 	t.Cleanup(func() {
 		commandExists, commandRun, commandOutput, isRoot, configPath = previousExists, previousRun, previousOutput, previousRoot, previousPath
 		dataDir = previousDataDir
 		preserveOriginal = previousPreserve
+		forwardingProcRoot, forwardingConfigPath = previousProcRoot, previousForwardingPath
 	})
 	t.Setenv("SSH_CONNECTION", "")
 	configPath = filepath.Join(t.TempDir(), "nftables.conf")
 	dataDir = filepath.Join(t.TempDir(), "snailtool")
+	forwardingProcRoot = t.TempDir()
+	forwardingConfigPath = filepath.Join(t.TempDir(), "forwarding.conf")
 	isRoot = func() bool { return true }
 	commandExists = func(name string) bool { return name == "nft" }
 	commandRun = func(name string, args ...string) error {
