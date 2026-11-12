@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/ui"
 )
@@ -96,10 +95,11 @@ func configureForwarding(view *ui.UI) error {
 	ui.MenuTitle("防火墙管理", "常用功能设置", "内核转发")
 	ui.PrintInfoCard("内核转发", forwardingStateField(states),
 		ui.CardField{Label: "作用范围", Value: "同时设置内核支持的 IPv4 / IPv6 全局转发"},
-		ui.CardField{Label: "生效方式", Value: "立即生效，并保存至 " + forwardingConfigPath},
+		ui.CardField{Label: "生效方式", Value: "立即生效；开启时保存配置，关闭时直接删除配置文件"},
+		ui.CardField{Label: "配置文件", Value: forwardingConfigPath},
 	)
-	ui.MenuOption("1", "开启内核转发")
-	ui.MenuOption("2", "关闭内核转发")
+	ui.MenuOptionHint("1", "开启内核转发", "保存持久配置并立即开启")
+	ui.MenuOptionHint("2", "关闭内核转发", "直接删除配置文件，立即关闭")
 	ui.MenuExit("0/q", "返回常用功能设置")
 	choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "on", "2": "off"})
 	if err != nil {
@@ -124,18 +124,25 @@ func configureForwarding(view *ui.UI) error {
 	if choice == "on" {
 		target, action = "1", "开启"
 	}
-	var settings []string
-	for _, state := range states {
-		if !state.unavailable {
-			settings = append(settings, state.key+" = "+target)
+	var updated []byte
+	configAction := "直接删除整个文件 " + forwardingConfigPath + "；重启后由系统其他配置及服务决定转发状态"
+	configResult := "内核转发持久配置已移除"
+	if choice == "on" {
+		var settings []string
+		for _, state := range states {
+			if !state.unavailable {
+				settings = append(settings, state.key+" = "+target)
+			}
 		}
+		updated = []byte(shared.AppendBlock(cleaned, shared.FormatManagedBlock(forwardingBegin, strings.Join(settings, "\n"), forwardingEnd)))
+		configAction = "保存至 " + forwardingConfigPath + "（开机加载时可能被其他系统配置覆盖）"
+		configResult = "内核转发配置已保存"
 	}
-	updated := []byte(shared.AppendBlock(cleaned, shared.FormatManagedBlock(forwardingBegin, strings.Join(settings, "\n"), forwardingEnd)))
 	ui.PrintWarningCard("确认内核转发设置",
 		ui.CardField{Label: "操作", Value: action + "内核支持的 IPv4 / IPv6 转发"},
 		ui.CardField{Label: "影响", Value: "关闭会影响 Docker、VPN 和路由转发；开启后仍受转发规则约束"},
 		ui.CardField{Label: "网络行为", Value: "切换 IPv4 转发会重置相关内核网络参数；开启 IPv6 转发可能影响 RA 自动配置"},
-		ui.CardField{Label: "持久配置", Value: forwardingConfigPath + "（开机加载时可能被其他系统配置覆盖）"},
+		ui.CardField{Label: "持久配置", Value: configAction},
 	)
 	confirmed, err := view.Confirm("是否" + action + "内核转发？(y/N，0/q 返回)：")
 	if err != nil {
@@ -160,16 +167,15 @@ func configureForwarding(view *ui.UI) error {
 	if currentExists != exists || !bytes.Equal(current, previous) {
 		return fmt.Errorf("内核转发配置在确认期间发生变化，未修改，请重新操作")
 	}
-	if !bytes.Equal(previous, updated) {
-		if exists {
-			backup, err := (shared.BackupStore{Root: dataDir, Module: "firewall"}).Snapshot(forwardingConfigPath)
-			if err != nil {
-				return err
+	if (choice == "off" && exists) || (choice == "on" && !bytes.Equal(previous, updated)) {
+		if choice == "off" {
+			if err := shared.RemoveRegularFile(forwardingConfigPath); err != nil {
+				return fmt.Errorf("删除内核转发配置失败，尚未修改运行状态: %w", err)
 			}
-			log.Info("已备份内核转发配置：", backup)
-		}
-		if err := shared.AtomicWriteFile(forwardingConfigPath, updated, shared.AtomicWriteOptions{Mode: 0644}); err != nil {
-			return fmt.Errorf("保存内核转发配置失败，尚未修改运行状态: %w", err)
+		} else {
+			if err := shared.AtomicWriteFile(forwardingConfigPath, updated, shared.AtomicWriteOptions{Mode: 0644}); err != nil {
+				return fmt.Errorf("保存内核转发配置失败，尚未修改运行状态: %w", err)
+			}
 		}
 	}
 	// Apply only these keys, never sysctl --system or -p: unrelated pending
@@ -180,7 +186,7 @@ func configureForwarding(view *ui.UI) error {
 		}
 		out, err := commandOutput("sysctl", "-w", state.key+"="+target)
 		if err != nil {
-			return fmt.Errorf("内核转发配置已保存，但设置 %s 失败，运行状态可能部分生效，请刷新检查并重试: %w: %s", state.family, err, strings.TrimSpace(out))
+			return fmt.Errorf("%s，但设置 %s 失败，运行状态可能部分生效，请刷新检查并重试: %w: %s", configResult, state.family, err, strings.TrimSpace(out))
 		}
 	}
 	result := inspectForwarding()
@@ -189,11 +195,11 @@ func configureForwarding(view *ui.UI) error {
 			continue
 		}
 		if state.err != nil || state.unavailable || state.value != target {
-			return fmt.Errorf("内核转发配置已保存，但无法确认 %s 已%s，请刷新检查并重试", state.family, action)
+			return fmt.Errorf("%s，但无法确认 %s 已%s，请刷新检查并重试", configResult, state.family, action)
 		}
 	}
 	ui.PrintSuccessCard("内核转发已"+action, forwardingStateField(result),
-		ui.CardField{Label: "持久配置", Value: forwardingConfigPath},
+		ui.CardField{Label: "持久配置", Value: configResult + "：" + forwardingConfigPath},
 	)
 	return nil
 }
