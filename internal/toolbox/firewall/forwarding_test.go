@@ -56,6 +56,8 @@ func TestForwardingStatusReadsKernelAndDistinguishesErrors(t *testing.T) {
 func TestForwardingChangesOnlySelectedProtocol(t *testing.T) {
 	const v4 = "net.ipv4.ip_forward = 1"
 	const v6 = "net.ipv6.conf.all.forwarding = 1"
+	const off4 = "net.ipv4.ip_forward = 0"
+	const off6 = "net.ipv6.conf.all.forwarding = 0"
 	for _, scenario := range []struct {
 		name, ipv4, ipv6, choice, saved, wantBody string
 		wantCalls                                 []string
@@ -64,18 +66,20 @@ func TestForwardingChangesOnlySelectedProtocol(t *testing.T) {
 		{"enable IPv6", "0", "0", "3", "", v6, []string{"net.ipv6.conf.all.forwarding=1"}},
 		{"enable IPv4 preserves IPv6", "0", "1", "1", v6, v4 + "\n" + v6, []string{"net.ipv4.ip_forward=1"}},
 		{"enable IPv6 preserves IPv4", "1", "0", "3", v4, v4 + "\n" + v6, []string{"net.ipv6.conf.all.forwarding=1"}},
-		{"disable IPv4 preserves IPv6", "1", "1", "2", v4 + "\n" + v6, v6, []string{"net.ipv4.ip_forward=0"}},
-		{"disable IPv6 preserves IPv4", "1", "1", "4", v4 + "\n" + v6, v4, []string{"net.ipv6.conf.all.forwarding=0"}},
-		{"disable last IPv4", "1", "1", "2", v4, "", []string{"net.ipv4.ip_forward=0"}},
-		{"disable last IPv6", "1", "1", "4", v6, "", []string{"net.ipv6.conf.all.forwarding=0"}},
-		{"disable missing config", "1", "1", "2", "", "", []string{"net.ipv4.ip_forward=0"}},
-		{"already disabled", "0", "1", "2", v4, "", nil},
+		{"disable IPv4 preserves IPv6", "1", "1", "2", v4 + "\n" + v6, off4 + "\n" + v6, []string{"net.ipv4.ip_forward=0"}},
+		{"disable IPv6 preserves IPv4", "1", "1", "4", v4 + "\n" + v6, v4 + "\n" + off6, []string{"net.ipv6.conf.all.forwarding=0"}},
+		{"disable only saved IPv4", "1", "1", "2", v4, off4, []string{"net.ipv4.ip_forward=0"}},
+		{"disable only saved IPv6", "1", "1", "4", v6, off6, []string{"net.ipv6.conf.all.forwarding=0"}},
+		{"disable missing config", "1", "1", "2", "", off4, []string{"net.ipv4.ip_forward=0"}},
+		{"already disabled", "0", "1", "2", v4, off4, nil},
 		{"already enabled", "1", "1", "1", "", v4, nil},
+		{"enable IPv4 preserves disabled IPv6", "0", "0", "1", off6, v4 + "\n" + off6, []string{"net.ipv4.ip_forward=1"}},
+		{"enable IPv6 preserves disabled IPv4", "0", "0", "3", off4, off4 + "\n" + v6, []string{"net.ipv6.conf.all.forwarding=1"}},
 		{"IPv4 only", "0", "", "1", "", v4, []string{"net.ipv4.ip_forward=1"}},
 		{"IPv6 only", "", "0", "3", "", v6, []string{"net.ipv6.conf.all.forwarding=1"}},
 		{"other protocol unreadable", "invalid", "0", "3", "", v6, []string{"net.ipv6.conf.all.forwarding=1"}},
-		{"retain unsupported protocol config", "1", "", "2", v4 + "\n" + v6, v6, []string{"net.ipv4.ip_forward=0"}},
-		{"remove old disabled setting", "1", "0", "2", v4 + "\nnet.ipv6.conf.all.forwarding = 0", "", []string{"net.ipv4.ip_forward=0"}},
+		{"retain unsupported protocol config", "1", "", "2", v4 + "\n" + v6, off4 + "\n" + v6, []string{"net.ipv4.ip_forward=0"}},
+		{"persist both disabled", "1", "0", "2", v4 + "\n" + off6, off4 + "\n" + off6, []string{"net.ipv4.ip_forward=0"}},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			setupTest(t)
@@ -95,12 +99,6 @@ func TestForwardingChangesOnlySelectedProtocol(t *testing.T) {
 			checkConfig := func() {
 				t.Helper()
 				data, err := os.ReadFile(forwardingConfigPath)
-				if scenario.wantBody == "" {
-					if !os.IsNotExist(err) {
-						t.Fatalf("config must be removed: %q err=%v", data, err)
-					}
-					return
-				}
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -142,7 +140,7 @@ func TestForwardingChangesOnlySelectedProtocol(t *testing.T) {
 	}
 }
 
-func TestForwardingDisableDeletesWholeFileWithoutBackup(t *testing.T) {
+func TestForwardingDisablePersistsZeroWithoutBackup(t *testing.T) {
 	setupTest(t)
 	commandExists = func(name string) bool { return name == "sysctl" }
 	writeForwardingValue(t, "net.ipv4.ip_forward", "0")
@@ -153,8 +151,9 @@ func TestForwardingDisableDeletesWholeFileWithoutBackup(t *testing.T) {
 	if err := configureForwarding(inputUI(t, "2\ny\n")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(forwardingConfigPath); !os.IsNotExist(err) {
-		t.Fatalf("config must be deleted: %v", err)
+	updated := shared.ReadFileString(forwardingConfigPath)
+	if !strings.Contains(updated, "net.ipv4.ip_forward = 0") || !strings.Contains(updated, "net.core.somaxconn = 1024") {
+		t.Fatalf("must persist the disabled setting and retain other content: %s", updated)
 	}
 	if _, err := os.Stat(dataDir); !os.IsNotExist(err) {
 		t.Fatal("disabling forwarding must not create backup data")
@@ -162,7 +161,7 @@ func TestForwardingDisableDeletesWholeFileWithoutBackup(t *testing.T) {
 }
 
 func TestForwardingCancellationPreservesConfig(t *testing.T) {
-	for _, input := range []string{"2\nn\n", "2\nq\n", "2\n", "5\nn\n", "5\nq\n", "5\n"} {
+	for _, input := range []string{"2\nn\n", "2\nq\n", "2\n", "5\nn\n", "5\nq\n", "5\n", "6\nn\n", "6\nq\n", "6\n"} {
 		t.Run(input, func(t *testing.T) {
 			setupTest(t)
 			commandExists = func(name string) bool { return name == "sysctl" }
@@ -179,6 +178,136 @@ func TestForwardingCancellationPreservesConfig(t *testing.T) {
 			}
 			if _, err := os.Stat(dataDir); !os.IsNotExist(err) {
 				t.Fatal("must not create a backup on cancellation")
+			}
+		})
+	}
+}
+
+func TestForwardingDockerWarningForIPv4Shutdown(t *testing.T) {
+	for _, scenario := range []struct {
+		name, choice, dockerCommand string
+		warn                        bool
+	}{
+		{"close IPv4 with Docker", "2", "docker", true},
+		{"close IPv4 with daemon only", "2", "dockerd", true},
+		{"reset with Docker", "5", "docker", true},
+		{"close IPv4 without Docker", "2", "", false},
+		{"enable IPv4 with Docker", "1", "docker", false},
+		{"close IPv6 with Docker", "4", "docker", false},
+		{"remove config with Docker", "6", "docker", false},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			setupTest(t)
+			commandExists = func(name string) bool { return name == "sysctl" || name == scenario.dockerCommand }
+			writeForwardingValue(t, ipv4Forwarding, "1")
+			writeForwardingValue(t, ipv6Forwarding, "1")
+			commandOutput = func(name string, args ...string) (string, error) {
+				if name != "sysctl" || len(args) != 2 || args[0] != "-w" {
+					t.Fatalf("unexpected command: %s %v", name, args)
+				}
+				key, value, _ := strings.Cut(args[1], "=")
+				writeForwardingValue(t, key, value)
+				return "", nil
+			}
+			output := capturePortOutput(t, func() {
+				if err := configureForwarding(inputUI(t, scenario.choice+"\ny\n")); err != nil {
+					t.Fatal(err)
+				}
+			})
+			if got := strings.Contains(output, "检测到 Docker，Docker 需要启用 IPv4 转发"); got != scenario.warn {
+				t.Fatalf("Docker warning=%v want=%v: %s", got, scenario.warn, output)
+			}
+			if scenario.warn && !strings.Contains(output, "确认") {
+				t.Fatal("Docker warning must be part of the confirmation prompt")
+			}
+		})
+	}
+}
+
+func TestForwardingDockerWarningCancellationPreservesState(t *testing.T) {
+	for _, choice := range []string{"2", "5"} {
+		for _, answer := range []string{"n\n", "q\n", ""} {
+			t.Run(choice+"/"+answer, func(t *testing.T) {
+				setupTest(t)
+				commandExists = func(name string) bool { return name == "sysctl" || name == "docker" }
+				writeForwardingValue(t, ipv4Forwarding, "1")
+				writeForwardingValue(t, ipv6Forwarding, "1")
+				previous := shared.FormatManagedBlock(forwardingBegin, "net.ipv4.ip_forward = 1\nnet.ipv6.conf.all.forwarding = 1", forwardingEnd)
+				if err := os.WriteFile(forwardingConfigPath, []byte(previous), 0644); err != nil {
+					t.Fatal(err)
+				}
+				output := capturePortOutput(t, func() {
+					if err := configureForwarding(inputUI(t, choice+"\n"+answer)); err == nil {
+						t.Fatal("expected cancellation or EOF")
+					}
+				})
+				if !strings.Contains(output, "检测到 Docker，Docker 需要启用 IPv4 转发") {
+					t.Fatal("must warn about Docker before asking for confirmation")
+				}
+				if shared.ReadFileString(forwardingConfigPath) != previous {
+					t.Fatal("must preserve config when Docker shutdown warning is declined")
+				}
+				for _, state := range inspectForwarding() {
+					if state.value != "1" {
+						t.Fatal("must preserve both runtime forwarding states")
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestForwardingRemoveConfigDoesNotApplyRuntimeChanges(t *testing.T) {
+	for _, scenario := range []struct {
+		name, ipv4, ipv6, config string
+	}{
+		{"enabled", "1", "1", "managed"},
+		{"mixed", "1", "0", "managed"},
+		{"unsupported", "", "", "managed"},
+		{"unreadable state", "invalid", "1", "managed"},
+		{"damaged config", "1", "1", "damaged"},
+		{"missing config", "1", "1", "missing"},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			setupTest(t)
+			commandExists = func(name string) bool {
+				if name == "sysctl" {
+					t.Fatal("removing config must not require sysctl")
+				}
+				return name == "docker"
+			}
+			if scenario.ipv4 != "" {
+				writeForwardingValue(t, ipv4Forwarding, scenario.ipv4)
+			}
+			if scenario.ipv6 != "" {
+				writeForwardingValue(t, ipv6Forwarding, scenario.ipv6)
+			}
+			if scenario.config != "missing" {
+				previous := shared.FormatManagedBlock(forwardingBegin, "net.ipv4.ip_forward = 1\nnet.ipv6.conf.all.forwarding = 1", forwardingEnd)
+				if scenario.config == "damaged" {
+					previous = forwardingBegin + "\ninvalid config\n"
+				}
+				if err := os.WriteFile(forwardingConfigPath, []byte(previous), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before := inspectForwarding()
+			output := capturePortOutput(t, func() {
+				if err := configureForwarding(inputUI(t, "6\ny\n")); err != nil {
+					t.Fatal(err)
+				}
+			})
+			if !reflect.DeepEqual(before, inspectForwarding()) {
+				t.Fatal("removing config must leave runtime state unchanged")
+			}
+			if _, err := os.Stat(forwardingConfigPath); !os.IsNotExist(err) {
+				t.Fatal("must remove config file")
+			}
+			if _, err := os.Stat(dataDir); !os.IsNotExist(err) {
+				t.Fatal("must not create backup data")
+			}
+			if !strings.Contains(output, "保持不变，未修改内核参数") || strings.Contains(output, "检测到 Docker，Docker 需要启用 IPv4 转发") {
+				t.Fatalf("must describe config removal without a runtime shutdown warning: %s", output)
 			}
 		})
 	}
@@ -293,11 +422,11 @@ func TestForwardingResetReportsIncompleteRuntimeChanges(t *testing.T) {
 	}
 }
 
-func TestForwardingDisableReportsFailuresAfterRemovingConfig(t *testing.T) {
-	for _, scenario := range []string{"command failure", "verification failure", "delete failure"} {
+func TestForwardingDisableReportsFailuresAfterPersistingZero(t *testing.T) {
+	for _, scenario := range []string{"command failure", "verification failure", "save failure"} {
 		t.Run(scenario, func(t *testing.T) {
 			setupTest(t)
-			if scenario == "delete failure" && os.Geteuid() == 0 {
+			if scenario == "save failure" && os.Geteuid() == 0 {
 				t.Skip("root bypasses directory permissions")
 			}
 			commandExists = func(name string) bool { return name == "sysctl" }
@@ -307,7 +436,7 @@ func TestForwardingDisableReportsFailuresAfterRemovingConfig(t *testing.T) {
 			if err := os.WriteFile(forwardingConfigPath, []byte(previous), 0644); err != nil {
 				t.Fatal(err)
 			}
-			if scenario == "delete failure" {
+			if scenario == "save failure" {
 				parent := filepath.Dir(forwardingConfigPath)
 				if err := os.Chmod(parent, 0500); err != nil {
 					t.Fatal(err)
@@ -326,13 +455,13 @@ func TestForwardingDisableReportsFailuresAfterRemovingConfig(t *testing.T) {
 			if err == nil {
 				t.Fatal("must report failure")
 			}
-			if scenario == "delete failure" {
+			if scenario == "save failure" {
 				if calls != 0 || shared.ReadFileString(forwardingConfigPath) != previous {
 					t.Fatalf("must preserve runtime and config on failure: calls=%d err=%v", calls, err)
 				}
 			} else {
-				if _, statErr := os.Stat(forwardingConfigPath); !os.IsNotExist(statErr) || !strings.Contains(err.Error(), "持久配置已移除") {
-					t.Fatalf("must explain removed config but incomplete runtime change: %v", err)
+				if !strings.Contains(shared.ReadFileString(forwardingConfigPath), "net.ipv4.ip_forward = 0") || !strings.Contains(err.Error(), "配置已保存") {
+					t.Fatalf("must explain saved disabled setting but incomplete runtime change: %v", err)
 				}
 			}
 		})

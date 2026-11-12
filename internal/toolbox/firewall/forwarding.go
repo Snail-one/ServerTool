@@ -89,7 +89,7 @@ func validateForwarding(states []forwardingState) error {
 }
 
 // Keep the other protocol's saved setting independently of its runtime state.
-// A nil result removes the file when neither protocol has a saved enabled value.
+// Both enabled and disabled settings are persisted until explicitly removed.
 func updateForwardingConfig(previous []byte, key string, enabled bool) ([]byte, error) {
 	content := string(previous)
 	cleaned, err := shared.RemoveManagedBlockChecked(content, forwardingBegin, forwardingEnd)
@@ -117,12 +117,13 @@ func updateForwardingConfig(previous []byte, key string, enabled bool) ([]byte, 
 	saved[key] = enabled
 	var settings []string
 	for _, name := range []string{ipv4Forwarding, ipv6Forwarding} {
-		if saved[name] {
-			settings = append(settings, name+" = 1")
+		if value, found := saved[name]; found {
+			setting := "0"
+			if value {
+				setting = "1"
+			}
+			settings = append(settings, name+" = "+setting)
 		}
-	}
-	if len(settings) == 0 {
-		return nil, nil
 	}
 	return []byte(shared.AppendBlock(cleaned, shared.FormatManagedBlock(forwardingBegin, strings.Join(settings, "\n"), forwardingEnd))), nil
 }
@@ -134,18 +135,15 @@ func configureForwarding(view *ui.UI) error {
 	states := inspectForwarding()
 	ui.ClearScreen()
 	ui.MenuTitle("防火墙管理", "常用功能设置", "内核转发")
-	ui.PrintInfoCard("内核转发", forwardingStateField(states),
-		ui.CardField{Label: "作用范围", Value: "分别设置 IPv4 / IPv6 全局转发"},
-		ui.CardField{Label: "生效方式", Value: "立即生效；开启保存对应配置，关闭移除对应配置，两者均无持久开启配置时删除文件"},
-		ui.CardField{Label: "配置文件", Value: forwardingConfigPath},
-	)
-	ui.MenuOptionHint("1", "开启 IPv4 转发", "保存 IPv4 持久配置并立即开启")
-	ui.MenuOptionHint("2", "关闭 IPv4 转发", "移除 IPv4 持久配置并立即关闭")
-	ui.MenuOptionHint("3", "开启 IPv6 转发", "保存 IPv6 持久配置并立即开启")
-	ui.MenuOptionHint("4", "关闭 IPv6 转发", "移除 IPv6 持久配置并立即关闭")
+	ui.PrintInfoCard("内核转发", forwardingStateField(states))
+	ui.MenuOptionHint("1", "开启 IPv4 转发", "持久化写入 1，并立即开启")
+	ui.MenuOptionHint("2", "关闭 IPv4 转发", "持久化写入 0，并立即关闭")
+	ui.MenuOptionHint("3", "开启 IPv6 转发", "持久化写入 1，并立即开启")
+	ui.MenuOptionHint("4", "关闭 IPv6 转发", "持久化写入 0，并立即关闭")
 	ui.MenuOptionHint("5", "恢复默认", "删除配置文件，同时关闭 IPv4 / IPv6 转发")
+	ui.MenuOptionHint("6", "仅删除配置文件", "移除持久配置，当前转发状态保持不变")
 	ui.MenuExit("0/q", "返回常用功能设置")
-	choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "ipv4-on", "2": "ipv4-off", "3": "ipv6-on", "4": "ipv6-off", "5": "reset"})
+	choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "ipv4-on", "2": "ipv4-off", "3": "ipv6-on", "4": "ipv6-off", "5": "reset", "6": "remove-config"})
 	if err != nil {
 		return err
 	}
@@ -155,15 +153,18 @@ func configureForwarding(view *ui.UI) error {
 	}
 	state := states[index]
 	reset := choice == "reset"
+	removeOnly := choice == "remove-config"
 	selected := states[index : index+1]
 	if reset {
 		selected = states
 	}
-	if err := validateForwarding(selected); err != nil {
-		return err
-	}
-	if !commandExists("sysctl") {
-		return fmt.Errorf("未找到 sysctl，无法设置内核转发")
+	if !removeOnly {
+		if err := validateForwarding(selected); err != nil {
+			return err
+		}
+		if !commandExists("sysctl") {
+			return fmt.Errorf("未找到 sysctl，无法设置内核转发")
+		}
 	}
 	previous, exists, err := shared.ReadRegularFile(forwardingConfigPath)
 	if err != nil {
@@ -171,7 +172,7 @@ func configureForwarding(view *ui.UI) error {
 	}
 	enabled := strings.HasSuffix(choice, "-on")
 	var updated []byte
-	if !reset {
+	if !reset && !removeOnly {
 		updated, err = updateForwardingConfig(previous, state.key, enabled)
 		if err != nil {
 			return err
@@ -184,12 +185,8 @@ func configureForwarding(view *ui.UI) error {
 	configAction := "直接删除整个文件 " + forwardingConfigPath + "；重启后由系统其他配置及服务决定转发状态"
 	configResult := "内核转发持久配置已移除"
 	if updated != nil {
-		configAction = "保存至 " + forwardingConfigPath + "（开机加载时可能被其他系统配置覆盖）"
+		configAction = "持久化写入 " + state.key + " = " + target + " 至 " + forwardingConfigPath
 		configResult = "内核转发配置已保存"
-		if !enabled {
-			configAction = "移除 " + state.family + " 持久配置，保留另一协议的开启配置；重启后由系统其他配置及服务决定该协议的转发状态"
-			configResult = state.family + " 持久配置已移除，另一协议的配置已保留"
-		}
 	}
 	networkBehavior := "切换 IPv4 转发会重置相关内核网络参数"
 	if index == 1 {
@@ -201,29 +198,45 @@ func configureForwarding(view *ui.UI) error {
 		operation = "恢复默认：删除配置文件，同时关闭 IPv4 / IPv6 转发（不支持的协议跳过）"
 		successTitle = "内核转发已恢复默认"
 	}
-	ui.PrintWarningCard("确认内核转发设置",
-		ui.CardField{Label: "操作", Value: operation},
-		ui.CardField{Label: "影响", Value: "关闭会影响 Docker、VPN 和路由转发；开启后仍受转发规则约束"},
-		ui.CardField{Label: "网络行为", Value: networkBehavior},
-		ui.CardField{Label: "持久配置", Value: configAction},
-	)
-	confirmed, err := view.Confirm("是否" + operation + "？(y/N，0/q 返回)：")
+	fields := []ui.CardField{{Label: "操作", Value: operation}}
+	if removeOnly {
+		operation = "仅删除内核转发配置文件"
+		fields[0].Value = operation
+		fields = append(fields, ui.CardField{Label: "生效说明", Value: "当前 IPv4 / IPv6 转发状态保持不变；重启后由系统其他配置及服务决定"})
+	} else {
+		fields = append(fields,
+			ui.CardField{Label: "影响", Value: "关闭会影响 Docker、VPN 和路由转发；开启后仍受转发规则约束"},
+			ui.CardField{Label: "网络行为", Value: networkBehavior},
+		)
+	}
+	fields = append(fields, ui.CardField{Label: "持久配置", Value: configAction})
+	ui.PrintWarningCard("确认内核转发设置", fields...)
+	prompt := "是否" + operation + "？(y/N，0/q 返回)："
+	if !removeOnly && !enabled && (reset || index == 0) && !states[0].unavailable && (commandExists("docker") || commandExists("dockerd")) {
+		prompt = "检测到 Docker，Docker 需要启用 IPv4 转发，确认关闭吗？(y/N，0/q 返回)："
+		if reset {
+			prompt = "检测到 Docker，Docker 需要启用 IPv4 转发，确认恢复默认并关闭 IPv4 / IPv6 转发吗？(y/N，0/q 返回)："
+		}
+	}
+	confirmed, err := view.Confirm(prompt)
 	if err != nil {
 		return err
 	}
 	if !confirmed {
 		return shared.ErrReturnToMenu
 	}
-	latest := inspectForwarding()
-	if !reset {
-		latest = latest[index : index+1]
-	}
-	if err := validateForwarding(latest); err != nil {
-		return err
-	}
-	for i, expected := range selected {
-		if expected.value != latest[i].value || expected.unavailable != latest[i].unavailable {
-			return fmt.Errorf("内核转发状态在确认期间发生变化，未修改，请重新操作")
+	if !removeOnly {
+		latest := inspectForwarding()
+		if !reset {
+			latest = latest[index : index+1]
+		}
+		if err := validateForwarding(latest); err != nil {
+			return err
+		}
+		for i, expected := range selected {
+			if expected.value != latest[i].value || expected.unavailable != latest[i].unavailable {
+				return fmt.Errorf("内核转发状态在确认期间发生变化，未修改，请重新操作")
+			}
 		}
 	}
 	current, currentExists, err := shared.ReadRegularFile(forwardingConfigPath)
@@ -243,6 +256,13 @@ func configureForwarding(view *ui.UI) error {
 				return fmt.Errorf("保存内核转发配置失败，尚未修改运行状态: %w", err)
 			}
 		}
+	}
+	if removeOnly {
+		ui.PrintSuccessCard("内核转发持久配置已移除",
+			ui.CardField{Label: "配置文件", Value: forwardingConfigPath},
+			ui.CardField{Label: "当前转发", Value: "保持不变，未修改内核参数"},
+		)
+		return nil
 	}
 	// Apply only these keys, never sysctl --system or -p: unrelated pending
 	// settings must not be loaded. Skip unchanged values to avoid IPv4 resets.
