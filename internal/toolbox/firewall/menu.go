@@ -64,7 +64,7 @@ func runFeatureSettings(view *ui.UI) error {
 		}
 		ui.MenuOptionHint("2", "ICMP 回显（Ping）", "允许 / 禁止 IPv4 / IPv6 回显请求")
 		ui.MenuOptionHint("3", "数据包统计", "开启 / 关闭规则中的 counter")
-		ui.MenuOptionHint("4", "内核转发", "立即生效，开启保存配置 / 关闭删除配置")
+		ui.MenuOptionHint("4", "内核转发", "分别开启 / 关闭 IPv4、IPv6 转发")
 		ui.MenuExit("0/q", "返回防火墙管理")
 		choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "autostart", "2": "ping", "3": "counters", "4": "forwarding"})
 		if err != nil {
