@@ -28,7 +28,7 @@ func showMenu() {
 	default:
 		ui.MenuOptionHint("7", "生成默认配置", "检测 SSH 端口，首次配置开启自启")
 	}
-	ui.MenuOptionHint("8", "常用功能设置", "开机自启 / ICMP 回显 / 数据包统计 / 内核转发")
+	ui.MenuOptionHint("8", "常用功能设置", "开机自启 / ICMP 回显 / 数据包统计 / 内核转发 / SSH 访问")
 	ui.MenuOptionHint("9", "实时查看规则", "每秒刷新，支持切换规则表")
 	fmt.Println()
 	ui.MenuShortcutHint("r", "校验加载配置", "使当前配置文件立即生效")
@@ -54,6 +54,7 @@ func runFeatureSettings(view *ui.UI) error {
 		fields = append(fields, echoStateFields(installed, live)...)
 		fields = append(fields, packetCounterStateField(installed, live))
 		fields = append(fields, forwardingStateField(inspectForwarding()))
+		fields = append(fields, sshAccessStateField())
 		ui.PrintInfoCard("功能状态", fields...)
 		switch {
 		case autostart.err != nil:
@@ -66,8 +67,9 @@ func runFeatureSettings(view *ui.UI) error {
 		ui.MenuOptionHint("2", "ICMP 回显（Ping）", "允许 / 禁止 IPv4 / IPv6 回显请求")
 		ui.MenuOptionHint("3", "数据包统计", "开启 / 关闭规则中的 counter")
 		ui.MenuOptionHint("4", "内核转发", "分别开启 / 关闭 IPv4、IPv6 转发")
+		ui.MenuOptionHint("5", "SSH 访问", "开放 / 关闭公网、局域网 SSH 端口")
 		ui.MenuExit("0/q", "返回防火墙管理")
-		choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "autostart", "2": "ping", "3": "counters", "4": "forwarding"})
+		choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "autostart", "2": "ping", "3": "counters", "4": "forwarding", "5": "ssh"})
 		if err != nil {
 			return err
 		}
@@ -87,6 +89,10 @@ func runFeatureSettings(view *ui.UI) error {
 		case "forwarding":
 			shared.RunAction(view, "设置内核转发失败，已返回常用功能设置", func() error {
 				return configureForwarding(view)
+			})
+		case "ssh":
+			shared.RunAction(view, "设置 SSH 访问失败，已返回常用功能设置", func() error {
+				return configureSSHAccess(view)
 			})
 		}
 	}
