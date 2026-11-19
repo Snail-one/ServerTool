@@ -344,39 +344,61 @@ func configure(view *ui.UI) error {
 		return err
 	}
 	if len(ports) > 1 {
-		log.Warn("SSH 生效配置包含多个端口：", portList(ports), "。通常建议只保留一个 SSH 端口；本次会全部放行，请在 SSH 安全配置中检查并关闭不再使用的旧端口。")
+		log.Warn("SSH 生效配置包含多个端口：", portList(ports), "。通常建议只保留一个 SSH 端口。选择开放的范围会同时写入这些端口，请在 SSH 安全配置中检查并关闭不再使用的旧端口。")
 	}
 	sshFields := []ui.CardField{
 		ui.CardField{Label: "端口", Value: portList(ports), Detail: "/usr/sbin/sshd -T"},
-		ui.CardField{Label: "开放范围", Value: "公网、内网及 IPv4 / IPv6"},
-		ui.CardField{Label: "放行协议", Value: "相同端口号同时放行 TCP / UDP，列表独立维护"},
+		ui.CardField{Label: "放行协议", Value: "相同端口号同时放行 TCP / UDP，IPv4 / IPv6 同时应用"},
 		ui.CardField{Label: "附加放行规则", Value: fmt.Sprintf("保留已有 %d 条规则", len(preserved))},
 	}
 	if len(ports) > 1 {
-		sshFields = append(sshFields, ui.CardField{Label: "SSH 提示", Value: "检测到多个 SSH 端口，本次全部放行；建议在 SSH 安全配置中检查并关闭不再使用的旧端口"})
+		sshFields = append(sshFields, ui.CardField{Label: "SSH 提示", Value: "检测到多个 SSH 端口。选择开放的范围会同时写入这些端口；建议在 SSH 安全配置中检查并关闭不再使用的旧端口"})
 	}
 	var content string
+	var publicSSH, privateSSH bool
 	for {
 		publicWeb, privateWeb, write := false, false, false
+		publicSSH, privateSSH = false, false
 		err = ui.RunPromptSteps(
 			ui.PromptStep{Run: func() error {
 				var err error
-				publicWeb, err = askWeb(view, "公网", sshFields...)
+				publicSSH, err = askSSH(view, "公网", portList(ports), append([]ui.CardField(nil), sshFields...)...)
 				return err
 			}},
 			ui.PromptStep{Run: func() error {
-				privateFields := append([]ui.CardField(nil), sshFields...)
+				fields := append([]ui.CardField(nil), sshFields...)
+				fields = append(fields, ui.CardField{Label: "已选公网 SSH", Value: sshChoiceLabel(publicSSH)})
+				var err error
+				privateSSH, err = askSSH(view, "局域网", portList(ports), fields...)
+				return err
+			}},
+			ui.PromptStep{Run: func() error {
+				fields := append([]ui.CardField(nil), sshFields...)
+				fields = append(fields,
+					ui.CardField{Label: "已选公网 SSH", Value: sshChoiceLabel(publicSSH)},
+					ui.CardField{Label: "已选局域网 SSH", Value: sshChoiceLabel(privateSSH)},
+				)
+				var err error
+				publicWeb, err = askWeb(view, "公网", fields...)
+				return err
+			}},
+			ui.PromptStep{Run: func() error {
+				fields := append([]ui.CardField(nil), sshFields...)
 				publicState := "关闭"
 				if publicWeb {
 					publicState = "开放 80、443"
 				}
-				privateFields = append(privateFields, ui.CardField{Label: "已选公网 Web", Value: publicState})
+				fields = append(fields,
+					ui.CardField{Label: "已选公网 SSH", Value: sshChoiceLabel(publicSSH)},
+					ui.CardField{Label: "已选局域网 SSH", Value: sshChoiceLabel(privateSSH)},
+					ui.CardField{Label: "已选公网 Web", Value: publicState},
+				)
 				var err error
-				privateWeb, err = askWeb(view, "局域网", privateFields...)
+				privateWeb, err = askWeb(view, "局域网", fields...)
 				return err
 			}},
 			ui.PromptStep{Run: func() error {
-				content, err = buildConfig(ports, publicWeb, privateWeb)
+				content, err = buildScopedConfig(ports, publicSSH, privateSSH, publicWeb, privateWeb)
 				if err != nil {
 					return err
 				}
@@ -443,11 +465,51 @@ func configure(view *ui.UI) error {
 	ui.PrintSuccessCard("nftables 配置已写入并加载",
 		ui.CardField{Label: "配置文件", Value: configPath},
 		ui.CardField{Label: "SSH 端口", Value: portList(ports)},
+		ui.CardField{Label: "公网 SSH", Value: sshChoiceLabel(publicSSH)},
+		ui.CardField{Label: "局域网 SSH", Value: sshChoiceLabel(privateSSH)},
 		ui.CardField{Label: "当前状态", Value: "配置已校验并立即生效"},
 		ui.CardField{Label: "开机自启", Value: autostartAction},
 		ui.CardField{Label: "查看规则", Value: "选择 1 查看端口策略，选择 2 查看全部规则"},
 	)
 	return nil
+}
+
+func askSSH(view *ui.UI, scope, ports string, fields ...ui.CardField) (bool, error) {
+	ui.ClearScreen()
+	ui.MenuTitle("防火墙管理", "生成配置", scope+" SSH 端口")
+	fields = append(append([]ui.CardField(nil), fields...), ui.CardField{Label: "本步设置", Value: scope + " TCP / UDP " + ports + "，IPv4 / IPv6 同时应用"})
+	ui.PrintInfoCard("生成基础配置", fields...)
+	ui.MenuOptionHint("y", "开放 SSH 端口", "默认，直接回车选择")
+	ui.MenuOption("n", "保持关闭")
+	backLabel := "返回防火墙管理"
+	if scope == "局域网" {
+		backLabel = "返回公网 SSH 端口选择"
+	}
+	ui.MenuExit("0/q", backLabel)
+	for {
+		choice, err := view.Ask(fmt.Sprintf("是否开放%s SSH 端口 %s（TCP / UDP、IPv4 / IPv6 同时开放）？[Y/n，0/q 返回]：", scope, ports))
+		if err != nil {
+			return false, err
+		}
+		if shared.IsReturnChoice(choice) {
+			return false, shared.ErrReturnToMenu
+		}
+		switch strings.ToLower(choice) {
+		case "", "y", "yes":
+			return true, nil
+		case "n", "no":
+			return false, nil
+		default:
+			fmt.Println("请输入 y 或 n，或输入 0/q 返回")
+		}
+	}
+}
+
+func sshChoiceLabel(open bool) string {
+	if open {
+		return "开放"
+	}
+	return "关闭"
 }
 
 func askWeb(view *ui.UI, scope string, fields ...ui.CardField) (bool, error) {
@@ -457,7 +519,7 @@ func askWeb(view *ui.UI, scope string, fields ...ui.CardField) (bool, error) {
 	ui.PrintInfoCard("生成基础配置", fields...)
 	ui.MenuOption("y", "开放 Web 端口 80、443")
 	ui.MenuOptionHint("n", "保持关闭", "默认，直接回车选择")
-	backLabel := "返回防火墙管理"
+	backLabel := "返回局域网 SSH 端口选择"
 	if scope == "局域网" {
 		backLabel = "返回公网 Web 端口选择"
 	}
@@ -481,7 +543,7 @@ func askWeb(view *ui.UI, scope string, fields ...ui.CardField) (bool, error) {
 	}
 }
 
-// A false result lets the caller return to the web-port choices; cancellation
+// A false result lets the caller return to the SSH and web-port choices; cancellation
 // uses ErrReturnToMenu so the generation wizard returns to its preceding step.
 func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, error) {
 	for {
@@ -530,7 +592,7 @@ func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, er
 		fmt.Println()
 		ui.MenuOption("1", "校验、写入并立即加载")
 		ui.MenuOption("2", "预览完整配置")
-		ui.MenuOption("3", "重新选择公网 / 局域网 Web 端口")
+		ui.MenuOption("3", "重新选择 SSH / Web 端口")
 		ui.MenuOptionHint("4", "自定义访问规则", "端口 / 内网 IP 范围 / 来源 IP 放行，先调整草稿")
 		ui.MenuOptionHint("5", "自定义转发规则", "转发端口 / 转发内网范围 / 来源 IP 放行，先调整草稿")
 		ui.MenuExit("0/q", "返回局域网 Web 端口选择")
@@ -580,28 +642,70 @@ func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, er
 }
 
 func buildConfig(ports []int, publicWeb, privateWeb bool) (string, error) {
+	return buildScopedConfig(ports, true, true, publicWeb, privateWeb)
+}
+
+func buildScopedConfig(ports []int, publicSSH, privateSSH, publicWeb, privateWeb bool) (string, error) {
 	ports, err := mergeSSHPorts(ports)
 	if err != nil {
 		return "", err
 	}
-	publicPorts, privatePorts := portList(ports), portList(ports)
-	publicDescription, privateDescription := "当前仅开放 SSH 端口", "当前仅开放 SSH 端口"
-	if publicWeb {
-		publicPorts += ", 80, 443"
-		publicDescription = "当前开放 SSH 端口及 80、443"
-	}
-	if privateWeb {
-		privatePorts += ", 80, 443"
-		privateDescription = "当前开放 SSH 端口及 80、443"
-	}
+	sshText := portList(ports)
+	publicPorts, publicDescription := scopePortText(publicSSH, sshText, publicWeb)
+	privatePorts, privateDescription := scopePortText(privateSSH, sshText, privateWeb)
 	content := strings.NewReplacer(
-		"__SSH_PORTS__", portList(ports),
+		"__SSH_PORTS__", sshText,
 		"__PUBLIC_PORTS__", publicPorts,
 		"__PRIVATE_PORTS__", privatePorts,
 		"__PUBLIC_PORT_DESCRIPTION__", publicDescription,
 		"__PRIVATE_PORT_DESCRIPTION__", privateDescription,
 	).Replace(configTemplate)
+	if publicPorts == "" {
+		content, err = clearScopeElements(content, "public")
+		if err != nil {
+			return "", err
+		}
+	}
+	if privatePorts == "" {
+		content, err = clearScopeElements(content, "private")
+		if err != nil {
+			return "", err
+		}
+	}
 	return withPingSetting(content, false)
+}
+
+func scopePortText(openSSH bool, sshText string, openWeb bool) (string, string) {
+	var ports []string
+	if openSSH {
+		ports = append(ports, sshText)
+	}
+	if openWeb {
+		ports = append(ports, "80, 443")
+	}
+	switch {
+	case openSSH && openWeb:
+		return strings.Join(ports, ", "), "当前开放 SSH 端口及 80、443"
+	case openSSH:
+		return strings.Join(ports, ", "), "当前仅开放 SSH 端口"
+	case openWeb:
+		return strings.Join(ports, ", "), "当前仅开放 80、443"
+	default:
+		return "", "当前未开放端口"
+	}
+}
+
+func clearScopeElements(content, scope string) (string, error) {
+	for _, family := range []string{"ipv4", "ipv6"} {
+		for _, protocol := range []string{"tcp", "udp"} {
+			updated, err := withNamedSetElements(content, "snail_"+scope+"_"+family+"_"+protocol+"_ports", "")
+			if err != nil {
+				return "", err
+			}
+			content = updated
+		}
+	}
+	return content, nil
 }
 
 func portList(ports []int) string {

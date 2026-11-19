@@ -232,7 +232,7 @@ func TestRemovePingConfigurationKeepsOtherRulesAndDoesNotRecreateOnRegeneration(
 			} else if !reflect.DeepEqual(*calls, []string{"check", "load"}) || len(backups) != 1 || shared.ReadFileString(backups[0]) != content {
 				t.Fatal("removal must validate, preserve one original backup, and load once")
 			}
-			if err := configure(inputUI(t, "n\nn\n1\n")); err != nil {
+			if err := configure(inputUI(t, "\n\n\n\n1\n")); err != nil {
 				t.Fatal(err)
 			}
 			regenerated := shared.ReadFileString(configPath)
@@ -264,7 +264,7 @@ func TestRegenerationKeepsPingEnabledAndMenuEntryWorks(t *testing.T) {
 		}
 		return accept(name, args...)
 	}
-	if err := configure(inputUI(t, "n\nn\n1\n")); err != nil {
+	if err := configure(inputUI(t, "\n\n\n\n1\n")); err != nil {
 		t.Fatal(err)
 	}
 	state, _, err := readPingSetting(shared.ReadFileString(configPath))

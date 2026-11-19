@@ -41,7 +41,7 @@ func TestFirstConfigurationEnablesAutostartAfterLoadAndRebuildPreservesIt(t *tes
 					t.Fatal(err)
 				}
 			}
-			view := inputUI(t, "n\nn\n1\nnext\n")
+			view := inputUI(t, "\n\n\n\n1\nnext\n")
 			text := capturePortOutput(t, func() {
 				if err := configure(view); err != nil {
 					t.Fatal(err)
@@ -117,9 +117,9 @@ func TestInitialAutostartDoesNotEnableAfterAbortOrFailure(t *testing.T) {
 				}
 				return run(name, args...)
 			}
-			input := "n\nn\n1\n"
+			input := "\n\n\n\n1\n"
 			if scenario == "cancel" {
-				input = "n\nn\nq\n"
+				input = "\n\n\n\nq\n"
 			}
 			err := configure(inputUI(t, input))
 			if err == nil {
@@ -147,7 +147,7 @@ func TestFirstConfigurationWithoutSystemdReportsUnsupportedStartup(t *testing.T)
 		return output(name, args...)
 	}
 	text := capturePortOutput(t, func() {
-		if err := configure(inputUI(t, "n\nn\n1\n")); err != nil {
+		if err := configure(inputUI(t, "\n\n\n\n1\n")); err != nil {
 			t.Fatal(err)
 		}
 	})

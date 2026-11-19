@@ -259,7 +259,7 @@ func TestRegenerationRetainsDisabledCounters(t *testing.T) {
 				}
 				return accept(name, args...)
 			}
-			if err := configure(inputUI(t, "\n\n1\n")); err != nil {
+			if err := configure(inputUI(t, "\n\n\n\n1\n")); err != nil {
 				t.Fatal(err)
 			}
 			saved := shared.ReadFileString(configPath)

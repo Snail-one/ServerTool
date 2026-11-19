@@ -291,7 +291,7 @@ func TestInitialGenerationSupportsAdvancedPolicyDraft(t *testing.T) {
 		return "", nil
 	}
 	// First generation -> custom private IPv6 UDP -> return to final confirmation -> save.
-	if err := configure(inputUI(t, "n\nn\n4\n3\n2\n2\n1\n51820\n4\n2\n3\nfd12::/48\ns\ny\n1\n")); err != nil {
+	if err := configure(inputUI(t, "\n\nn\nn\n4\n3\n2\n2\n1\n51820\n4\n2\n3\nfd12::/48\ns\ny\n1\n")); err != nil {
 		t.Fatal(err)
 	}
 	content := shared.ReadFileString(configPath)

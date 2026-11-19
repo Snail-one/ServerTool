@@ -295,7 +295,7 @@ func TestConfigureCancellationAndDetectionFailureDoNotWrite(t *testing.T) {
 	for _, scenario := range []string{"nonroot", "cancel install", "cancel write", "no SSH", "SSH changed"} {
 		t.Run(scenario, func(t *testing.T) {
 			setupTest(t)
-			input := "n\nn\n1\n"
+			input := "\n\n\n\n1\n"
 			if scenario == "nonroot" {
 				isRoot = func() bool { return false }
 			}
@@ -304,7 +304,7 @@ func TestConfigureCancellationAndDetectionFailureDoNotWrite(t *testing.T) {
 				input = "n\n"
 			}
 			if scenario == "cancel write" {
-				input = "y\ny\nq\nq\nq\n"
+				input = "y\ny\ny\ny\nq\nq\nq\nq\nq\n"
 			}
 			calls := 0
 			commandOutput = func(name string, args ...string) (string, error) {
@@ -372,7 +372,7 @@ func TestRunConfirmsInstallAndWritesThenApplies(t *testing.T) {
 		t.Fatalf("unexpected command: %s %v", name, args)
 		return "", nil
 	}
-	if err := Run(inputUI(t, "y\n7\ny\n\n1\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := Run(inputUI(t, "y\n7\n\n\ny\n\n1\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if want := []string{"apt-get update", "apt-get install -y nftables"}; !reflect.DeepEqual(commands, want) {
@@ -397,6 +397,89 @@ func TestAskWebDefaultsClosedForPublicAndPrivate(t *testing.T) {
 		if err != nil || open {
 			t.Fatalf("%s Web ports must stay closed on Enter: open=%v err=%v", scope, open, err)
 		}
+	}
+}
+
+func TestAskSSHDefaultsOpenForPublicAndPrivate(t *testing.T) {
+	for _, scope := range []string{"公网", "局域网"} {
+		open, err := askSSH(inputUI(t, "\n"), scope, "2222")
+		if err != nil || !open {
+			t.Fatalf("%s SSH must stay open on Enter: open=%v err=%v", scope, open, err)
+		}
+		open, err = askSSH(inputUI(t, "n\n"), scope, "2222")
+		if err != nil || open {
+			t.Fatalf("%s SSH must close on n: open=%v err=%v", scope, open, err)
+		}
+	}
+	open, err := askSSH(inputUI(t, "invalid\ny\n"), "公网", "2222")
+	if err != nil || !open {
+		t.Fatalf("invalid SSH answer must be asked again: open=%v err=%v", open, err)
+	}
+}
+
+func TestBuildScopedConfigHonorsSSHSwitches(t *testing.T) {
+	content, err := buildScopedConfig([]int{2222}, false, true, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, family := range []string{"ipv4", "ipv6"} {
+		for _, protocol := range []string{"tcp", "udp"} {
+			publicSet := "set snail_public_" + family + "_" + protocol + "_ports {\n        type inet_service\n        flags interval\n        elements = { 80, 443 }\n    }"
+			privateSet := "set snail_private_" + family + "_" + protocol + "_ports {\n        type inet_service\n        flags interval\n        elements = { 2222 }\n    }"
+			if !strings.Contains(content, publicSet) || !strings.Contains(content, privateSet) {
+				t.Fatalf("closed public SSH with web still open did not split the lists:\n%s", content)
+			}
+		}
+	}
+	if !strings.Contains(content, "elements = { 2222 }") || !strings.Contains(content, "当前仅开放 80、443") || !strings.Contains(content, "当前仅开放 SSH 端口") {
+		t.Fatal("SSH service port or scope descriptions were lost")
+	}
+
+	closed, err := buildScopedConfig([]int{2222}, false, false, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, family := range []string{"ipv4", "ipv6"} {
+		for _, protocol := range []string{"tcp", "udp"} {
+			for _, scope := range []string{"public", "private"} {
+				empty := "set snail_" + scope + "_" + family + "_" + protocol + "_ports {\n        type inet_service\n        flags interval\n    }"
+				if !strings.Contains(closed, empty) {
+					t.Fatalf("closed %s %s %s list is not an empty named set", scope, family, protocol)
+				}
+			}
+		}
+	}
+	if strings.Contains(closed, "elements = { }") {
+		t.Fatal("closing both SSH scopes must omit the elements line instead of writing an empty list")
+	}
+	if !strings.Contains(closed, "set snail_ssh_port {\n        type inet_service\n        flags interval\n        elements = { 2222 }\n    }") || !strings.Contains(closed, "当前未开放端口") {
+		t.Fatal("closed SSH scopes must still record the service port")
+	}
+}
+
+func TestConfigureClosesPublicSSHBeforeWebQuestions(t *testing.T) {
+	setupTest(t)
+	commandOutput = func(name string, args ...string) (string, error) {
+		if isSSHDTest(name, args) {
+			return sshdTestConfig(2222), nil
+		}
+		if name == "nft" && len(args) == 3 && args[0] == "-c" && args[1] == "-f" {
+			return "", nil
+		}
+		if name == "nft" && reflect.DeepEqual(args, []string{"-f", configPath}) {
+			return "", nil
+		}
+		t.Fatalf("unexpected command: %s %v", name, args)
+		return "", nil
+	}
+	if err := configure(inputUI(t, "n\n\n\n\n1\n")); err != nil {
+		t.Fatal(err)
+	}
+	content := shared.ReadFileString(configPath)
+	public := "set snail_public_ipv4_tcp_ports {\n        type inet_service\n        flags interval\n    }"
+	private := "set snail_private_ipv4_tcp_ports {\n        type inet_service\n        flags interval\n        elements = { 2222 }\n    }"
+	if !strings.Contains(content, public) || !strings.Contains(content, private) || !strings.Contains(content, "set snail_ssh_port {\n        type inet_service\n        flags interval\n        elements = { 2222 }\n    }") {
+		t.Fatal("public SSH must close before the web questions, while private SSH and the service-port record stay open")
 	}
 }
 
@@ -522,7 +605,7 @@ func TestConfigurePreviewsAndReselectsPortsBeforeWriting(t *testing.T) {
 		}
 		return "", nil
 	}
-	if err := configure(inputUI(t, "y\ny\n2\n\n3\ninvalid\nn\nn\n1\n")); err != nil {
+	if err := configure(inputUI(t, "\n\ny\ny\n2\n\n3\ninvalid\n\n\nn\nn\n1\n")); err != nil {
 		t.Fatal(err)
 	}
 	if validations != 1 || loads != 1 {
@@ -555,7 +638,7 @@ func TestConfigureStopsOnCheckWriteOrLoadFailure(t *testing.T) {
 				t.Fatalf("unexpected command: %s %v", name, args)
 				return "", nil
 			}
-			err := configure(inputUI(t, "n\nn\n1\n"))
+			err := configure(inputUI(t, "\n\n\n\n1\n"))
 			if err == nil {
 				t.Fatal("expected error")
 			}
