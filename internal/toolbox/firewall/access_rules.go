@@ -10,20 +10,19 @@ import (
 	"snail_tool/internal/ui"
 )
 
+func summarySSHPorts(content string) string {
+	text, err := sshPortText(content)
+	if err != nil {
+		return err.Error()
+	}
+	return text
+}
+
 // Summaries merge equal policies, while the editor still keeps all eight
-// scopes independent. SSH ports are expanded for a concrete port summary.
+// scopes independent. Each list shows the ports it actually contains.
 func accessSummaryFields(content string) []ui.CardField {
 	var fields []ui.CardField
-	ssh := sshDefinitionLine.FindStringSubmatch(content)
-	var sshPorts portIntervals
-	if len(ssh) > 1 {
-		sshPorts, _ = parsePolicyPorts(ssh[1])
-	}
 	for scope, label := range []string{"公网", "内网"} {
-		if len(ssh) < 2 {
-			fields = append(fields, ui.CardField{Label: label, Value: "无法完整汇总，配置中的 SSH 端口格式未识别"})
-			continue
-		}
 		var values [4]string
 		for i := range values {
 			value, err := readPolicyValue(content, policyLists[scope*4+i])
@@ -31,8 +30,10 @@ func accessSummaryFields(content string) []ui.CardField {
 				values[i] = err.Error()
 				continue
 			}
-			ports, _ := parsePolicyPorts(value)
-			values[i] = policyPortsText(unionPorts(append(ports, sshPorts...)))
+			if value == "" {
+				value = "无"
+			}
+			values[i] = value
 		}
 		if values[0] == values[1] && values[0] == values[2] && values[0] == values[3] {
 			fields = append(fields, ui.CardField{Label: label, Value: "IPv4 / IPv6 · TCP / UDP → " + values[0]})
@@ -71,7 +72,7 @@ func accessSummaryFields(content string) []ui.CardField {
 	}
 	fields = append(fields,
 		ui.CardField{Label: "来源 IP 放行", Value: fmt.Sprintf("%d 条", len(rules)-legacy), Detail: "按来源 IP / 网段设置端口和协议，优先于基础端口放行"},
-		ui.CardField{Label: "SSH 端口", Value: policyPortsText(sshPorts), Detail: "自动保留，通过 SSH 安全配置修改"},
+		ui.CardField{Label: "SSH 端口", Value: summarySSHPorts(content), Detail: "当前 SSH 服务端口。仍包含旧端口的入站名单会随 SSH 安全配置更新；从名单删除后不会自动加回"},
 	)
 	if legacy > 0 {
 		fields = append(fields, ui.CardField{Label: "旧任意来源规则", Value: fmt.Sprintf("已有 %d 条，仍可额外放行公网和内网端口", legacy), Detail: "进入来源 IP 放行查看、删除或转入基础端口；基础列表不代表最终放行范围"})

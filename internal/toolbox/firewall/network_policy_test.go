@@ -81,40 +81,39 @@ func TestPolicyEditPreservesOtherConfigurationAndSSHLinkage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	old := "define snail_private_ipv6_udp_ports = { $snail_ssh_port }"
-	multiline := "define snail_private_ipv6_udp_ports = {\n $snail_ssh_port, # SSH\n 51820\n} # VPN"
-	content = strings.Replace(content, old, multiline, 1)
+	marker := "set snail_private_ipv6_udp_ports {\n        type inet_service\n        flags interval\n        elements = { 2222 }\n    }"
+	multiline := "set snail_private_ipv6_udp_ports {\n        type inet_service\n        flags interval\n        elements = { 2222, 51820 }\n    } # VPN"
+	content = strings.Replace(content, marker, multiline, 1)
 	content += "\n# define snail_private_ipv6 = { ::/0 }\ntable inet custom {}\n"
 	if err := validatePolicyConfig(content); err != nil {
 		t.Fatal(err)
 	}
-	updated, err := withPolicyValue(content, policyLists[7], "51820, 6000-6010")
+	updated, err := withPolicyValue(content, policyLists[7], "2222, 51820, 6000-6010")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := strings.Replace(content, multiline, "define snail_private_ipv6_udp_ports = { $snail_ssh_port, 6000-6010, 51820 } # VPN", 1)
+	want := strings.Replace(content, "elements = { 2222, 51820 }", "elements = { 2222, 6000-6010, 51820 }", 1)
 	if updated != want {
 		t.Fatal("editing one set changed unrelated configuration")
 	}
 	updated, err = withSSHPorts(updated, []int{3022})
-	if err != nil || !strings.Contains(updated, "{ 3022 }") || !strings.Contains(updated, "6000-6010, 51820") {
+	if err != nil || !strings.Contains(updated, "elements = { 3022 }") || !strings.Contains(updated, "3022, 6000-6010, 51820") {
 		t.Fatalf("SSH linkage failed or lost business ports: %v", err)
 	}
 	if _, err := withSSHPorts(content, []int{3022}); err != nil {
 		t.Fatalf("multiline business port lists must support SSH linkage: %v", err)
 	}
-	withVariable := strings.Replace(content, " 51820\n", " $custom_business_ports\n", 1)
-	if _, err := withSSHPorts(withVariable, []int{3022}); err != nil {
-		t.Fatalf("SSH linkage must preserve custom business-port expressions: %v", err)
+	withVariable := strings.Replace(content, "2222, 51820", "2222, $custom_business_ports", 1)
+	if _, err := withSSHPorts(withVariable, []int{3022}); err == nil {
+		t.Fatal("named port sets must reject variable references")
 	}
 }
 
 func TestPolicyEditorRejectsUnsupportedDefinitions(t *testing.T) {
 	base, _ := buildConfig([]int{2222}, false, false)
 	for _, bad := range []string{
-		strings.Replace(base, "$snail_ssh_port }", "443 }", 1),
-		strings.Replace(base, "$snail_ssh_port }", "$snail_ssh_port, }", 1),
-		strings.Replace(base, "$snail_ssh_port }", "$snail_ssh_port, $other }", 1),
+		strings.Replace(base, "set snail_public_ipv4_tcp_ports {\n        type inet_service\n        flags interval\n        elements = { 2222 }", "set snail_public_ipv4_tcp_ports {\n        type inet_service\n        flags interval\n        elements = { $other }", 1),
+		strings.Replace(base, "elements = { 2222 }", "elements = { 2222, }", 1),
 		strings.Replace(base, "define snail_private_ipv4 =", "define other =", 1),
 		strings.Replace(base, "172.16.0.0/12, 192.168.0.0/16", "::/0", 1),
 		base + "\ndefine snail_private_ipv6 = { ::/0 }\n",
@@ -144,9 +143,9 @@ func TestPolicyManagerBatchesDraftAndSavesOnce(t *testing.T) {
 		want := ""
 		switch {
 		case i == 4:
-			want = "443, 8000-8049, 8061-8100"
+			want = "443, 2222, 8000-8049, 8061-8100"
 		case i < 8:
-			want = "443, 8000-8100"
+			want = "443, 2222, 8000-8100"
 		case i == 8:
 			want = "10.20.0.0/16"
 		case i == 9:
@@ -219,7 +218,7 @@ func TestPolicyEditorRetriesInvalidInputsWithoutChangingOtherLists(t *testing.T)
 		t.Fatal(err)
 	}
 	updated := shared.ReadFileString(configPath)
-	want, err := withPolicyValue(string(version.content), policyLists[4], "8443")
+	want, err := withPolicyValue(string(version.content), policyLists[4], "2222, 8443")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +296,7 @@ func TestInitialGenerationSupportsAdvancedPolicyDraft(t *testing.T) {
 	}
 	content := shared.ReadFileString(configPath)
 	value, err := readPolicyValue(content, policyLists[7])
-	if err != nil || value != "51820" || loads != 1 || !strings.Contains(content, "define snail_private_ipv6 = { fd12::/48 }") {
+	if err != nil || value != "2222, 51820" || loads != 1 || !strings.Contains(content, "define snail_private_ipv6 = { fd12::/48 }") {
 		t.Fatalf("custom generation failed: ports=%q loads=%d err=%v", value, loads, err)
 	}
 }

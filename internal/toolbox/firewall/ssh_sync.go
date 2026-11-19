@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 
 	"snail_tool/internal/log"
@@ -161,11 +159,38 @@ func sshPortRules(ports []int, counters bool) []string {
 	return rules
 }
 
-var sshDefinitionLine = regexp.MustCompile(`(?m)^[\t ]*define[\t ]+snail_ssh_port[\t ]*=[\t ]*\{([0-9,\t \r\n]+)\}[\t ]*(?:#[^\n]*)?\r?$`)
+// readSSHPorts returns the service ports recorded in set snail_ssh_port.
+// The eight input lists store their own elements and can omit these ports.
+func readSSHPorts(content string) ([]int, error) {
+	raw, err := namedSetValue(content, "snail_ssh_port")
+	if err != nil {
+		return nil, fmt.Errorf("SSH 端口集合缺失、重复或格式异常，请检查配置")
+	}
+	ports, err := parsePolicyPorts(raw)
+	if err != nil || len(ports) == 0 {
+		return nil, fmt.Errorf("SSH 端口集合内容无效，请重新生成防火墙配置")
+	}
+	numbers := make([]int, 0, len(ports))
+	for _, port := range ports {
+		if port.first != port.last || port.first < 1 || port.first > 65535 {
+			return nil, fmt.Errorf("SSH 端口集合内容无效，请重新生成防火墙配置")
+		}
+		numbers = append(numbers, port.first)
+	}
+	return numbers, nil
+}
 
-// withSSHPorts updates only the generated SSH port set. The eight port lists
-// retain the same reference regardless of how many SSH ports are configured.
-// Older formats must be replaced by regenerating the config.
+func sshPortText(content string) (string, error) {
+	ports, err := readSSHPorts(content)
+	if err != nil {
+		return "", err
+	}
+	return portList(ports), nil
+}
+
+// withSSHPorts records the new SSH service ports. Input lists that still
+// contain an old SSH port have those ports replaced; lists the user already
+// cleared of SSH are left unchanged. Older define formats must be regenerated.
 func withSSHPorts(content string, ports []int) (string, error) {
 	ports, err := mergeSSHPorts(ports)
 	if err != nil {
@@ -180,29 +205,40 @@ func withSSHPorts(content string, ports []int) (string, error) {
 	if _, _, err := readPingSetting(content); err != nil {
 		return "", err
 	}
-	definitions := sshDefinitionLine.FindAllStringSubmatchIndex(content, -1)
-	if len(definitions) != 1 {
-		return "", fmt.Errorf("SSH 端口集合定义缺失、重复或格式异常，请重新生成防火墙配置")
-	}
-	definition := definitions[0]
-	for _, value := range strings.Split(content[definition[2]:definition[3]], ",") {
-		port, err := strconv.Atoi(strings.TrimSpace(value))
-		if err != nil || port < 1 || port > 65535 {
-			return "", fmt.Errorf("SSH 端口集合内容无效，请重新生成防火墙配置")
-		}
+	old, err := readSSHPorts(content)
+	if err != nil {
+		return "", err
 	}
 	for _, list := range policyLists[:8] {
-		_, _, raw, err := policyDefinition(content, list.name)
-		if err == nil {
-			// SSH updates preserve unrelated nft expressions, including custom
-			// business-port variables that the interactive editor cannot expand.
-			_, err = policyBusinessTerms(raw, list.label, list.keepSSH)
-		}
-		if err != nil {
+		if _, err := readPolicyValue(content, list); err != nil {
 			return "", fmt.Errorf("业务端口列表异常，请检查配置: %w", err)
 		}
 	}
-	return content[:definition[2]] + " " + portList(ports) + " " + content[definition[3]:], nil
+	updated, err := withNamedSetElements(content, "snail_ssh_port", portList(ports))
+	if err != nil {
+		return "", err
+	}
+	oldIntervals, _ := parsePolicyPorts(portList(old))
+	newIntervals, _ := parsePolicyPorts(portList(ports))
+	for _, list := range policyLists[:8] {
+		current, err := readPolicyValue(updated, list)
+		if err != nil {
+			return "", err
+		}
+		parsed, err := parsePolicyPorts(current)
+		if err != nil {
+			return "", err
+		}
+		if len(intersectPorts(parsed, oldIntervals)) == 0 {
+			continue
+		}
+		next := unionPorts(append(subtractPorts(parsed, oldIntervals), newIntervals...))
+		updated, err = withNamedSetElements(updated, list.name, policyPortsText(next))
+		if err != nil {
+			return "", err
+		}
+	}
+	return updated, nil
 }
 
 // inputChainBounds returns the body and the end of its base-chain declarations.

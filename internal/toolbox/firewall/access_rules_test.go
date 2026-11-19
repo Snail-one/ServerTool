@@ -19,7 +19,7 @@ func TestAccessSummaryMergesMatchingPoliciesAndShowsActualSSHPorts(t *testing.T)
 		fields[1].Label != "内网" || fields[1].Value != "IPv4 / IPv6 · TCP / UDP → 80, 443, 22783" {
 		t.Fatalf("identical policies were not compacted: %v", fields)
 	}
-	content, _ = withPolicyValue(content, policyLists[7], "51820")
+	content, _ = withPolicyValue(content, policyLists[7], "22783, 51820")
 	fields = accessSummaryFields(content)
 	want := []ui.CardField{
 		{Label: "内网 IPv4", Value: "TCP / UDP → 80, 443, 22783"},
@@ -44,7 +44,7 @@ func TestAccessManagerSharesOneDraftAndOneSaveAcrossPortsAndSources(t *testing.T
 			pending := shared.ReadFileString(args[2])
 			rules, _ := managedRules(pending)
 			ports, _ := readPolicyValue(pending, policyLists[4])
-			if len(rules) != 1 || rules[0].Ports != "3306" || ports != "8443" {
+			if len(rules) != 1 || rules[0].Ports != "3306" || ports != "2222, 8443" {
 				t.Fatal("save did not contain the complete shared draft")
 			}
 			if shared.ReadFileString(configPath) != string(version.content) {
@@ -137,10 +137,10 @@ func TestGlobalPortMigrationPreservesOtherRulesAndSelectsCorrectLists(t *testing
 			}
 			for i, list := range policyLists[:8] {
 				value, err := readPolicyValue(updated, list)
-				want := ""
+				want := "2222"
 				for _, index := range tc.indices {
 					if i == index {
-						want = "8000-8100"
+						want = "2222, 8000-8100"
 					}
 				}
 				if err != nil || value != want {
@@ -176,7 +176,7 @@ func TestMigrationIsVisibleAndOnlySavedWithTheParentDraft(t *testing.T) {
 func TestSourceEditingStillWorksWithCustomBusinessPortExpressions(t *testing.T) {
 	setupTest(t)
 	version := ruleTestConfig(t, nil)
-	custom := strings.Replace(string(version.content), "$snail_ssh_port }", "$snail_ssh_port, $custom_ports }", 1)
+	custom := strings.Replace(string(version.content), "elements = { 2222 }", "elements = { 2222, $custom_ports }", 1)
 	if err := os.WriteFile(configPath, []byte(custom), 0644); err != nil {
 		t.Fatal(err)
 	}

@@ -58,14 +58,14 @@ func useForwardSession() func() {
 }
 
 var policyLists = []policyList{
-	{name: "snail_public_ipv4_tcp_ports", label: "公网 IPv4 TCP", keepSSH: true},
-	{name: "snail_public_ipv4_udp_ports", label: "公网 IPv4 UDP", keepSSH: true},
-	{name: "snail_public_ipv6_tcp_ports", label: "公网 IPv6 TCP", keepSSH: true},
-	{name: "snail_public_ipv6_udp_ports", label: "公网 IPv6 UDP", keepSSH: true},
-	{name: "snail_private_ipv4_tcp_ports", label: "内网 IPv4 TCP", keepSSH: true},
-	{name: "snail_private_ipv4_udp_ports", label: "内网 IPv4 UDP", keepSSH: true},
-	{name: "snail_private_ipv6_tcp_ports", label: "内网 IPv6 TCP", keepSSH: true},
-	{name: "snail_private_ipv6_udp_ports", label: "内网 IPv6 UDP", keepSSH: true},
+	{name: "snail_public_ipv4_tcp_ports", label: "公网 IPv4 TCP", namedSet: true},
+	{name: "snail_public_ipv4_udp_ports", label: "公网 IPv4 UDP", namedSet: true},
+	{name: "snail_public_ipv6_tcp_ports", label: "公网 IPv6 TCP", namedSet: true},
+	{name: "snail_public_ipv6_udp_ports", label: "公网 IPv6 UDP", namedSet: true},
+	{name: "snail_private_ipv4_tcp_ports", label: "内网 IPv4 TCP", namedSet: true},
+	{name: "snail_private_ipv4_udp_ports", label: "内网 IPv4 UDP", namedSet: true},
+	{name: "snail_private_ipv6_tcp_ports", label: "内网 IPv6 TCP", namedSet: true},
+	{name: "snail_private_ipv6_udp_ports", label: "内网 IPv6 UDP", namedSet: true},
 	{name: "snail_private_ipv4", label: "IPv4 内网范围", family: 4, defaults: "172.16.0.0/12, 192.168.0.0/16"},
 	{name: "snail_private_ipv6", label: "IPv6 内网范围", family: 6, defaults: "fc00::/7, fe80::/10"},
 }
@@ -386,12 +386,8 @@ func validatePolicyConfig(content string) error {
 			return fmt.Errorf("%s：%w", list.label, err)
 		}
 	}
-	ssh := sshDefinitionLine.FindAllStringSubmatch(content, -1)
-	if len(ssh) != 1 {
-		return fmt.Errorf("SSH 端口集合缺失、重复或格式异常，请检查配置")
-	}
-	if _, err := parsePolicyPorts(ssh[0][1]); err != nil {
-		return fmt.Errorf("SSH 端口集合无效: %w", err)
+	if _, err := readSSHPorts(content); err != nil {
+		return err
 	}
 	return nil
 }

@@ -126,7 +126,7 @@ func TestInitialAutostartDoesNotEnableAfterAbortOrFailure(t *testing.T) {
 				t.Fatal("failure was reported as success")
 			}
 			if scenario == "enable" || scenario == "unchanged result" || scenario == "verification" {
-				if enableAttempts != 1 || !*loaded || !strings.Contains(err.Error(), "配置已写入并加载") || !strings.Contains(shared.ReadFileString(configPath), "define snail_ssh_port") {
+				if enableAttempts != 1 || !*loaded || !strings.Contains(err.Error(), "配置已写入并加载") || !strings.Contains(shared.ReadFileString(configPath), "set snail_ssh_port") {
 					t.Fatalf("startup failure must preserve and report the active configuration: %v", err)
 				}
 			} else if enableAttempts != 0 || *loaded || len(*commands) != 0 {

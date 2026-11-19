@@ -30,7 +30,7 @@ func TestForwardPortsStayEmptyAndSeparate(t *testing.T) {
 		}
 	}
 	access, err := readPolicyValue(content, policyLists[0])
-	if err != nil || access != "80, 443" {
+	if err != nil || access != "22, 80, 443" {
 		t.Fatalf("access public ports changed or missing web ports: %q %v", access, err)
 	}
 	updated, err := withPolicyValue(content, forwardPolicyLists[0], "8443, 8000-8100")
@@ -40,7 +40,7 @@ func TestForwardPortsStayEmptyAndSeparate(t *testing.T) {
 	if got, err := readPolicyValue(updated, forwardPolicyLists[0]); err != nil || got != "8000-8100, 8443" {
 		t.Fatalf("forward port edit = %q, err=%v", got, err)
 	}
-	if got, err := readPolicyValue(updated, policyLists[0]); err != nil || got != "80, 443" {
+	if got, err := readPolicyValue(updated, policyLists[0]); err != nil || got != "22, 80, 443" {
 		t.Fatalf("forward edit changed access ports: %q %v", got, err)
 	}
 	if strings.Contains(updated, "$snail_ssh_port") && strings.Contains(updated[strings.Index(updated, "set snail_forward_public_ipv4_tcp_ports"):], "$snail_ssh_port") {

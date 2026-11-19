@@ -194,21 +194,22 @@ func TestBuildConfigKeepsPublicAndPrivatePortsSeparate(t *testing.T) {
 		for _, family := range []string{"ipv4", "ipv6"} {
 			for _, protocol := range []string{"tcp", "udp"} {
 				for scope, web := range map[string]bool{"public": choices.public, "private": choices.private} {
-					ports := "$snail_ssh_port"
+					ports := "2222, 22000"
 					if web {
 						ports += ", 80, 443"
 					}
-					if !strings.Contains(content, "define snail_"+scope+"_"+family+"_"+protocol+"_ports = { "+ports+" }") {
+					set := "set snail_" + scope + "_" + family + "_" + protocol + "_ports {\n        type inet_service\n        flags interval\n        elements = { " + ports + " }\n    }"
+					if !strings.Contains(content, set) {
 						t.Fatalf("%s %s %s ports do not reflect scope choice: web=%v", scope, family, protocol, web)
 					}
-					if !strings.Contains(content, "meta nfproto "+family+" "+protocol+" dport $snail_"+scope+"_"+family+"_"+protocol+"_ports counter accept") {
+					if !strings.Contains(content, "meta nfproto "+family+" "+protocol+" dport @snail_"+scope+"_"+family+"_"+protocol+"_ports counter accept") {
 						t.Fatalf("missing independent %s %s %s rule", scope, family, protocol)
 					}
 				}
 			}
 		}
 		for _, required := range []string{
-			"#!/usr/sbin/nft -f\n", "define snail_ssh_port = { 2222, 22000 }",
+			"#!/usr/sbin/nft -f\n", "set snail_ssh_port {\n        type inet_service\n        flags interval\n        elements = { 2222, 22000 }\n    }",
 			"add table inet snail\nflush table inet snail", "type filter hook input priority 0; policy drop;",
 			"ct state established,related counter accept", `iifname "lo" counter accept`,
 			"ip saddr $snail_private_ipv4 goto private_ports", "ip6 saddr $snail_private_ipv6 goto private_ports",
@@ -381,11 +382,11 @@ func TestRunConfirmsInstallAndWritesThenApplies(t *testing.T) {
 		t.Fatalf("must validate, write and automatically load exactly once: %v", operations)
 	}
 	content := shared.ReadFileString(configPath)
-	if !strings.Contains(content, "define snail_ssh_port = { 2200 }") ||
-		!strings.Contains(content, "define snail_public_ipv4_tcp_ports = { $snail_ssh_port, 80, 443 }") ||
-		!strings.Contains(content, "define snail_public_ipv4_udp_ports = { $snail_ssh_port, 80, 443 }") ||
-		!strings.Contains(content, "define snail_private_ipv4_tcp_ports = { $snail_ssh_port }") ||
-		!strings.Contains(content, "define snail_private_ipv4_udp_ports = { $snail_ssh_port }") {
+	if !strings.Contains(content, "elements = { 2200 }") ||
+		!strings.Contains(content, "set snail_public_ipv4_tcp_ports {\n        type inet_service\n        flags interval\n        elements = { 2200, 80, 443 }\n    }") ||
+		!strings.Contains(content, "set snail_public_ipv4_udp_ports {\n        type inet_service\n        flags interval\n        elements = { 2200, 80, 443 }\n    }") ||
+		!strings.Contains(content, "set snail_private_ipv4_tcp_ports {\n        type inet_service\n        flags interval\n        elements = { 2200 }\n    }") ||
+		!strings.Contains(content, "set snail_private_ipv4_udp_ports {\n        type inet_service\n        flags interval\n        elements = { 2200 }\n    }") {
 		t.Fatal("configuration did not preserve SSH, public consent and private default-off")
 	}
 }
@@ -507,7 +508,7 @@ func TestConfigurePreviewsAndReselectsPortsBeforeWriting(t *testing.T) {
 		}
 		if name == "nft" && reflect.DeepEqual(args, []string{"-f", configPath}) {
 			loads++
-			if validations != 1 || strings.Contains(shared.ReadFileString(configPath), "$snail_ssh_port, 80, 443") {
+			if validations != 1 || strings.Contains(shared.ReadFileString(configPath), "elements = { 2222, 80, 443 }") {
 				t.Fatal("must load the validated configuration reflecting the final selection")
 			}
 			return "", nil
@@ -516,7 +517,7 @@ func TestConfigurePreviewsAndReselectsPortsBeforeWriting(t *testing.T) {
 			t.Fatalf("unexpected command: %s %v", name, args)
 		}
 		validations++
-		if strings.Contains(shared.ReadFileString(args[2]), "$snail_ssh_port, 80, 443") {
+		if strings.Contains(shared.ReadFileString(args[2]), "elements = { 2222, 80, 443 }") {
 			t.Fatal("reselecting no must remove private web ports from written configuration")
 		}
 		return "", nil
@@ -562,7 +563,7 @@ func TestConfigureStopsOnCheckWriteOrLoadFailure(t *testing.T) {
 				if loads != 1 || !strings.Contains(err.Error(), "已写入") || !strings.Contains(err.Error(), "未成功加载") || !strings.Contains(err.Error(), "netlink failure") {
 					t.Fatalf("load failure must report saved config and detailed cause: loads=%d err=%v", loads, err)
 				}
-				if !strings.Contains(shared.ReadFileString(configPath), "define snail_ssh_port = { 2222 }") {
+				if !strings.Contains(shared.ReadFileString(configPath), "elements = { 2222 }") {
 					t.Fatal("load failure must preserve the generated configuration for retry")
 				}
 			} else if loads != 0 {

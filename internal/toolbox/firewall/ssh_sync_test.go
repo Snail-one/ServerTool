@@ -74,7 +74,8 @@ func TestEnsureSSHPortsPreservesMultipleListenersAndUnrelatedRules(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := strings.Replace(original, "define snail_ssh_port = { 22, 2200 }", "define snail_ssh_port = { 3022, 4022 }", 1)
+	expected := strings.ReplaceAll(original, "elements = { 22, 2200, 80, 443 }", "elements = { 80, 443, 3022, 4022 }")
+	expected = strings.ReplaceAll(expected, "elements = { 22, 2200 }", "elements = { 3022, 4022 }")
 	if string(updated) != expected {
 		t.Fatalf("port definitions not updated, or unrelated persistent configuration changed: %s", updated)
 	}
@@ -191,14 +192,13 @@ func TestSSHDefinitionsRejectIncompleteConfigurations(t *testing.T) {
 	for _, bad := range []string{
 		updated + "\n" + sshPortsBegin,
 		updated + "\n" + sshPortsEnd,
-		strings.Replace(content, "define snail_ssh_port = { 22 }", "# missing SSH definition", 1),
-		strings.Replace(content, "{ 22 }", "22", 1), // Old scalar format requires regeneration.
-		strings.Replace(content, "{ 22 }", "{ 0, 22 }", 1),
-		strings.Replace(content, "{ 22 }", "{ 22, }", 1),
-		strings.Replace(content, "define snail_private_ipv6_udp_ports", "define another_list", 1),
-		strings.Replace(content, "{ $snail_ssh_port }", "{ $snail_ssh_port_2 }", 1),
-		strings.Replace(content, "{ $snail_ssh_port }", "{ 443 }", 1),
-		content + "\ndefine snail_ssh_port = { 3022 }\n",
+		strings.Replace(content, "set snail_ssh_port {", "set removed_ssh_port {", 1),
+		strings.Replace(content, "elements = { 22 }", "22", 1), // Old scalar format requires regeneration.
+		strings.Replace(content, "elements = { 22 }", "elements = { 0, 22 }", 1),
+		strings.Replace(content, "elements = { 22 }", "elements = { 22, }", 1),
+		strings.Replace(content, "set snail_private_ipv6_udp_ports {", "set another_list {", 1),
+		strings.Replace(content, "elements = { 22 }", "elements = { $custom_ports }", 1),
+		content + "\n    set snail_ssh_port {\n        type inet_service\n        flags interval\n        elements = { 3022 }\n    }\n",
 		strings.Replace(content, "chain input {", "chain other {", 1),
 		strings.Replace(content, "hook input", "hook output", 1),
 		strings.Replace(content, "; policy drop;", "; drop; policy drop;", 1),
@@ -214,11 +214,16 @@ func TestSSHDefinitionsReplaceOldPortsAndPreserveBusinessPorts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Keep independently edited business ports and unrelated references intact.
-	content = strings.Replace(content,
-		"define snail_private_ipv6_udp_ports = { $snail_ssh_port }",
-		"define snail_private_ipv6_udp_ports = { $snail_ssh_port, 51820 } # VPN", 1)
+	content, err = withPolicyValue(content, policyLists[7], "21069, 51820")
+	if err != nil {
+		t.Fatal(err)
+	}
+	content = strings.Replace(content, "elements = { 21069, 51820 }", "elements = { 21069, 51820 } # VPN", 1)
 	content += "\n# manual note: keep this text\n"
+	cleared, err := withPolicyValue(content, policyLists[0], "80, 443")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, ports := range [][]int{{35678}, {4022, 3022, 4022}, {22333}} {
 		updated, err := withSSHPorts(content, ports)
 		if err != nil {
@@ -227,7 +232,7 @@ func TestSSHDefinitionsReplaceOldPortsAndPreserveBusinessPorts(t *testing.T) {
 		if strings.Contains(updated, "21069") || strings.Contains(updated, sshPortsBegin) {
 			t.Fatal("old SSH definition or standalone rules retained")
 		}
-		for _, kept := range []string{", 80, 443 }", ", 51820 } # VPN", "# manual note: keep this text"} {
+		for _, kept := range []string{"80, 443", "51820", "# VPN", "# manual note: keep this text"} {
 			if !strings.Contains(updated, kept) {
 				t.Fatalf("business configuration lost: %s", kept)
 			}
@@ -235,19 +240,30 @@ func TestSSHDefinitionsReplaceOldPortsAndPreserveBusinessPorts(t *testing.T) {
 		if again, err := withSSHPorts(updated, ports); err != nil || again != updated {
 			t.Fatalf("repeated update changed configuration: %v", err)
 		}
-		wanted := "define snail_ssh_port = { 3022, 4022 }"
-		if len(ports) == 1 {
-			wanted = "define snail_ssh_port = { " + portList(ports) + " }"
+		got, err := sshPortText(updated)
+		if err != nil || got != portList(mergeTestPorts(ports)) {
+			t.Fatalf("SSH port set = %q, err=%v", got, err)
 		}
-		if !strings.Contains(updated, wanted) || strings.Contains(updated, "snail_ssh_port_2") || strings.Count(updated, "$snail_ssh_port") != 8 {
-			t.Fatal("SSH port set or stable references are incorrect")
+		withoutSSH, err := withSSHPorts(cleared, ports)
+		if err != nil {
+			t.Fatal(err)
 		}
-		// Increasing and decreasing the port count must leave every other byte intact.
-		restored := sshDefinitionLine.ReplaceAllString(updated, "define snail_ssh_port = { 21069 }")
-		previous := sshDefinitionLine.ReplaceAllString(content, "define snail_ssh_port = { 21069 }")
-		if restored != previous {
-			t.Fatal("updating the set changed other configuration")
+		public, err := readPolicyValue(withoutSSH, policyLists[0])
+		if err != nil || public != "80, 443" {
+			t.Fatalf("removed SSH ports were added back: %q %v", public, err)
 		}
 		content = updated
+		cleared, err = withPolicyValue(content, policyLists[0], "80, 443")
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
+}
+
+func mergeTestPorts(ports []int) []int {
+	merged, err := mergeSSHPorts(ports)
+	if err != nil {
+		return ports
+	}
+	return merged
 }

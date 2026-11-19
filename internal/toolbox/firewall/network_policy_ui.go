@@ -323,8 +323,10 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 		if value == "" {
 			if list.keepSSH {
 				value = "无附加业务端口，仅 SSH 端口"
-			} else {
+			} else if activeSession != nil && activeSession.forward {
 				value = "无转发端口"
+			} else {
+				value = "无"
 			}
 		}
 		fields = append(fields, ui.CardField{Label: lists[index].label, Value: value})
@@ -372,10 +374,14 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 					ui.MenuOptionHint("2", "删除端口 / 范围", "从业务列表扣除，SSH 端口始终保留")
 					ui.MenuOption("3", "替换全部业务端口")
 					ui.MenuOptionHint("4", "清空业务端口", "只保留 SSH 端口")
-				} else {
+				} else if activeSession != nil && activeSession.forward {
 					ui.MenuOptionHint("2", "删除端口 / 范围", "从转发列表扣除")
 					ui.MenuOption("3", "替换全部转发端口")
 					ui.MenuOptionHint("4", "清空转发端口", "清空后新的转发连接全部丢弃")
+				} else {
+					ui.MenuOptionHint("2", "删除端口 / 范围", "从该名单扣除，包括 SSH 端口")
+					ui.MenuOption("3", "替换全部端口")
+					ui.MenuOptionHint("4", "清空端口", "清空后该名单不再放行新连接")
 				}
 			} else {
 				ui.MenuOptionHint("2", "删除地址 / 网段", "精确匹配规范化后的地址 / CIDR")

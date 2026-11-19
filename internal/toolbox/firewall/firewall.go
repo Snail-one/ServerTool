@@ -510,8 +510,12 @@ func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, er
 		}
 		ui.PrintInfoCard("访问规则", accessSummaryFields(content)...)
 		ui.PrintInfoCard("转发规则", forwardSummaryFields(content)...)
+		sshPorts, err := sshPortText(content)
+		if err != nil {
+			return false, err
+		}
 		ui.PrintInfoCard("即将写入的配置",
-			ui.CardField{Label: "SSH 端口", Value: strings.TrimSpace(sshDefinitionLine.FindStringSubmatch(content)[1])},
+			ui.CardField{Label: "SSH 端口", Value: sshPorts},
 			ui.CardField{Label: "附加放行规则", Value: fmt.Sprintf("保留 %d 条，可额外放行来源和端口", len(extraRules))},
 			ui.CardField{Label: "ICMP / ICMPv6 回显", Value: pingState},
 			ui.CardField{Label: "数据包统计", Value: counterState},
@@ -580,7 +584,7 @@ func buildConfig(ports []int, publicWeb, privateWeb bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	publicPorts, privatePorts := "$snail_ssh_port", "$snail_ssh_port"
+	publicPorts, privatePorts := portList(ports), portList(ports)
 	publicDescription, privateDescription := "当前仅开放 SSH 端口", "当前仅开放 SSH 端口"
 	if publicWeb {
 		publicPorts += ", 80, 443"
