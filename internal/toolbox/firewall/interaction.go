@@ -4,7 +4,7 @@ import "snail_tool/internal/ui"
 
 func sourceRulePage(stage string, rule allowRule) {
 	ui.ClearScreen()
-	ui.MenuTitle("防火墙管理", "访问规则管理", "来源 IP 放行", stage)
+	ui.MenuTitle("防火墙管理", sessionTitle(), "来源 IP 放行", stage)
 	var fields []ui.CardField
 	if rule.ID != "" {
 		fields = append(fields, ui.CardField{Label: "规则 ID", Value: rule.ID})

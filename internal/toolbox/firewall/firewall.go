@@ -68,8 +68,12 @@ func Run(view *ui.UI) error {
 				return runAccessRuleManager(view)
 			})
 		case "4":
-			shared.RunAction(view, "读取配置文件失败，已返回防火墙管理", showConfigFile)
+			shared.RunAction(view, "转发规则管理失败，已返回防火墙管理", func() error {
+				return runForwardRuleManager(view)
+			})
 		case "5":
+			shared.RunAction(view, "读取配置文件失败，已返回防火墙管理", showConfigFile)
+		case "6":
 			shared.RunAction(view, "编辑或加载配置失败，已返回防火墙管理", func() error {
 				return editConfig(view)
 			})
@@ -77,15 +81,15 @@ func Run(view *ui.UI) error {
 			shared.RunAction(view, "加载防火墙配置失败，已返回防火墙管理", func() error {
 				return loadConfig(view)
 			})
-		case "6":
+		case "7":
 			shared.RunAction(view, "生成防火墙配置失败，已返回防火墙管理", func() error {
 				return configure(view)
 			})
-		case "7":
+		case "8":
 			shared.RunAction(view, "常用功能设置失败，已返回防火墙管理", func() error {
 				return runFeatureSettings(view)
 			})
-		case "8":
+		case "9":
 			shared.RunAction(view, "实时查看规则失败，已返回防火墙管理", func() error {
 				return monitorTraffic(view, time.Second)
 			})
@@ -101,7 +105,7 @@ func showConfigFile() error {
 	ui.MenuTitle("防火墙管理", "配置文件")
 	data, err := os.ReadFile(configPath)
 	if os.IsNotExist(err) {
-		ui.PrintInfoCard("尚未生成防火墙配置", ui.CardField{Label: "下一步", Value: "选择 6 生成默认配置"})
+		ui.PrintInfoCard("尚未生成防火墙配置", ui.CardField{Label: "下一步", Value: "选择 7 生成默认配置"})
 		return nil
 	}
 	if err != nil {
@@ -314,7 +318,7 @@ func configure(view *ui.UI) error {
 			autostartAction = "不支持自动设置（未找到 systemctl）"
 		}
 	}
-	var preserved []allowRule
+	var preserved, preservedForward []allowRule
 	countersEnabled, err := packetCountersEnabled(string(version.content))
 	if err != nil {
 		return err
@@ -325,6 +329,12 @@ func configure(view *ui.UI) error {
 	}
 	if strings.Contains(string(version.content), rulesBegin) || strings.Contains(string(version.content), rulesEnd) {
 		preserved, err = managedRules(string(version.content))
+		if err != nil {
+			return err
+		}
+	}
+	if strings.Contains(string(version.content), forwardRulesBegin) || strings.Contains(string(version.content), forwardRulesEnd) {
+		preservedForward, err = managedRulesIn(string(version.content), forwardRuleBlock)
 		if err != nil {
 			return err
 		}
@@ -371,6 +381,10 @@ func configure(view *ui.UI) error {
 					return err
 				}
 				content, err = replaceManagedRules(content, preserved)
+				if err != nil {
+					return err
+				}
+				content, err = replaceManagedRulesIn(content, preservedForward, forwardRuleBlock)
 				if err != nil {
 					return err
 				}
@@ -495,6 +509,7 @@ func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, er
 			counterState = ui.PrimaryText("已开启")
 		}
 		ui.PrintInfoCard("访问规则", accessSummaryFields(content)...)
+		ui.PrintInfoCard("转发规则", forwardSummaryFields(content)...)
 		ui.PrintInfoCard("即将写入的配置",
 			ui.CardField{Label: "SSH 端口", Value: strings.TrimSpace(sshDefinitionLine.FindStringSubmatch(content)[1])},
 			ui.CardField{Label: "附加放行规则", Value: fmt.Sprintf("保留 %d 条，可额外放行来源和端口", len(extraRules))},
@@ -503,6 +518,7 @@ func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, er
 			ui.CardField{Label: "替换范围", Value: "使用当前草稿替换原配置；原端口、内网 IP 范围及手写规则不会自动沿用"},
 			ui.CardField{Label: "内核规则", Value: "重建 inet snail 表，保留其他表"},
 			ui.CardField{Label: "未匹配入站流量", Value: "丢弃；保留已建立连接、回环、指定 IPv6 控制流量及 DHCPv6"},
+			ui.CardField{Label: "未匹配转发流量", Value: "丢弃；已建立连接放行，新连接按转发规则名单匹配目标端口"},
 			ui.CardField{Label: "配置文件", Value: configPath, Detail: "整份替换，已有文件先备份；校验成功后写入"},
 			ui.CardField{Label: "生效方式", Value: "写入后自动加载，立即生效"},
 			ui.CardField{Label: "开机自启", Value: autostartAction},
@@ -512,6 +528,7 @@ func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, er
 		ui.MenuOption("2", "预览完整配置")
 		ui.MenuOption("3", "重新选择公网 / 局域网 Web 端口")
 		ui.MenuOptionHint("4", "自定义访问规则", "端口 / 内网 IP 范围 / 来源 IP 放行，先调整草稿")
+		ui.MenuOptionHint("5", "自定义转发规则", "转发端口 / 转发内网范围 / 来源 IP 放行，先调整草稿")
 		ui.MenuExit("0/q", "返回局域网 Web 端口选择")
 		fmt.Println()
 		choice, err := view.Ask("请选择：")
@@ -533,6 +550,17 @@ func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, er
 			return false, nil
 		case "4":
 			updated, err := editAccessRulesDraft(view, content, true)
+			if errors.Is(err, shared.ErrReturnToMenu) {
+				continue
+			}
+			if err != nil {
+				return false, err
+			}
+			*draft = updated
+		case "5":
+			restore := useForwardSession()
+			updated, err := editAccessRulesDraft(view, content, true)
+			restore()
 			if errors.Is(err, shared.ErrReturnToMenu) {
 				continue
 			}

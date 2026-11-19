@@ -196,7 +196,7 @@ func withSSHPorts(content string, ports []int) (string, error) {
 		if err == nil {
 			// SSH updates preserve unrelated nft expressions, including custom
 			// business-port variables that the interactive editor cannot expand.
-			_, err = policyBusinessTerms(raw, list.label)
+			_, err = policyBusinessTerms(raw, list.label, list.keepSSH)
 		}
 		if err != nil {
 			return "", fmt.Errorf("业务端口列表异常，请检查配置: %w", err)

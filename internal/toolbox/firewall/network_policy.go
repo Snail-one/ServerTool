@@ -12,19 +12,75 @@ type policyList struct {
 	name, label string
 	family      int // 0 for ports, 4 or 6 for source addresses
 	defaults    string
+	keepSSH     bool
+	namedSet    bool
+}
+
+type policySession struct {
+	title   string
+	lists   []policyList
+	block   ruleBlock
+	forward bool
+}
+
+var activeSession *policySession
+
+func sessionTitle() string {
+	if activeSession != nil && activeSession.title != "" {
+		return activeSession.title
+	}
+	return "访问规则管理"
+}
+
+func sessionLists() []policyList {
+	if activeSession != nil && len(activeSession.lists) > 0 {
+		return activeSession.lists
+	}
+	return policyLists
+}
+
+func sessionDraftName() string {
+	if activeSession != nil && activeSession.forward {
+		return "转发规则草稿"
+	}
+	return "访问规则草稿"
+}
+
+func useForwardSession() func() {
+	session := policySession{
+		title:   "转发规则管理",
+		lists:   forwardPolicyLists,
+		block:   forwardRuleBlock,
+		forward: true,
+	}
+	activeSession = &session
+	return func() { activeSession = nil }
 }
 
 var policyLists = []policyList{
-	{name: "snail_public_ipv4_tcp_ports", label: "公网 IPv4 TCP"},
-	{name: "snail_public_ipv4_udp_ports", label: "公网 IPv4 UDP"},
-	{name: "snail_public_ipv6_tcp_ports", label: "公网 IPv6 TCP"},
-	{name: "snail_public_ipv6_udp_ports", label: "公网 IPv6 UDP"},
-	{name: "snail_private_ipv4_tcp_ports", label: "内网 IPv4 TCP"},
-	{name: "snail_private_ipv4_udp_ports", label: "内网 IPv4 UDP"},
-	{name: "snail_private_ipv6_tcp_ports", label: "内网 IPv6 TCP"},
-	{name: "snail_private_ipv6_udp_ports", label: "内网 IPv6 UDP"},
+	{name: "snail_public_ipv4_tcp_ports", label: "公网 IPv4 TCP", keepSSH: true},
+	{name: "snail_public_ipv4_udp_ports", label: "公网 IPv4 UDP", keepSSH: true},
+	{name: "snail_public_ipv6_tcp_ports", label: "公网 IPv6 TCP", keepSSH: true},
+	{name: "snail_public_ipv6_udp_ports", label: "公网 IPv6 UDP", keepSSH: true},
+	{name: "snail_private_ipv4_tcp_ports", label: "内网 IPv4 TCP", keepSSH: true},
+	{name: "snail_private_ipv4_udp_ports", label: "内网 IPv4 UDP", keepSSH: true},
+	{name: "snail_private_ipv6_tcp_ports", label: "内网 IPv6 TCP", keepSSH: true},
+	{name: "snail_private_ipv6_udp_ports", label: "内网 IPv6 UDP", keepSSH: true},
 	{name: "snail_private_ipv4", label: "IPv4 内网范围", family: 4, defaults: "172.16.0.0/12, 192.168.0.0/16"},
 	{name: "snail_private_ipv6", label: "IPv6 内网范围", family: 6, defaults: "fc00::/7, fe80::/10"},
+}
+
+var forwardPolicyLists = []policyList{
+	{name: "snail_forward_public_ipv4_tcp_ports", label: "公网 IPv4 TCP", namedSet: true},
+	{name: "snail_forward_public_ipv4_udp_ports", label: "公网 IPv4 UDP", namedSet: true},
+	{name: "snail_forward_public_ipv6_tcp_ports", label: "公网 IPv6 TCP", namedSet: true},
+	{name: "snail_forward_public_ipv6_udp_ports", label: "公网 IPv6 UDP", namedSet: true},
+	{name: "snail_forward_private_ipv4_tcp_ports", label: "内网 IPv4 TCP", namedSet: true},
+	{name: "snail_forward_private_ipv4_udp_ports", label: "内网 IPv4 UDP", namedSet: true},
+	{name: "snail_forward_private_ipv6_tcp_ports", label: "内网 IPv6 TCP", namedSet: true},
+	{name: "snail_forward_private_ipv6_udp_ports", label: "内网 IPv6 UDP", namedSet: true},
+	{name: "snail_forward_private_ipv4", label: "IPv4 内网范围", family: 4, defaults: "172.16.0.0/12, 192.168.0.0/16"},
+	{name: "snail_forward_private_ipv6", label: "IPv6 内网范围", family: 6, defaults: "fc00::/7, fe80::/10"},
 }
 
 // Definitions are found through the tokenizer so comments, multiline sets and
@@ -138,7 +194,7 @@ func parsePolicySources(raw string, family int) ([]string, error) {
 }
 
 func readPolicyValue(content string, list policyList) (string, error) {
-	_, _, raw, err := policyDefinition(content, list.name)
+	raw, err := policyRawValue(content, list)
 	if err != nil {
 		return "", err
 	}
@@ -146,7 +202,7 @@ func readPolicyValue(content string, list policyList) (string, error) {
 		sources, err := parsePolicySources(raw, list.family)
 		return strings.Join(sources, ", "), err
 	}
-	business, err := policyBusinessTerms(raw, list.label)
+	business, err := policyBusinessTerms(raw, list.label, list.keepSSH)
 	if err != nil {
 		return "", err
 	}
@@ -154,7 +210,21 @@ func readPolicyValue(content string, list policyList) (string, error) {
 	return policyPortsText(ports), err
 }
 
-func policyBusinessTerms(raw, label string) ([]string, error) {
+func policyRawValue(content string, list policyList) (string, error) {
+	if list.namedSet {
+		return namedSetValue(content, list.name)
+	}
+	_, _, raw, err := policyDefinition(content, list.name)
+	return raw, err
+}
+
+func policyBusinessTerms(raw, label string, keepSSH bool) ([]string, error) {
+	if strings.TrimSpace(raw) == "" {
+		if keepSSH {
+			return nil, fmt.Errorf("%s 缺少唯一的 SSH 集合引用，请先修正配置", label)
+		}
+		return nil, nil
+	}
 	var business []string
 	references := 0
 	for _, part := range strings.Split(raw, ",") {
@@ -163,14 +233,17 @@ func policyBusinessTerms(raw, label string) ([]string, error) {
 		}
 		if strings.TrimSpace(part) == "$snail_ssh_port" {
 			references++
+			if !keepSSH {
+				return nil, fmt.Errorf("%s 不能引用 SSH 端口集合", label)
+			}
 		} else {
-			if strings.Contains(part, "$snail_ssh_port") {
-				return nil, fmt.Errorf("%s 的 SSH 集合引用异常，请先修正配置", label)
+			if strings.Contains(part, "$snail_ssh_port") || (!keepSSH && strings.Contains(part, "$")) {
+				return nil, fmt.Errorf("%s 的端口条目含不受支持的集合引用，请先修正配置", label)
 			}
 			business = append(business, part)
 		}
 	}
-	if references != 1 {
+	if keepSSH && references != 1 {
 		return nil, fmt.Errorf("%s 缺少唯一的 SSH 集合引用，请先修正配置", label)
 	}
 	return business, nil
@@ -180,18 +253,17 @@ func withPolicyValue(content string, list policyList, value string) (string, err
 	if _, err := readPolicyValue(content, list); err != nil {
 		return "", err
 	}
-	start, end, _, err := policyDefinition(content, list.name)
-	if err != nil {
-		return "", err
-	}
 	if list.family == 0 {
 		ports, err := parsePolicyPorts(value)
 		if err != nil {
 			return "", err
 		}
-		value = "$snail_ssh_port"
-		if len(ports) > 0 {
-			value += ", " + policyPortsText(ports)
+		value = policyPortsText(ports)
+		if list.keepSSH {
+			value = "$snail_ssh_port"
+			if portsText := policyPortsText(ports); portsText != "" {
+				value += ", " + portsText
+			}
 		}
 	} else {
 		sources, err := parsePolicySources(value, list.family)
@@ -200,12 +272,111 @@ func withPolicyValue(content string, list policyList, value string) (string, err
 		}
 		value = strings.Join(sources, ", ")
 	}
+	if list.namedSet {
+		return withNamedSetElements(content, list.name, value)
+	}
+	start, end, _, err := policyDefinition(content, list.name)
+	if err != nil {
+		return "", err
+	}
 	return content[:start] + " " + value + " " + content[end:], nil
+}
+
+// Named sets stay valid when they have no elements, so an empty forward port
+// list drops new connections instead of failing nft syntax.
+func namedSetValue(content, name string) (string, error) {
+	_, _, elementsStart, elementsEnd, err := namedSetBounds(content, name)
+	if err != nil {
+		return "", err
+	}
+	if elementsStart < 0 {
+		return "", nil
+	}
+	tokens, err := configTokens(content[elementsStart:elementsEnd])
+	if err != nil {
+		return "", err
+	}
+	var values []string
+	for _, token := range tokens {
+		values = append(values, token.text)
+	}
+	return strings.Join(values, " "), nil
+}
+
+func namedSetBounds(content, name string) (bodyEnd, elementsToken, elementsStart, elementsEnd int, err error) {
+	tokens, err := configTokens(content)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	found := false
+	elementsToken, elementsStart, elementsEnd = -1, -1, -1
+	for i := 0; i+2 < len(tokens); i++ {
+		if tokens[i].text != "set" || tokens[i+1].text != name || tokens[i+2].text != "{" {
+			continue
+		}
+		if found {
+			return 0, 0, 0, 0, fmt.Errorf("%s 集合重复或格式不受支持，请通过编辑配置文件检查", name)
+		}
+		close, err := closingBrace(tokens, i+2)
+		if err != nil {
+			return 0, 0, 0, 0, err
+		}
+		found = true
+		bodyEnd = tokens[close].start
+		for j := i + 3; j+2 < close; j++ {
+			if tokens[j].text == "elements" && tokens[j+1].text == "=" && tokens[j+2].text == "{" {
+				if elementsStart >= 0 {
+					return 0, 0, 0, 0, fmt.Errorf("%s 集合的 elements 重复，请通过编辑配置文件检查", name)
+				}
+				end, err := closingBrace(tokens, j+2)
+				if err != nil {
+					return 0, 0, 0, 0, err
+				}
+				elementsToken = tokens[j].start
+				elementsStart, elementsEnd = tokens[j+2].end, tokens[end].start
+				j = end
+			}
+		}
+		i = close
+	}
+	if !found {
+		return 0, 0, 0, 0, fmt.Errorf("缺少 %s 集合，请先生成基础配置，或通过编辑配置文件补全", name)
+	}
+	return bodyEnd, elementsToken, elementsStart, elementsEnd, nil
+}
+
+func withNamedSetElements(content, name, value string) (string, error) {
+	bodyEnd, elementsToken, elementsStart, elementsEnd, err := namedSetBounds(content, name)
+	if err != nil {
+		return "", err
+	}
+	if value == "" {
+		if elementsStart < 0 {
+			return content, nil
+		}
+		line := strings.LastIndex(content[:elementsToken], "\n") + 1
+		after := elementsEnd
+		// elementsEnd is the offset of the closing brace; skip that brace and one newline.
+		brace := strings.Index(content[elementsEnd:], "}")
+		if brace < 0 {
+			return "", fmt.Errorf("%s 集合的 elements 花括号未闭合", name)
+		}
+		after = elementsEnd + brace + 1
+		if after < len(content) && content[after] == '\n' {
+			after++
+		}
+		return content[:line] + content[after:], nil
+	}
+	if elementsStart >= 0 {
+		return content[:elementsStart] + " " + value + " " + content[elementsEnd:], nil
+	}
+	insertAt := strings.LastIndex(content[:bodyEnd], "\n") + 1
+	return content[:insertAt] + "        elements = { " + value + " }\n" + content[insertAt:], nil
 }
 
 func validatePolicyConfig(content string) error {
 	if !hasManagedConfig(content) {
-		return fmt.Errorf("请先选择 6 生成本工具防火墙配置")
+		return fmt.Errorf("请先选择 7 生成本工具防火墙配置")
 	}
 	if _, _, _, err := inputChainBounds(content); err != nil {
 		return err
@@ -225,12 +396,28 @@ func validatePolicyConfig(content string) error {
 	return nil
 }
 
+func validateForwardConfig(content string) error {
+	if !hasManagedConfig(content) {
+		return fmt.Errorf("请先选择 7 生成本工具防火墙配置")
+	}
+	if _, err := managedRulesIn(content, forwardRuleBlock); err != nil {
+		return fmt.Errorf("当前配置没有可用的转发链，请先选择 7 重建基础配置: %w", err)
+	}
+	for _, list := range forwardPolicyLists {
+		if _, err := readPolicyValue(content, list); err != nil {
+			return fmt.Errorf("%s：%w", list.label, err)
+		}
+	}
+	return nil
+}
+
 // Build the complete edit in memory. A failure in any selected list returns
 // no replacement, so a batch never leaves a partially updated parent draft.
 func withPolicyChanges(content string, indices []int, operation, value string, editIndex int) (string, error) {
 	updated := content
+	lists := sessionLists()
 	for _, index := range indices {
-		list := policyLists[index]
+		list := lists[index]
 		current, err := readPolicyValue(updated, list)
 		if err != nil {
 			return "", err

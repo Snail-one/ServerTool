@@ -54,7 +54,7 @@ func reorderAllowRulesDraft(view *ui.UI, rules []allowRule) ([]allowRule, error)
 			ui.CardField{Label: "状态", Value: state},
 			ui.CardField{Label: "选中规则", Value: selected},
 			ui.CardField{Label: "匹配顺序", Value: "从上到下；TCP+UDP 规则作为一个整体移动"},
-			ui.CardField{Label: "调整范围", Value: "采用顺序后返回访问规则管理，统一保存才生效"},
+			ui.CardField{Label: "调整范围", Value: "采用顺序后返回" + sessionTitle() + "，统一保存才生效"},
 		)
 		printRuleOrder(draft, selected)
 		ui.PrintField("选择规则", "输入列表序号或完整规则 ID")
@@ -63,7 +63,7 @@ func reorderAllowRulesDraft(view *ui.UI, rules []allowRule) ([]allowRule, error)
 		ui.MenuOption("t", "置顶")
 		ui.MenuOption("b", "置底")
 		ui.MenuOption("r", "还原草稿")
-		ui.MenuShortcutHint("s", "采用顺序并返回", "加入访问规则草稿，最后统一保存")
+		ui.MenuShortcutHint("s", "采用顺序并返回", "加入"+sessionDraftName()+"，最后统一保存")
 		ui.MenuExit("0/q", "放弃草稿并返回")
 		if notice != "" {
 			ui.PrintField("提示", notice)

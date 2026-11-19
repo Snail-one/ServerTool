@@ -79,6 +79,54 @@ func accessSummaryFields(content string) []ui.CardField {
 	return fields
 }
 
+func forwardSummaryFields(content string) []ui.CardField {
+	var fields []ui.CardField
+	for scope, label := range []string{"公网", "内网"} {
+		var values [4]string
+		for i := range values {
+			value, err := readPolicyValue(content, forwardPolicyLists[scope*4+i])
+			if err != nil {
+				values[i] = err.Error()
+				continue
+			}
+			if value == "" {
+				value = "无"
+			}
+			values[i] = value
+		}
+		if values[0] == values[1] && values[0] == values[2] && values[0] == values[3] {
+			fields = append(fields, ui.CardField{Label: label, Value: "IPv4 / IPv6 · TCP / UDP → " + values[0]})
+		} else if values[0] == values[2] && values[1] == values[3] {
+			for i, protocol := range []string{"TCP", "UDP"} {
+				fields = append(fields, ui.CardField{Label: label + " " + protocol, Value: "IPv4 / IPv6 → " + values[i]})
+			}
+		} else {
+			for family, version := range []string{"IPv4", "IPv6"} {
+				if values[family*2] == values[family*2+1] {
+					fields = append(fields, ui.CardField{Label: label + " " + version, Value: "TCP / UDP → " + values[family*2]})
+				} else {
+					for protocol, name := range []string{"TCP", "UDP"} {
+						fields = append(fields, ui.CardField{Label: label + " " + version + " " + name, Value: values[family*2+protocol]})
+					}
+				}
+			}
+		}
+	}
+	for _, list := range forwardPolicyLists[8:] {
+		value, err := readPolicyValue(content, list)
+		if err != nil {
+			value = err.Error()
+		}
+		fields = append(fields, ui.CardField{Label: list.label, Value: value})
+	}
+	rules, err := managedRulesIn(content, forwardRuleBlock)
+	if err != nil {
+		return append(fields, ui.CardField{Label: "来源 IP 放行", Value: err.Error()})
+	}
+	fields = append(fields, ui.CardField{Label: "来源 IP 放行", Value: fmt.Sprintf("%d 条", len(rules)), Detail: "按来源 IP / 网段设置转发端口和协议，优先于基础端口放行"})
+	return fields
+}
+
 func ruleChangeFields(before, after string) []ui.CardField {
 	old, oldErr := managedRules(before)
 	next, nextErr := managedRules(after)
@@ -130,11 +178,17 @@ func editSourceRulesDraft(view *ui.UI, original string) (string, error) {
 			return "", err
 		}
 		sourceRulePage("", allowRule{})
+		sourceObject := "访问本机的来源 IP / 网段（客户端地址）"
+		sourceExample := "例如：允许 192.168.1.10 访问 TCP 3306"
+		if activeSession != nil && activeSession.forward {
+			sourceObject = "经本机转发的来源 IP / 网段"
+			sourceExample = "例如：允许 192.168.1.10 转发 TCP 443"
+		}
 		ui.PrintInfoCard("来源 IP 放行草稿",
-			ui.CardField{Label: "配置对象", Value: "访问本机的来源 IP / 网段（客户端地址）", Detail: "例如：允许 192.168.1.10 访问 TCP 3306"},
+			ui.CardField{Label: "配置对象", Value: sourceObject, Detail: sourceExample},
 			ui.CardField{Label: "放行权限", Value: "指定端口，或所选 TCP / UDP 协议的全部端口"},
 			ui.CardField{Label: "匹配方式", Value: "优先于公网 / 内网基础端口放行"},
-			ui.CardField{Label: "保存方式", Value: "本页只改草稿，返回访问规则管理后统一保存"},
+			ui.CardField{Label: "保存方式", Value: "本页只改草稿，返回" + sessionTitle() + "后统一保存"},
 		)
 		printRuleOrder(rules, "")
 		legacy := false
@@ -148,10 +202,11 @@ func editSourceRulesDraft(view *ui.UI, original string) (string, error) {
 		ui.MenuOption("2", "编辑放行规则")
 		ui.MenuOption("3", "删除放行规则")
 		ui.MenuOption("4", "调整放行规则顺序")
-		if legacy {
+		allowLegacy := legacy && (activeSession == nil || !activeSession.forward)
+		if allowLegacy {
 			ui.MenuOptionHint("5", "旧规则转入基础端口", "将所选规则的端口加入公网和内网列表，再移除此规则")
 		}
-		ui.MenuExit("0/q", "返回访问规则草稿")
+		ui.MenuExit("0/q", "返回"+sessionDraftName())
 		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return "", err
@@ -159,7 +214,7 @@ func editSourceRulesDraft(view *ui.UI, original string) (string, error) {
 		if shared.IsReturnChoice(choice) {
 			return draft, nil
 		}
-		if choice != "1" && choice != "2" && choice != "3" && choice != "4" && (choice != "5" || !legacy) {
+		if choice != "1" && choice != "2" && choice != "3" && choice != "4" && (choice != "5" || !allowLegacy) {
 			ui.InvalidChoice()
 			continue
 		}

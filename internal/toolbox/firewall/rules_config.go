@@ -11,10 +11,38 @@ import (
 )
 
 const (
-	rulesBegin = "# ===== BEGIN SNAIL FIREWALL RULES ====="
-	rulesEnd   = "# ===== END SNAIL FIREWALL RULES ====="
-	ruleMeta   = "# SNAIL RULE "
+	rulesBegin        = "# ===== BEGIN SNAIL FIREWALL RULES ====="
+	rulesEnd          = "# ===== END SNAIL FIREWALL RULES ====="
+	forwardRulesBegin = "# ===== BEGIN SNAIL FORWARD RULES ====="
+	forwardRulesEnd   = "# ===== END SNAIL FORWARD RULES ====="
+	ruleMeta          = "# SNAIL RULE "
 )
+
+type ruleBlock struct {
+	begin, end                string
+	allowChain, baseChain     string
+	hook                      string
+	privateChain, publicChain string
+}
+
+var accessRuleBlock = ruleBlock{
+	begin: rulesBegin, end: rulesEnd,
+	allowChain: "source_allow", baseChain: "input", hook: "input",
+	privateChain: "private_ports", publicChain: "public_ports",
+}
+
+var forwardRuleBlock = ruleBlock{
+	begin: forwardRulesBegin, end: forwardRulesEnd,
+	allowChain: "forward_source_allow", baseChain: "forward", hook: "forward",
+	privateChain: "forward_private_ports", publicChain: "forward_public_ports",
+}
+
+func currentRuleBlock() ruleBlock {
+	if activeSession != nil {
+		return activeSession.block
+	}
+	return accessRuleBlock
+}
 
 type configVersion struct {
 	content []byte
@@ -110,7 +138,7 @@ func closingBrace(tokens []nftToken, open int) (int, error) {
 	return 0, fmt.Errorf("配置文件花括号未闭合")
 }
 
-func findRuleChain(content string) (int, int, error) {
+func findRuleChain(content string, block ruleBlock) (int, int, error) {
 	tokens, err := configTokens(content)
 	if err != nil {
 		return 0, 0, err
@@ -131,12 +159,12 @@ func findRuleChain(content string) (int, int, error) {
 					return 0, 0, err
 				}
 				switch tokens[j+1].text {
-				case "source_allow":
+				case block.allowChain:
 					if sourceOpen >= 0 {
-						return 0, 0, fmt.Errorf("发现多个 source_allow 链，请先整理配置")
+						return 0, 0, fmt.Errorf("发现多个 %s 链，请先整理配置", block.allowChain)
 					}
 					sourceOpen, sourceClose = j+2, close
-				case "input":
+				case block.baseChain:
 					inputOpen, inputClose = j+2, close
 				}
 				j = close
@@ -145,24 +173,24 @@ func findRuleChain(content string) (int, int, error) {
 		i = end
 	}
 	if sourceOpen < 0 || inputOpen < 0 {
-		return 0, 0, fmt.Errorf("未找到 inet snail 的 source_allow / input 链，请先生成防火墙配置")
+		return 0, 0, fmt.Errorf("未找到 inet snail 的 %s / %s 链，请先生成防火墙配置", block.allowChain, block.baseChain)
 	}
 	inbound := false
 	for i := inputOpen + 1; i+3 < inputClose; i++ {
-		if tokens[i].text == "type" && tokens[i+1].text == "filter" && tokens[i+2].text == "hook" && tokens[i+3].text == "input" {
+		if tokens[i].text == "type" && tokens[i+1].text == "filter" && tokens[i+2].text == "hook" && tokens[i+3].text == block.hook {
 			inbound = true
 			break
 		}
 	}
 	if !inbound {
-		return 0, 0, fmt.Errorf("input 链未挂接入站过滤 hook，拒绝修改规则")
+		return 0, 0, fmt.Errorf("%s 链未挂接 %s 过滤 hook，拒绝修改规则", block.baseChain, block.hook)
 	}
 	jump := false
 	for i := inputOpen + 1; i+1 < inputClose; i++ {
-		if tokens[i].text == "goto" && (tokens[i+1].text == "private_ports" || tokens[i+1].text == "public_ports") {
+		if tokens[i].text == "goto" && (tokens[i+1].text == block.privateChain || tokens[i+1].text == block.publicChain) {
 			break
 		}
-		if tokens[i].text == "jump" && tokens[i+1].text == "source_allow" {
+		if tokens[i].text == "jump" && tokens[i+1].text == block.allowChain {
 			line := strings.LastIndex(content[:tokens[i].start], "\n") + 1
 			jump = strings.TrimSpace(content[line:tokens[i].start]) == ""
 			if jump {
@@ -171,29 +199,33 @@ func findRuleChain(content string) (int, int, error) {
 		}
 	}
 	if !jump {
-		return 0, 0, fmt.Errorf("input 链未在端口分流前无条件 jump source_allow，拒绝写入可能不生效的规则")
+		return 0, 0, fmt.Errorf("%s 链未在端口分流前无条件 jump %s，拒绝写入可能不生效的规则", block.baseChain, block.allowChain)
 	}
 	return tokens[sourceOpen].end, tokens[sourceClose].start, nil
 }
 
 func managedRules(content string) ([]allowRule, error) {
-	start, end, err := findRuleChain(content)
+	return managedRulesIn(content, currentRuleBlock())
+}
+
+func managedRulesIn(content string, block ruleBlock) ([]allowRule, error) {
+	start, end, err := findRuleChain(content, block)
 	if err != nil {
 		return nil, err
 	}
-	beginCount, endCount := strings.Count(content, rulesBegin), strings.Count(content, rulesEnd)
+	beginCount, endCount := strings.Count(content, block.begin), strings.Count(content, block.end)
 	if beginCount == 0 && endCount == 0 {
 		return nil, nil
 	}
-	begin, finish := strings.Index(content, rulesBegin), strings.Index(content, rulesEnd)
-	if beginCount != 1 || endCount != 1 || begin < start || finish < begin || finish+len(rulesEnd) > end {
-		return nil, fmt.Errorf("规则托管区块标记损坏或不在 source_allow 链内，拒绝修改")
+	begin, finish := strings.Index(content, block.begin), strings.Index(content, block.end)
+	if beginCount != 1 || endCount != 1 || begin < start || finish < begin || finish+len(block.end) > end {
+		return nil, fmt.Errorf("规则托管区块标记损坏或不在 %s 链内，拒绝修改", block.allowChain)
 	}
 	prefix, err := configTokens(content[start:begin])
 	if err != nil || len(prefix) > 0 {
 		return nil, fmt.Errorf("规则托管区块前存在其他指令，可能导致规则无法生效；请将手写规则移到托管区块之后")
 	}
-	body := content[begin+len(rulesBegin) : finish]
+	body := content[begin+len(block.begin) : finish]
 	var rules []allowRule
 	ids := make(map[string]bool)
 	for _, line := range strings.Split(body, "\n") {
@@ -254,7 +286,11 @@ func renderRuleBody(rules []allowRule) string {
 }
 
 func replaceManagedRules(content string, rules []allowRule) (string, error) {
-	if _, err := managedRules(content); err != nil {
+	return replaceManagedRulesIn(content, rules, currentRuleBlock())
+}
+
+func replaceManagedRulesIn(content string, rules []allowRule, section ruleBlock) (string, error) {
+	if _, err := managedRulesIn(content, section); err != nil {
 		return "", err
 	}
 	ids := make(map[string]bool)
@@ -281,12 +317,12 @@ func replaceManagedRules(content string, rules []allowRule) (string, error) {
 			return "", err
 		}
 	}
-	block := rulesBegin + "\n" + body + "        " + rulesEnd
-	begin, end := strings.Index(content, rulesBegin), strings.Index(content, rulesEnd)
+	block := section.begin + "\n" + body + "        " + section.end
+	begin, end := strings.Index(content, section.begin), strings.Index(content, section.end)
 	if begin >= 0 {
-		return content[:begin] + block + content[end+len(rulesEnd):], nil
+		return content[:begin] + block + content[end+len(section.end):], nil
 	}
-	start, _, err := findRuleChain(content)
+	start, _, err := findRuleChain(content, section)
 	if err != nil {
 		return "", err
 	}
@@ -298,7 +334,11 @@ func saveAccessRules(version configVersion, updated string) error {
 		return err
 	}
 	if err := applyConfig([]byte(updated)); err != nil {
-		return fmt.Errorf("访问规则已保存，但未成功加载；原配置已备份，可输入 r 校验加载配置重试: %w", err)
+		label := "访问规则"
+		if activeSession != nil && activeSession.forward {
+			label = "转发规则"
+		}
+		return fmt.Errorf("%s已保存，但未成功加载；原配置已备份，可输入 r 校验加载配置重试: %w", label, err)
 	}
 	return nil
 }

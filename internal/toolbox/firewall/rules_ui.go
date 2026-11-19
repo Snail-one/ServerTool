@@ -58,7 +58,11 @@ func askRuleChoice(view *ui.UI, prompt, fallback string, choices map[string]stri
 }
 
 func askRuleSource(view *ui.UI, current, family string) (string, error) {
-	ui.PrintField("来源说明", "填写访问本机的客户端 IP 或网段")
+	hint := "填写访问本机的客户端 IP 或网段"
+	if activeSession != nil && activeSession.forward {
+		hint = "填写经本机转发的来源 IP 或网段"
+	}
+	ui.PrintField("来源说明", hint)
 	example := "192.168.1.10 或 192.168.1.0/24"
 	if family == "ipv6" {
 		example = "2001:db8::10 或 2001:db8:1::/64"

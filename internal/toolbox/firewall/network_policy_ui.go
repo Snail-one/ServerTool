@@ -14,15 +14,19 @@ import (
 
 func policyFields(content string) []ui.CardField {
 	var fields []ui.CardField
-	for _, list := range policyLists {
+	for _, list := range sessionLists() {
 		value, err := readPolicyValue(content, list)
 		if err != nil {
 			value = err.Error()
 		} else if list.family == 0 {
-			if value == "" {
-				value = "仅 SSH 端口"
-			} else {
-				value = "SSH 端口 + " + value
+			if list.keepSSH {
+				if value == "" {
+					value = "仅 SSH 端口"
+				} else {
+					value = "SSH 端口 + " + value
+				}
+			} else if value == "" {
+				value = "无"
 			}
 		}
 		fields = append(fields, ui.CardField{Label: list.label, Value: value})
@@ -39,6 +43,27 @@ func policyChangeFields(before, after string) []ui.CardField {
 		}
 	}
 	return append(fields, ruleChangeFields(before, after)...)
+}
+
+func runForwardRuleManager(view *ui.UI) error {
+	if !isRoot() {
+		return fmt.Errorf("转发规则管理需要 root 权限，请使用 sudo 运行本工具")
+	}
+	restore := useForwardSession()
+	defer restore()
+	version, err := readConfigVersion()
+	if err != nil {
+		return err
+	}
+	updated, err := editAccessRulesDraft(view, string(version.content), false)
+	if err != nil {
+		return err
+	}
+	if err := saveAccessRules(version, updated); err != nil {
+		return err
+	}
+	ui.PrintSuccessCard("转发规则已保存并加载")
+	return nil
 }
 
 func runAccessRuleManager(view *ui.UI) error {
@@ -63,21 +88,33 @@ func runAccessRuleManager(view *ui.UI) error {
 // The same draft editor is used for existing configurations and during initial
 // generation. It never writes files or changes the running firewall itself.
 func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string, error) {
-	if !hasManagedConfig(original) {
-		return "", fmt.Errorf("请先选择 6 生成本工具防火墙配置")
-	}
-	if _, _, _, err := inputChainBounds(original); err != nil {
-		return "", err
-	}
-	if _, err := managedRules(original); err != nil {
-		return "", err
+	if activeSession != nil && activeSession.forward {
+		if err := validateForwardConfig(original); err != nil {
+			return "", err
+		}
+	} else {
+		if !hasManagedConfig(original) {
+			return "", fmt.Errorf("请先选择 7 生成本工具防火墙配置")
+		}
+		if _, _, _, err := inputChainBounds(original); err != nil {
+			return "", err
+		}
+		if _, err := managedRules(original); err != nil {
+			return "", err
+		}
 	}
 	draft := original
 	notice := ""
 	for {
 		ui.ClearScreen()
-		ui.MenuTitle("防火墙管理", "访问规则管理")
-		ui.PrintInfoCard("访问规则草稿（尚未保存）", accessSummaryFields(draft)...)
+		ui.MenuTitle("防火墙管理", sessionTitle())
+		summary := accessSummaryFields(draft)
+		card := "访问规则草稿（尚未保存）"
+		if activeSession != nil && activeSession.forward {
+			summary = forwardSummaryFields(draft)
+			card = "转发规则草稿（尚未保存）"
+		}
+		ui.PrintInfoCard(card, summary...)
 		ui.MenuOptionHint("1", "端口放行", "同时设置公网和内网端口")
 		ui.MenuOptionHint("2", "公网端口", "单独设置公网开放端口")
 		ui.MenuOptionHint("3", "内网端口", "单独设置内网开放端口")
@@ -109,7 +146,7 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 		switch strings.ToLower(choice) {
 		case "p":
 			ui.ClearScreen()
-			ui.MenuTitle("防火墙管理", "访问规则管理", "预览配置")
+			ui.MenuTitle("防火墙管理", sessionTitle(), "预览配置")
 			fmt.Println(draft)
 			view.PauseWithPrompt("按回车返回草稿…")
 		case "r":
@@ -125,7 +162,7 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 				continue
 			}
 			ui.ClearScreen()
-			ui.MenuTitle("防火墙管理", "访问规则管理", "确认变更")
+			ui.MenuTitle("防火墙管理", sessionTitle(), "确认变更")
 			ui.PrintInfoCard("待应用的变更", fields...)
 			prompt := "确认校验、备份、保存并加载整份当前配置（包括其他待加载修改）？(y/N，0/q 返回)："
 			if generating {
@@ -144,9 +181,14 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 			var updated string
 			switch choice {
 			case "1", "2", "3":
-				if err = validatePolicyConfig(draft); err != nil {
+				if activeSession != nil && activeSession.forward {
+					err = validateForwardConfig(draft)
+				} else {
+					err = validatePolicyConfig(draft)
+				}
+				if err != nil {
 					log.Warn(err)
-					view.PauseWithPrompt("按回车返回访问规则草稿…")
+					view.PauseWithPrompt("按回车返回" + sessionDraftName() + "…")
 					continue
 				}
 				scope := map[string]string{"1": "3", "2": "1", "3": "2"}[choice]
@@ -158,14 +200,14 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 			case "4":
 				for {
 					ui.ClearScreen()
-					ui.MenuTitle("防火墙管理", "访问规则管理", "内网 IP 范围")
+					ui.MenuTitle("防火墙管理", sessionTitle(), "内网 IP 范围")
 					ui.PrintInfoCard("按来源地址划分内网",
 						ui.CardField{Label: "范围内的来源", Value: "使用内网端口策略"},
 						ui.CardField{Label: "其他来源", Value: "使用公网端口策略"},
 					)
 					ui.MenuOption("1", "IPv4 内网范围")
 					ui.MenuOption("2", "IPv6 内网范围")
-					ui.MenuExit("0/q", "返回访问规则草稿")
+					ui.MenuExit("0/q", "返回"+sessionDraftName())
 					var family string
 					family, err = askRuleChoice(view, "请选择 IP 版本", "", map[string]string{"1": "ipv4", "2": "ipv6"})
 					if err == nil {
@@ -191,7 +233,7 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 			}
 			if err != nil {
 				log.Warn(err)
-				view.PauseWithPrompt("按回车返回访问规则草稿…")
+				view.PauseWithPrompt("按回车返回" + sessionDraftName() + "…")
 				continue
 			}
 			if updated != draft {
@@ -227,7 +269,7 @@ func promptPolicyPortScope(view *ui.UI, scope string, edit func([]int) error) ([
 		index, option := index, option
 		steps = append(steps, ui.PromptStep{Run: func() error {
 			ui.ClearScreen()
-			ui.MenuTitle("防火墙管理", "访问规则管理", policyScopeTitle(scope), option.title)
+			ui.MenuTitle("防火墙管理", sessionTitle(), policyScopeTitle(scope), option.title)
 			ui.PrintInfoCard(policyScopeTitle(scope), ui.CardField{Label: "当前步骤", Value: fmt.Sprintf("%d / 3 · %s", index+1, option.title)})
 			for i, label := range []string{option.a, option.b, option.both} {
 				ruleChoiceOption(strconv.Itoa(i+1), label, "", selections[index+1])
@@ -260,7 +302,8 @@ func policyScopeTitle(scope string) string {
 }
 
 func changePolicyLists(view *ui.UI, content string, indices []int) (string, error) {
-	list := policyLists[indices[0]]
+	lists := sessionLists()
+	list := lists[indices[0]]
 	title := list.label
 	if list.family == 0 {
 		scope := "1"
@@ -273,14 +316,18 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 	}
 	var fields []ui.CardField
 	for _, index := range indices {
-		value, err := readPolicyValue(content, policyLists[index])
+		value, err := readPolicyValue(content, lists[index])
 		if err != nil {
 			return "", err
 		}
 		if value == "" {
-			value = "无附加业务端口，仅 SSH 端口"
+			if list.keepSSH {
+				value = "无附加业务端口，仅 SSH 端口"
+			} else {
+				value = "无转发端口"
+			}
 		}
-		fields = append(fields, ui.CardField{Label: policyLists[index].label, Value: value})
+		fields = append(fields, ui.CardField{Label: lists[index].label, Value: value})
 	}
 	if list.family == 0 {
 		allEqual := true
@@ -317,13 +364,19 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 	err := ui.RunPromptSteps(
 		ui.PromptStep{Run: func() error {
 			ui.ClearScreen()
-			ui.MenuTitle("防火墙管理", "访问规则管理", title, "选择操作")
+			ui.MenuTitle("防火墙管理", sessionTitle(), title, "选择操作")
 			ui.PrintInfoCard("编辑所选列表", fields...)
 			ui.MenuOption("1", "添加")
 			if list.family == 0 {
-				ui.MenuOptionHint("2", "删除端口 / 范围", "从业务列表扣除，SSH 端口始终保留")
-				ui.MenuOption("3", "替换全部业务端口")
-				ui.MenuOptionHint("4", "清空业务端口", "只保留 SSH 端口")
+				if list.keepSSH {
+					ui.MenuOptionHint("2", "删除端口 / 范围", "从业务列表扣除，SSH 端口始终保留")
+					ui.MenuOption("3", "替换全部业务端口")
+					ui.MenuOptionHint("4", "清空业务端口", "只保留 SSH 端口")
+				} else {
+					ui.MenuOptionHint("2", "删除端口 / 范围", "从转发列表扣除")
+					ui.MenuOption("3", "替换全部转发端口")
+					ui.MenuOptionHint("4", "清空转发端口", "清空后新的转发连接全部丢弃")
+				}
 			} else {
 				ui.MenuOptionHint("2", "删除地址 / 网段", "精确匹配规范化后的地址 / CIDR")
 				ui.MenuOption("3", "替换整个范围")
@@ -345,7 +398,7 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 			current, _ := readPolicyValue(content, list)
 			entries := strings.Split(current, ", ")
 			ui.ClearScreen()
-			ui.MenuTitle("防火墙管理", "访问规则管理", title, "选择编辑条目")
+			ui.MenuTitle("防火墙管理", sessionTitle(), title, "选择编辑条目")
 			for i, entry := range entries {
 				ui.MenuOption(strconv.Itoa(i+1), entry)
 			}
@@ -369,7 +422,7 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 		ui.PromptStep{Enabled: func() bool { return operation != "reset" }, Run: func() error {
 			ui.ClearScreen()
 			action := map[string]string{"add": "添加", "remove": "删除", "replace": "替换", "edit": "编辑条目"}[operation]
-			ui.MenuTitle("防火墙管理", "访问规则管理", title, action)
+			ui.MenuTitle("防火墙管理", sessionTitle(), title, action)
 			inputFields := append([]ui.CardField(nil), fields...)
 			if list.family == 0 {
 				inputFields[0].Value = "3 / 3 · " + action + "端口"
