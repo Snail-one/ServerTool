@@ -44,6 +44,7 @@ func TestPolicySourceOperations(t *testing.T) {
 		{6, "fc00::/7, fe80::/10", "add", "fd00:1::1/64,2001:db8:2::123/64", "2001:db8:2::/64, fc00::/7, fe80::/10", -1},
 		{6, "fc00::/7, fe80::/10", "edit", "2001:db8:1::123/64", "2001:db8:1::/64, fc00::/7", 1},
 		{6, "fc00::/7, fe80::/10", "replace", "2001:db8::1,2001:db8::1/128", "2001:db8::1", -1},
+		{4, "10.0.0.0/8", "reset", "", "172.16.0.0/12, 192.168.0.0/16", -1},
 		{6, "2001:db8::/32", "reset", "", "fc00::/7, fe80::/10", -1},
 	} {
 		list := policyLists[8]
@@ -115,7 +116,7 @@ func TestPolicyEditorRejectsUnsupportedDefinitions(t *testing.T) {
 		strings.Replace(base, "$snail_ssh_port }", "$snail_ssh_port, }", 1),
 		strings.Replace(base, "$snail_ssh_port }", "$snail_ssh_port, $other }", 1),
 		strings.Replace(base, "define snail_private_ipv4 =", "define other =", 1),
-		strings.Replace(base, "10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16", "::/0", 1),
+		strings.Replace(base, "172.16.0.0/12, 192.168.0.0/16", "::/0", 1),
 		base + "\ndefine snail_private_ipv6 = { ::/0 }\n",
 		strings.Replace(base, "hook input", "hook output", 1),
 	} {
