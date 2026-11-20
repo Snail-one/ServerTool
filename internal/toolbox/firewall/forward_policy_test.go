@@ -12,7 +12,7 @@ func TestForwardPortsStayEmptyAndSeparate(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, required := range []string{
-		"type filter hook forward priority raw; policy drop;",
+		"type filter hook forward priority -10; policy drop;",
 		"jump forward_source_allow",
 		"ip saddr $snail_forward_private_ipv4 goto forward_private_ports",
 		"ip6 saddr $snail_forward_private_ipv6 goto forward_private_ports",
