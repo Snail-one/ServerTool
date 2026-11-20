@@ -54,7 +54,7 @@ func validOriginalAutostart(state string) bool {
 }
 
 func hasManagedConfig(content string) bool {
-	for _, marker := range []string{configBegin, configEnd, rulesBegin, rulesEnd, sshPortsBegin, sshPortsEnd, pingBegin, pingEnd} {
+	for _, marker := range []string{configBegin, configEnd, rulesBegin, rulesEnd, sshPortsBegin, sshPortsEnd, pingBegin, pingEnd, dockerBridgeBegin, dockerBridgeEnd} {
 		if strings.Contains(content, marker) {
 			return true
 		}

@@ -327,6 +327,10 @@ func configure(view *ui.UI) error {
 	if err != nil {
 		return err
 	}
+	dockerBridgeEnabled, dockerBridgeFound, err := readDockerBridge(string(version.content))
+	if err != nil {
+		return err
+	}
 	if strings.Contains(string(version.content), rulesBegin) || strings.Contains(string(version.content), rulesEnd) {
 		preserved, err = managedRules(string(version.content))
 		if err != nil {
@@ -421,6 +425,12 @@ func configure(view *ui.UI) error {
 				content, err = withPacketCounters(content, countersEnabled)
 				if err != nil {
 					return err
+				}
+				if dockerBridgeFound {
+					content, _, err = withDockerBridge(content, dockerBridgeEnabled)
+					if err != nil {
+						return err
+					}
 				}
 				content, err = applyDockerForwardMarkIfEnabled(content)
 				if err != nil {
