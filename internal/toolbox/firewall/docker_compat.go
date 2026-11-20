@@ -164,7 +164,21 @@ func SyncDockerForward() error {
 	return nil
 }
 
+func dockerPresent() bool {
+	return commandExists("docker") || commandExists("dockerd")
+}
+
+func requireDockerPresent() error {
+	if dockerPresent() {
+		return nil
+	}
+	return fmt.Errorf("未安装 Docker，不能开启")
+}
+
 func dockerFirewallBackend() (string, error) {
+	if err := requireDockerPresent(); err != nil {
+		return "", err
+	}
 	if !commandExists("docker") {
 		return "", fmt.Errorf("未找到 docker 命令")
 	}
@@ -198,20 +212,24 @@ func dockerCompatEnabled() (bool, error) {
 		return true, nil
 	}
 	if err != nil && state != "disabled" && state != "static" && state != "indirect" && state != "not-found" {
-		return false, fmt.Errorf("读取接受已放行状态失败: %w: %s", err, state)
+		return false, fmt.Errorf("读取 Docker 放行标记状态失败: %w: %s", err, state)
 	}
 	return false, nil
 }
 
-func DockerCompatSummary() string {
+func dockerCompatStateField() ui.CardField {
+	field := ui.CardField{Label: "Docker 放行标记"}
 	enabled, err := dockerCompatEnabled()
 	if err != nil {
-		return "无法判断"
+		field.Value = "无法判断"
+		field.Detail = err.Error()
+		return field
 	}
+	field.Value = "已关闭"
 	if enabled {
-		return "已开启"
+		field.Value = ui.PrimaryText("已开启")
 	}
-	return "已关闭"
+	return field
 }
 
 func dockerForwardUnitText() (string, error) {
@@ -296,7 +314,7 @@ func prepareDockerForwardConfig() error {
 		return err
 	}
 	if !version.exists || !hasManagedConfig(string(version.content)) || !strings.Contains(string(version.content), "hook forward") {
-		return fmt.Errorf("请先在防火墙管理中选择 7 生成本工具防火墙配置，再开启 Docker 兼容")
+		return fmt.Errorf("请先在防火墙管理中选择 7 生成本工具防火墙配置，再开启 Docker 放行标记")
 	}
 	updated, changed, err := withDockerForwardMark(string(version.content))
 	if err != nil {
@@ -378,7 +396,7 @@ func fileExists(path string) bool {
 
 func ConfigureDockerCompat(view *ui.UI) error {
 	if !isRoot() {
-		return fmt.Errorf("设置接受已放行需要 root 权限，请使用 sudo 运行本工具")
+		return fmt.Errorf("设置 Docker 放行标记需要 root 权限，请使用 sudo 运行本工具")
 	}
 	for {
 		enabled, err := dockerCompatEnabled()
@@ -390,23 +408,27 @@ func ConfigureDockerCompat(view *ui.UI) error {
 			state = ui.PrimaryText("已开启")
 		}
 		ui.ClearScreen()
-		ui.MenuTitle("容器管理", "Docker 配置", "接受已放行")
-		ui.PrintInfoCard("接受已放行",
+		ui.MenuTitle("防火墙管理", "常用功能设置", "Docker 放行标记")
+		ui.PrintInfoCard("Docker 放行标记",
 			ui.CardField{Label: "开关", Value: state},
 			ui.CardField{Label: "作用", Value: "本工具转发放行后，Docker 不再把这些连接丢掉"},
 			ui.CardField{Label: "做法", Value: "转发放行打连接标记，DOCKER-USER 只接受这个标记"},
 			ui.CardField{Label: "开机", Value: "Docker 每次启动后自动补上这条规则"},
 			ui.CardField{Label: "不影响", Value: "没有标记的流量仍走 Docker 原来的规则"},
+			ui.CardField{Label: "前提", Value: "已安装 Docker 才能开启，关闭不受此限制"},
 		)
 		ui.MenuOption("1", "开启")
 		ui.MenuOption("2", "关闭")
-		ui.MenuExit("0/q", "返回 Docker 配置")
+		ui.MenuExit("0/q", "返回常用功能设置")
 		choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "on", "2": "off"})
 		if err != nil {
 			return err
 		}
 		if choice == "on" {
-			confirmed, err := view.Confirm("确认开启接受已放行？会更新防火墙转发规则并加载。(y/N，0/q 返回)：")
+			if err := requireDockerPresent(); err != nil {
+				return err
+			}
+			confirmed, err := view.Confirm("确认开启 Docker 放行标记？会更新防火墙转发规则并加载。(y/N，0/q 返回)：")
 			if errors.Is(err, shared.ErrReturnToMenu) {
 				continue
 			}
@@ -418,7 +440,7 @@ func ConfigureDockerCompat(view *ui.UI) error {
 			}
 			err = enableDockerCompat()
 			if errors.Is(err, errDockerUserMissing) {
-				ui.PrintSuccessCard("接受已放行已开启",
+				ui.PrintSuccessCard("Docker 放行标记已开启",
 					ui.CardField{Label: "当前规则", Value: "DOCKER-USER 还不存在，Docker 启动后自动补上"},
 					ui.CardField{Label: "开机", Value: dockerForwardUnit},
 				)
@@ -427,14 +449,14 @@ func ConfigureDockerCompat(view *ui.UI) error {
 			if err != nil {
 				return err
 			}
-			log.Info("接受已放行已开启")
-			ui.PrintSuccessCard("接受已放行已开启",
+			log.Info("Docker 放行标记已开启")
+			ui.PrintSuccessCard("Docker 放行标记已开启",
 				ui.CardField{Label: "DOCKER-USER", Value: "已接受转发标记 " + dockerForwardMark},
 				ui.CardField{Label: "开机", Value: dockerForwardUnit},
 			)
 			return nil
 		}
-		confirmed, err := view.Confirm("确认关闭接受已放行？Docker 会重新拦截未被它自己放行的转发。(y/N，0/q 返回)：")
+		confirmed, err := view.Confirm("确认关闭 Docker 放行标记？Docker 会重新拦截未被它自己放行的转发。(y/N，0/q 返回)：")
 		if errors.Is(err, shared.ErrReturnToMenu) {
 			continue
 		}
@@ -453,7 +475,7 @@ func ConfigureDockerCompat(view *ui.UI) error {
 			view.Pause()
 			continue
 		}
-		ui.PrintSuccessCard("接受已放行已关闭",
+		ui.PrintSuccessCard("Docker 放行标记已关闭",
 			ui.CardField{Label: "DOCKER-USER", Value: "已移除转发标记放行"},
 			ui.CardField{Label: "防火墙标记", Value: "已从防火墙配置中去掉"},
 		)

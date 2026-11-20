@@ -5,6 +5,21 @@ import (
 	"testing"
 )
 
+func TestDockerSwitchesRefuseToOpenWithoutDocker(t *testing.T) {
+	setupTest(t)
+	if err := requireDockerPresent(); err == nil {
+		t.Fatal("missing docker was accepted")
+	}
+	commandExists = func(name string) bool { return name == "docker" || name == "dockerd" }
+	if err := requireDockerPresent(); err != nil {
+		t.Fatal(err)
+	}
+	commandExists = func(name string) bool { return name == "dockerd" }
+	if err := requireDockerPresent(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDockerBridgeStaysOffUntilEnabled(t *testing.T) {
 	content, err := buildConfig([]int{22}, false, false)
 	if err != nil {

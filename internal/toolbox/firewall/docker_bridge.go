@@ -129,6 +129,7 @@ func configureDockerBridge(view *ui.UI) error {
 			ui.CardField{Label: "匹配", Value: "docker0、docker_gwbridge、br-*"},
 			ui.CardField{Label: "开启后", Value: "这些网卡的转发不再走端口名单，随后仍由 Docker 自己的防火墙决定"},
 			ui.CardField{Label: "不影响", Value: "入站规则、转发端口名单、连接标记和 DOCKER-USER"},
+			ui.CardField{Label: "前提", Value: "已安装 Docker 才能开启，关闭不受此限制"},
 		)
 		ui.MenuOption("1", "开启")
 		ui.MenuOption("2", "关闭")
@@ -138,6 +139,11 @@ func configureDockerBridge(view *ui.UI) error {
 			return err
 		}
 		target := choice == "on"
+		if target && !enabled {
+			if err := requireDockerPresent(); err != nil {
+				return err
+			}
+		}
 		updated, changed, err := withDockerBridge(string(version.content), target)
 		if err != nil {
 			return err
