@@ -28,7 +28,7 @@ func showMenu() {
 	default:
 		ui.MenuOptionHint("7", "生成默认配置", "检测 SSH 端口，首次配置开启自启")
 	}
-	ui.MenuOptionHint("8", "常用功能设置", "开机自启 / ICMP 回显 / 数据包统计 / 内核转发 / SSH 访问 / 沿用 Docker / Docker 放行标记")
+	ui.MenuOptionHint("8", "常用功能设置", "自启、访问和转发等开关")
 	ui.MenuOptionHint("9", "实时查看规则", "每秒刷新，支持切换规则表")
 	fmt.Println()
 	ui.MenuShortcutHint("r", "校验加载配置", "使当前配置文件立即生效")
@@ -68,7 +68,7 @@ func runFeatureSettings(view *ui.UI) error {
 		ui.MenuOptionHint("3", "数据包统计", "开启 / 关闭规则中的 counter")
 		ui.MenuOptionHint("4", "内核转发", "分别开启 / 关闭 IPv4、IPv6 转发")
 		ui.MenuOptionHint("5", "SSH 访问", "开放 / 关闭公网、局域网 SSH 端口")
-		ui.MenuOptionHint("6", "沿用 Docker", "网桥流量交给 Docker 自己的规则，需已安装 Docker，默认关闭")
+		ui.MenuOptionHint("6", "Docker 流量放行", "网桥流量交给 Docker 自己的规则，需已安装 Docker，默认关闭")
 		ui.MenuOptionHint("7", "Docker 放行标记", "给本工具已放行的转发打标记，让 Docker 接受，需已安装 Docker")
 		ui.MenuExit("0/q", "返回防火墙管理")
 		choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "autostart", "2": "ping", "3": "counters", "4": "forwarding", "5": "ssh", "6": "docker", "7": "compat"})
@@ -97,7 +97,7 @@ func runFeatureSettings(view *ui.UI) error {
 				return configureSSHAccess(view)
 			})
 		case "docker":
-			shared.RunAction(view, "设置沿用 Docker 失败，已返回常用功能设置", func() error {
+			shared.RunAction(view, "设置 Docker 流量放行失败，已返回常用功能设置", func() error {
 				return configureDockerBridge(view)
 			})
 		case "compat":

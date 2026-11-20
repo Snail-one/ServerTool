@@ -35,16 +35,16 @@ func readDockerBridge(content string) (enabled, found bool, err error) {
 		return false, false, nil
 	}
 	if begins != 1 || ends != 1 {
-		return false, false, fmt.Errorf("沿用 Docker 开关标记损坏，未修改")
+		return false, false, fmt.Errorf("Docker 流量放行开关标记损坏，未修改")
 	}
 	begin, end := strings.Index(content, dockerBridgeBegin), strings.Index(content, dockerBridgeEnd)
 	if begin > end {
-		return false, false, fmt.Errorf("沿用 Docker 开关标记损坏，未修改")
+		return false, false, fmt.Errorf("Docker 流量放行开关标记损坏，未修改")
 	}
 	jumpAt := strings.Index(content, "jump forward_source_allow")
 	routeAt := strings.Index(content, "ip saddr $snail_forward_private_ipv4 goto forward_private_ports")
 	if jumpAt < 0 || routeAt < 0 || begin < jumpAt || end+len(dockerBridgeEnd) > routeAt {
-		return false, false, fmt.Errorf("沿用 Docker 开关不在转发链的来源放行和端口名单之间，未修改")
+		return false, false, fmt.Errorf("Docker 流量放行开关不在转发链的来源放行和端口名单之间，未修改")
 	}
 	tokens, err := configTokens(content[begin+len(dockerBridgeBegin) : end])
 	if err != nil {
@@ -56,7 +56,7 @@ func readDockerBridge(content string) (enabled, found bool, err error) {
 	case len(tokens) == 2 && tokens[0].text == "jump" && tokens[1].text == "forward_docker":
 		return true, true, nil
 	default:
-		return false, false, fmt.Errorf("沿用 Docker 开关内容已被手动修改，无法确认状态，未覆盖")
+		return false, false, fmt.Errorf("Docker 流量放行开关内容已被手动修改，无法确认状态，未覆盖")
 	}
 }
 
@@ -77,14 +77,14 @@ func withDockerBridge(content string, enabled bool) (string, bool, error) {
 	route := "ip saddr $snail_forward_private_ipv4 goto forward_private_ports"
 	at := strings.Index(content, route)
 	if at < 0 {
-		return "", false, fmt.Errorf("请先返回防火墙管理，选择 7 生成本工具防火墙配置，再设置沿用 Docker")
+		return "", false, fmt.Errorf("请先返回防火墙管理，选择 7 生成本工具防火墙配置，再设置 Docker 流量放行")
 	}
 	lineStart := strings.LastIndex(content[:at], "\n") + 1
 	return content[:lineStart] + "        " + block + "\n" + content[lineStart:], true, nil
 }
 
 func dockerBridgeStateField() ui.CardField {
-	field := ui.CardField{Label: "沿用 Docker"}
+	field := ui.CardField{Label: "Docker 流量放行"}
 	version, err := readConfigVersion()
 	if err != nil {
 		field.Value = "无法判断"
@@ -107,7 +107,7 @@ func dockerBridgeStateField() ui.CardField {
 
 func configureDockerBridge(view *ui.UI) error {
 	if !isRoot() {
-		return fmt.Errorf("设置沿用 Docker 需要 root 权限，请使用 sudo 运行本工具")
+		return fmt.Errorf("设置 Docker 流量放行需要 root 权限，请使用 sudo 运行本工具")
 	}
 	for {
 		version, err := readConfigVersion()
@@ -115,15 +115,15 @@ func configureDockerBridge(view *ui.UI) error {
 			return err
 		}
 		if !version.exists || !hasManagedConfig(string(version.content)) || !strings.Contains(string(version.content), "hook forward") {
-			return fmt.Errorf("请先返回防火墙管理，选择 7 生成本工具防火墙配置，再设置沿用 Docker")
+			return fmt.Errorf("请先返回防火墙管理，选择 7 生成本工具防火墙配置，再设置 Docker 流量放行")
 		}
 		enabled, _, err := readDockerBridge(string(version.content))
 		if err != nil {
 			return err
 		}
 		ui.ClearScreen()
-		ui.MenuTitle("防火墙管理", "常用功能设置", "沿用 Docker")
-		ui.PrintInfoCard("沿用 Docker",
+		ui.MenuTitle("防火墙管理", "常用功能设置", "Docker 流量放行")
+		ui.PrintInfoCard("Docker 流量放行",
 			ui.CardField{Label: "当前", Value: dockerBridgeLabel(enabled)},
 			ui.CardField{Label: "默认", Value: "关闭"},
 			ui.CardField{Label: "匹配", Value: "docker0、docker_gwbridge、br-*"},
@@ -153,18 +153,18 @@ func configureDockerBridge(view *ui.UI) error {
 			action = "开启"
 		}
 		if !changed {
-			ui.PrintInfoCard("无需修改", ui.CardField{Label: "沿用 Docker", Value: dockerBridgeLabel(enabled)})
+			ui.PrintInfoCard("无需修改", ui.CardField{Label: "Docker 流量放行", Value: dockerBridgeLabel(enabled)})
 			view.Pause()
 			continue
 		}
 		ui.ClearScreen()
-		ui.MenuTitle("防火墙管理", "常用功能设置", "沿用 Docker", "确认变更")
-		ui.PrintInfoCard("即将应用的沿用 Docker 设置",
+		ui.MenuTitle("防火墙管理", "常用功能设置", "Docker 流量放行", "确认变更")
+		ui.PrintInfoCard("即将应用的 Docker 流量放行设置",
 			ui.CardField{Label: "当前", Value: dockerBridgeLabel(enabled)},
-			ui.CardField{Label: "操作", Value: action + "沿用 Docker"},
+			ui.CardField{Label: "操作", Value: action + " Docker 流量放行"},
 			ui.CardField{Label: "生效方式", Value: "保存并加载整份当前配置，包括其他待加载修改"},
 		)
-		confirmed, err := view.Confirm("确认" + action + "沿用 Docker 并加载当前配置？(y/N，0/q 返回)：")
+		confirmed, err := view.Confirm("确认" + action + " Docker 流量放行并加载当前配置？(y/N，0/q 返回)：")
 		if errors.Is(err, shared.ErrReturnToMenu) {
 			continue
 		}
@@ -178,9 +178,9 @@ func configureDockerBridge(view *ui.UI) error {
 			return err
 		}
 		if err := applyConfig([]byte(updated)); err != nil {
-			return fmt.Errorf("沿用 Docker 配置已保存，但未成功加载；原配置已备份，可输入 r 重试: %w", err)
+			return fmt.Errorf("Docker 流量放行配置已保存，但未成功加载；原配置已备份，可输入 r 重试: %w", err)
 		}
-		ui.PrintSuccessCard("沿用 Docker 已"+action,
+		ui.PrintSuccessCard("Docker 流量放行已"+action,
 			ui.CardField{Label: "当前", Value: dockerBridgeLabel(target)},
 			ui.CardField{Label: "生效状态", Value: "配置已保存并加载"},
 		)
