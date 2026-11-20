@@ -100,9 +100,10 @@ func summarizeLoadedPorts(content string) (loadedPortSummary, error) {
 		summary.ports[scope] = ports
 	}
 	// A global accept before the source split adds ports to every applicable
-	// scope. Source-specific and source-port conditions stay in the exceptions.
+	// scope. Source, destination, interface, source-port, and drop rules stay
+	// in the exception list.
 	for _, exception := range summary.exceptions {
-		if exception.sources != nil || exception.hasSourcePorts {
+		if exception.verdict != "accept" || exception.sources != nil || exception.dests != nil || exception.iif != "" || exception.oif != "" || exception.hasSourcePorts {
 			continue
 		}
 		for scope := range summary.ports {
@@ -158,7 +159,7 @@ func (summary *loadedPortSummary) readInput(parser livePortParser, chains map[st
 			for _, extra := range rules["source_allow"] {
 				parsed, err := parser.rule(extra)
 				if err != nil {
-					return fmt.Errorf("来源 IP 放行含无法归纳的条件（句柄 %v）: %w", extra["handle"], err)
+					return fmt.Errorf("规则配置含无法归纳的条件（句柄 %v）: %w", extra["handle"], err)
 				}
 				if parsed.verdict == "return" && parsed.unconditional() {
 					break
@@ -166,8 +167,8 @@ func (summary *loadedPortSummary) readInput(parser livePortParser, chains map[st
 				if parsed.families == 0 || parsed.protocols == 0 || parsed.verdict == "" {
 					continue
 				}
-				if parsed.verdict != "accept" {
-					return fmt.Errorf("来源 IP 放行含丢弃、条件返回或其他跳转，无法完整归纳")
+				if parsed.verdict != "accept" && parsed.verdict != "drop" {
+					return fmt.Errorf("规则配置含条件返回或其他跳转，无法完整归纳")
 				}
 				if parsed.canMatchBusiness() {
 					summary.exceptions = append(summary.exceptions, parsed)
@@ -282,6 +283,15 @@ func (rule livePortRule) description() string {
 		protocol = "全部协议"
 	}
 	result := fmt.Sprintf("%s · %s → %s / %s", family, source, rule.matchesPorts(), protocol)
+	if len(rule.dests) > 0 {
+		result += " · 目标 " + strings.Join(rule.dests, ", ")
+	}
+	if rule.iif != "" {
+		result += " · 入 " + rule.iif
+	}
+	if rule.oif != "" {
+		result += " · 出 " + rule.oif
+	}
 	if rule.hasSourcePorts {
 		result += " · 仅限源端口 " + rule.sourcePorts.String()
 	}
@@ -295,7 +305,7 @@ func mergePortExceptions(rules []livePortRule) []livePortRule {
 	var result []livePortRule
 	indices := make(map[string]int)
 	for _, rule := range rules {
-		key := fmt.Sprintf("%d/%v/%v/%t/%v/%t/%t/%s", rule.families, rule.sources, rule.ports, rule.hasPorts, rule.sourcePorts, rule.hasSourcePorts, rule.hasProtocol, rule.id)
+		key := fmt.Sprintf("%d/%v/%v/%v/%s/%s/%t/%v/%t/%t/%s/%s", rule.families, rule.sources, rule.dests, rule.ports, rule.iif, rule.oif, rule.hasPorts, rule.sourcePorts, rule.hasSourcePorts, rule.hasProtocol, rule.verdict, rule.id)
 		if index, exists := indices[key]; exists {
 			result[index].protocols |= rule.protocols
 		} else {

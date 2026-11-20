@@ -62,7 +62,7 @@ func accessSummaryFields(content string) []ui.CardField {
 	}
 	rules, err := managedRules(content)
 	if err != nil {
-		return append(fields, ui.CardField{Label: "来源 IP 放行", Value: err.Error()})
+		return append(fields, ui.CardField{Label: "规则配置", Value: err.Error()})
 	}
 	legacy := 0
 	for _, rule := range rules {
@@ -71,11 +71,11 @@ func accessSummaryFields(content string) []ui.CardField {
 		}
 	}
 	fields = append(fields,
-		ui.CardField{Label: "来源 IP 放行", Value: fmt.Sprintf("%d 条", len(rules)-legacy), Detail: "按来源 IP / 网段设置端口和协议，优先于基础端口放行"},
+		ui.CardField{Label: "规则配置", Value: fmt.Sprintf("%d 条", len(rules)-legacy), Detail: "可匹配来源、目标、网卡和端口；拒绝默认排在放行前面"},
 		ui.CardField{Label: "SSH 端口", Value: summarySSHPorts(content), Detail: "当前 SSH 服务端口。仍包含旧端口的入站名单会随 SSH 安全配置更新；从名单删除后不会自动加回"},
 	)
 	if legacy > 0 {
-		fields = append(fields, ui.CardField{Label: "旧任意来源规则", Value: fmt.Sprintf("已有 %d 条，仍可额外放行公网和内网端口", legacy), Detail: "进入来源 IP 放行查看、删除或转入基础端口；基础列表不代表最终放行范围"})
+		fields = append(fields, ui.CardField{Label: "旧任意来源规则", Value: fmt.Sprintf("已有 %d 条，仍可额外放行公网和内网端口", legacy), Detail: "进入规则配置查看、删除或转入基础端口；基础列表不代表最终放行范围"})
 	}
 	return fields
 }
@@ -122,9 +122,9 @@ func forwardSummaryFields(content string) []ui.CardField {
 	}
 	rules, err := managedRulesIn(content, forwardRuleBlock)
 	if err != nil {
-		return append(fields, ui.CardField{Label: "来源 IP 放行", Value: err.Error()})
+		return append(fields, ui.CardField{Label: "规则配置", Value: err.Error()})
 	}
-	fields = append(fields, ui.CardField{Label: "来源 IP 放行", Value: fmt.Sprintf("%d 条", len(rules)), Detail: "按来源 IP / 网段设置转发端口和协议，优先于基础端口放行"})
+	fields = append(fields, ui.CardField{Label: "规则配置", Value: fmt.Sprintf("%d 条", len(rules)), Detail: "可匹配来源、目标、网卡和端口；拒绝默认排在放行前面"})
 	return fields
 }
 
@@ -161,10 +161,10 @@ func ruleChangeFields(before, after string) []ui.CardField {
 	if !reflect.DeepEqual(oldIDs, nextIDs) {
 		value, prior := strings.Join(nextIDs, " → "), strings.Join(oldIDs, " → ")
 		if value == "" {
-			value = "无来源 IP 放行"
+			value = "无规则配置"
 		}
 		if prior == "" {
-			prior = "无来源 IP 放行"
+			prior = "无规则配置"
 		}
 		fields = append(fields, ui.CardField{Label: "放行规则顺序", Value: value, Detail: "原顺序：" + prior})
 	}
@@ -185,10 +185,10 @@ func editSourceRulesDraft(view *ui.UI, original string) (string, error) {
 			sourceObject = "经本机转发的来源 IP / 网段"
 			sourceExample = "例如：允许 192.168.1.10 转发 TCP 443"
 		}
-		ui.PrintInfoCard("来源 IP 放行草稿",
+		ui.PrintInfoCard("规则配置草稿",
 			ui.CardField{Label: "配置对象", Value: sourceObject, Detail: sourceExample},
-			ui.CardField{Label: "放行权限", Value: "指定端口，或所选 TCP / UDP 协议的全部端口"},
-			ui.CardField{Label: "匹配方式", Value: "优先于公网 / 内网基础端口放行"},
+			ui.CardField{Label: "匹配条件", Value: "来源、目标、网卡、来源端口和目标端口都可以留空，至少填一项"},
+			ui.CardField{Label: "默认动作", Value: "放行。拒绝会插到名单最前，并先于基础端口匹配"},
 			ui.CardField{Label: "保存方式", Value: "本页只改草稿，返回" + sessionTitle() + "后统一保存"},
 		)
 		printRuleOrder(rules, "")
@@ -199,10 +199,10 @@ func editSourceRulesDraft(view *ui.UI, original string) (string, error) {
 				break
 			}
 		}
-		ui.MenuOptionHint("1", "添加来源 IP", "填写 IP / 网段，再设置允许的端口和协议")
-		ui.MenuOption("2", "编辑放行规则")
-		ui.MenuOption("3", "删除放行规则")
-		ui.MenuOption("4", "调整放行规则顺序")
+		ui.MenuOptionHint("1", "添加规则", "默认放行；拒绝会排到最前面")
+		ui.MenuOption("2", "编辑规则")
+		ui.MenuOption("3", "删除规则")
+		ui.MenuOption("4", "调整规则顺序")
 		allowLegacy := legacy && (activeSession == nil || !activeSession.forward)
 		if allowLegacy {
 			ui.MenuOptionHint("5", "旧规则转入基础端口", "将所选规则的端口加入公网和内网列表，再移除此规则")
@@ -219,7 +219,7 @@ func editSourceRulesDraft(view *ui.UI, original string) (string, error) {
 			ui.InvalidChoice()
 			continue
 		}
-		shared.RunAction(view, "修改来源 IP 放行失败，已返回规则草稿", func() error {
+		shared.RunAction(view, "修改规则配置失败，已返回规则草稿", func() error {
 			updated, err := changeSourceRulesDraft(view, draft, rules, choice)
 			if err == nil {
 				draft = updated
@@ -243,7 +243,7 @@ func changeSourceRulesDraft(view *ui.UI, content string, rules []allowRule, choi
 			for {
 				sourceRulePage("选择编辑放行规则", allowRule{})
 				printRuleOrder(rules, "")
-				ui.MenuExit("0/q", "返回来源 IP 放行")
+				ui.MenuExit("0/q", "返回规则配置")
 				id, err = chooseRuleID(view, rules)
 				if err != nil {
 					return "", err
@@ -269,7 +269,7 @@ func changeSourceRulesDraft(view *ui.UI, content string, rules []allowRule, choi
 		sourceRulePage("旧规则转入基础端口", allowRule{})
 		ui.PrintInfoCard("选择转换规则", ui.CardField{Label: "转换范围", Value: "将所选端口加入公网和内网基础列表，再从草稿移除此规则"})
 		printRuleOrder(candidates, "")
-		ui.MenuExit("0/q", "取消转换，返回来源 IP 放行")
+		ui.MenuExit("0/q", "取消转换，返回规则配置")
 		id, err := chooseRuleID(view, candidates)
 		if err != nil {
 			return "", err
@@ -280,7 +280,7 @@ func changeSourceRulesDraft(view *ui.UI, content string, rules []allowRule, choi
 		}
 		return converted, err
 	default:
-		return "", fmt.Errorf("无效的来源 IP 放行操作")
+		return "", fmt.Errorf("无效的规则配置操作")
 	}
 	if err != nil {
 		return "", err

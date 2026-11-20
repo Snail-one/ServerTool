@@ -119,7 +119,7 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 		ui.MenuOptionHint("2", "公网端口", "单独设置公网开放端口")
 		ui.MenuOptionHint("3", "内网端口", "单独设置内网开放端口")
 		ui.MenuOptionHint("4", "内网 IP 范围", "设置哪些 IP / 网段按内网处理")
-		ui.MenuOptionHint("5", "来源 IP 放行", "为指定 IP / 网段额外放行端口")
+		ui.MenuOptionHint("5", "规则配置", "来源、目标、网卡和端口；接受或拒绝")
 		fmt.Println()
 		ui.MenuOptionHint("p", "预览完整配置", "查看本次修改后的完整配置")
 		ui.MenuOptionHint("r", "还原本次草稿", "撤销本次全部修改")

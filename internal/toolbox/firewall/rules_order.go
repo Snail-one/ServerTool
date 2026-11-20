@@ -24,6 +24,12 @@ func printRuleOrder(rules []allowRule, selected string) {
 		if rule.Kind == "port" {
 			source = "任意来源（旧规则）"
 		}
+		if rule.Kind == "rule" {
+			source = rule.matchLabel()
+		}
+		if rule.Verdict == "drop" {
+			source = "拒绝 " + source
+		}
 		if ports == "" {
 			ports = "全部端口"
 		}

@@ -38,7 +38,7 @@ func TestRuleManagerAddsSourceExceptionForBothProtocols(t *testing.T) {
 	ruleTestConfig(t, nil)
 	calls := acceptRuleCommands(t)
 	// Unified draft -> source exceptions -> add -> both IP versions and protocols.
-	if err := runAccessRuleManager(inputUI(t, "5\n1\n3\n192.168.1.0/24\nfd12::/48\n1\n8000-8100\n3\n\nq\ns\ny\n")); err != nil {
+	if err := runAccessRuleManager(inputUI(t, "5\n1\n\n3\n192.168.1.0/24\nfd12::/48\n\n\n\n\n8000-8100\n3\n\nq\ns\ny\n")); err != nil {
 		t.Fatal(err)
 	}
 	rules, err := managedRules(shared.ReadFileString(configPath))
@@ -54,7 +54,7 @@ func TestEditRuleKeepsIDAndCanonicalizesCIDR(t *testing.T) {
 	setupTest(t)
 	initial := []allowRule{{ID: "aaaaaaaa", Kind: "source_port", Source: "192.168.1.0/24", Ports: "443", Protocol: "tcp"}}
 	version := ruleTestConfig(t, initial)
-	rules, err := changeAllowRuleDraft(inputUI(t, "\n192.168.1.1/16\n\n21069\n3\n"), initial, "aaaaaaaa")
+	rules, err := changeAllowRuleDraft(inputUI(t, "\n\n192.168.1.1/16\n\n\n\n\n21069\n3\n"), initial, "aaaaaaaa")
 	if shared.ReadFileString(configPath) != string(version.content) {
 		t.Fatal("editing a draft wrote the configuration")
 	}
@@ -70,7 +70,7 @@ func TestRuleManagerEditsByDisplayedNumberAndKeepsOtherRules(t *testing.T) {
 	ruleTestConfig(t, rules)
 	calls := acceptRuleCommands(t)
 	// Edit row 2, keep its type/source, and change its ports/protocol.
-	if err := runAccessRuleManager(inputUI(t, "5\n2\n2\n\n\n\n8443\n3\n\nq\ns\ny\n")); err != nil {
+	if err := runAccessRuleManager(inputUI(t, "5\n2\n2\n\n\n\n\n\n\n\n8443\n3\n\nq\ns\ny\n")); err != nil {
 		t.Fatal(err)
 	}
 	want := append([]allowRule(nil), rules...)
@@ -128,15 +128,15 @@ func TestRuleAddCancellationAndDuplicateDoNotChangeConfiguration(t *testing.T) {
 			setupTest(t)
 			rules := []allowRule{{ID: "aaaaaaaa", Kind: "source_port", Source: "192.168.0.0/16", Ports: "443", Protocol: "tcp"}}
 			version := ruleTestConfig(t, rules)
-			input := "1\n192.168.1.10\n1\nq\n"
+			input := "\n1\n192.168.1.10\n\n\n\n\nq\n"
 			if scenario == "duplicate" {
-				input = "1\n192.168.1.1/16\n1\n443-443\n1\n"
+				input = "\n1\n192.168.1.1/16\n\n\n\n\n443-443\n1\n"
 			} else if scenario == "cancel family" {
 				input = "q\n"
 			} else if scenario == "cancel permissions" {
-				input = "1\n192.168.1.10\nq\n"
+				input = "\n1\n192.168.1.10\nq\n"
 			} else if scenario == "cancel second source" {
-				input = "3\n192.168.1.0/24\nq\n"
+				input = "\n3\n192.168.1.0/24\nq\n"
 			}
 			_, err := changeAllowRuleDraft(inputUI(t, input), rules, "")
 			if scenario == "duplicate" && (err == nil || !strings.Contains(err.Error(), "完全重复")) {
@@ -175,6 +175,21 @@ func TestQueryPortAndDeleteOnlyChosenIDPreservingOtherSources(t *testing.T) {
 	want := []allowRule{rules[0], rules[2], rules[3]}
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("deleting by port removed unrelated/global/source rules: %v %v", got, err)
+	}
+}
+
+func TestNewDropRuleIsInsertedAheadOfAllows(t *testing.T) {
+	existing, err := normalizeAllowRule(allowRule{ID: "aaaaaaaa", Kind: "source_port", Family: "ipv4", Source: "192.168.1.10", Ports: "443", Protocol: "tcp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules, err := changeAllowRuleDraft(inputUI(t, "2\n1\n203.0.113.8\n\neth0\n\n\n22\n1\n"), []allowRule{existing}, "")
+	if err != nil || len(rules) != 2 || rules[0].Verdict != "drop" || rules[0].Kind != "rule" || rules[0].Iif != "eth0" || rules[1].ID != "aaaaaaaa" {
+		t.Fatalf("drop was not inserted first: %v %v", rules, err)
+	}
+	rules, err = changeAllowRuleDraft(inputUI(t, "\n1\n192.168.1.20\n\n\n\n\n3306\n1\n"), rules, "")
+	if err != nil || len(rules) != 3 || rules[0].Verdict != "drop" || rules[2].Kind != "source_port" || rules[2].Ports != "3306" {
+		t.Fatalf("allow was not appended after the drop: %v %v", rules, err)
 	}
 }
 

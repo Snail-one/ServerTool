@@ -16,8 +16,14 @@ type allowRule struct {
 	ID         string `json:"id"`
 	Kind       string `json:"type"`
 	Family     string `json:"family,omitempty"`
+	Verdict    string `json:"verdict,omitempty"`
 	Source     string `json:"source,omitempty"`
 	SourceIPv6 string `json:"source_ipv6,omitempty"`
+	Dest       string `json:"dest,omitempty"`
+	DestIPv6   string `json:"dest_ipv6,omitempty"`
+	Iif        string `json:"iif,omitempty"`
+	Oif        string `json:"oif,omitempty"`
+	Sport      string `json:"sport,omitempty"`
 	Ports      string `json:"ports,omitempty"`
 	Protocol   string `json:"protocol"`
 }
@@ -127,41 +133,164 @@ func normalizeAllowRule(rule allowRule) (allowRule, error) {
 	if rule.Family != "" && rule.Family != "ipv4" && rule.Family != "ipv6" && rule.Family != "both" {
 		return rule, fmt.Errorf("IP 版本必须为 IPv4、IPv6 或 IPv4+IPv6")
 	}
+	if rule.Verdict == "accept" {
+		rule.Verdict = ""
+	}
+	if rule.Verdict != "" && rule.Verdict != "drop" {
+		return rule, fmt.Errorf("规则动作必须为放行或拒绝")
+	}
+	var err error
+	if rule.Source, rule.SourceIPv6, err = normalizeAddressPair(rule.Family, rule.Source, rule.SourceIPv6, "来源"); err != nil {
+		return rule, err
+	}
+	if rule.Dest, rule.DestIPv6, err = normalizeAddressPair(rule.Family, rule.Dest, rule.DestIPv6, "目标"); err != nil {
+		return rule, err
+	}
+	if rule.Iif, err = normalizeIface(rule.Iif); err != nil {
+		return rule, err
+	}
+	if rule.Oif, err = normalizeIface(rule.Oif); err != nil {
+		return rule, err
+	}
+	if rule.Sport, err = normalizeOptionalPorts(rule.Sport); err != nil {
+		return rule, err
+	}
+	rule.finalizeKind()
 	switch rule.Kind {
 	case "port":
-		if rule.Source != "" || rule.SourceIPv6 != "" {
-			return rule, fmt.Errorf("端口放行不能指定来源地址")
+		if rule.Source != "" || rule.SourceIPv6 != "" || rule.Dest != "" || rule.DestIPv6 != "" || rule.Iif != "" || rule.Oif != "" || rule.Sport != "" || rule.Verdict == "drop" {
+			return rule, fmt.Errorf("旧的全来源端口例外不能附带其他条件")
 		}
-	case "source", "source_port":
-		var err error
-		rule.Source, err = normalizeSource(rule.Source)
-		if err != nil {
-			return rule, err
+	case "source":
+		if rule.Ports != "" {
+			return rule, fmt.Errorf("IP 放行不能指定端口")
 		}
-		is4 := sourcePrefix(rule.Source).Addr().Is4()
-		if rule.Family == "both" {
-			rule.SourceIPv6, err = normalizeSource(rule.SourceIPv6)
-			if err != nil || !is4 || sourcePrefix(rule.SourceIPv6).Addr().Is4() {
-				return rule, fmt.Errorf("IPv4+IPv6 来源规则需要分别填写有效的 IPv4 和 IPv6 来源")
-			}
-		} else if rule.SourceIPv6 != "" || (rule.Family == "ipv4" && !is4) || (rule.Family == "ipv6" && is4) {
-			return rule, fmt.Errorf("来源地址与所选 IP 版本不一致")
+	case "source_port":
+		if rule.Source == "" {
+			return rule, fmt.Errorf("来源规则需要来源地址")
+		}
+	case "rule":
+		if !rule.hasMatch() {
+			return rule, fmt.Errorf("至少填写来源、目标、网卡或端口中的一项")
 		}
 	default:
 		return rule, fmt.Errorf("规则类型无效")
 	}
-	if rule.Kind == "source" {
-		if rule.Ports != "" {
-			return rule, fmt.Errorf("IP 放行不能指定端口")
+	if rule.Kind != "source" && rule.Kind != "rule" {
+		rule.Ports, _, _, err = parseRulePorts(rule.Ports)
+		if err != nil {
+			return rule, err
 		}
-	} else {
-		var err error
+	} else if rule.Ports != "" {
 		rule.Ports, _, _, err = parseRulePorts(rule.Ports)
 		if err != nil {
 			return rule, err
 		}
 	}
 	return rule, nil
+}
+
+func normalizeAddressPair(family, v4, v6, label string) (string, string, error) {
+	var err error
+	if v4 != "" {
+		if v4, err = normalizeSource(v4); err != nil {
+			return "", "", fmt.Errorf("%s地址无效: %w", label, err)
+		}
+	}
+	if v6 != "" {
+		if v6, err = normalizeSource(v6); err != nil {
+			return "", "", fmt.Errorf("%s地址无效: %w", label, err)
+		}
+	}
+	if v4 == "" && v6 == "" {
+		return "", "", nil
+	}
+	if v4 != "" && v6 != "" {
+		if !sourcePrefix(v4).Addr().Is4() || sourcePrefix(v6).Addr().Is4() {
+			return "", "", fmt.Errorf("%s地址需要分别填写 IPv4 和 IPv6", label)
+		}
+		if family != "both" {
+			return "", "", fmt.Errorf("%s地址与所选 IP 版本不一致", label)
+		}
+		return v4, v6, nil
+	}
+	single := v4
+	if single == "" {
+		single = v6
+		v4, v6 = v6, ""
+	}
+	is4 := sourcePrefix(single).Addr().Is4()
+	switch family {
+	case "ipv4":
+		if !is4 {
+			return "", "", fmt.Errorf("%s地址与所选 IP 版本不一致", label)
+		}
+	case "ipv6":
+		if is4 {
+			return "", "", fmt.Errorf("%s地址与所选 IP 版本不一致", label)
+		}
+	case "both":
+		return "", "", fmt.Errorf("IPv4+IPv6 规则的%s需要同时填写两个版本", label)
+	}
+	return v4, "", nil
+}
+
+func normalizeIface(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	if err := input.Text(raw); err != nil {
+		return "", err
+	}
+	if len(raw) > 15 {
+		return "", fmt.Errorf("网卡名过长")
+	}
+	for _, r := range raw {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '_' && r != '-' && r != '.' && r != '*' {
+			return "", fmt.Errorf("网卡名只能包含字母、数字、_ - . *")
+		}
+	}
+	return raw, nil
+}
+
+func normalizeOptionalPorts(raw string) (string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return "", nil
+	}
+	ports, _, _, err := parseRulePorts(raw)
+	return ports, err
+}
+
+func (rule *allowRule) finalizeKind() {
+	extra := rule.Verdict == "drop" || rule.Dest != "" || rule.DestIPv6 != "" || rule.Iif != "" || rule.Oif != "" || rule.Sport != ""
+	if extra {
+		rule.Kind = "rule"
+		return
+	}
+	if rule.Kind == "port" && rule.Source == "" && rule.SourceIPv6 == "" {
+		return
+	}
+	if rule.Source == "" && rule.SourceIPv6 == "" {
+		rule.Kind = "rule"
+		return
+	}
+	if rule.Ports == "" {
+		rule.Kind = "source"
+		return
+	}
+	rule.Kind = "source_port"
+}
+
+func (rule allowRule) hasMatch() bool {
+	return rule.Source != "" || rule.SourceIPv6 != "" || rule.Dest != "" || rule.DestIPv6 != "" || rule.Iif != "" || rule.Oif != "" || rule.Sport != "" || rule.Ports != ""
+}
+
+func (rule allowRule) effectiveVerdict() string {
+	if rule.Verdict == "drop" {
+		return "drop"
+	}
+	return "accept"
 }
 
 func newRuleID(rules []allowRule) (string, error) {
@@ -252,6 +381,13 @@ func (rule allowRule) sourceRange() string {
 }
 
 func (rule allowRule) description() string {
+	if rule.Kind == "rule" || rule.Verdict == "drop" {
+		action := "放行"
+		if rule.Verdict == "drop" {
+			action = "拒绝"
+		}
+		return action + " " + rule.matchLabel() + " / " + protocolLabel(rule.Protocol)
+	}
 	source, ports := rule.sourceLabel(), rule.Ports
 	if ports == "" {
 		ports = "全部端口"
@@ -259,7 +395,43 @@ func (rule allowRule) description() string {
 	return source + " → " + ports + " / " + protocolLabel(rule.Protocol)
 }
 
+func (rule allowRule) matchLabel() string {
+	var parts []string
+	if rule.Source != "" || rule.SourceIPv6 != "" {
+		parts = append(parts, "来源 "+rule.sourceLabel())
+	}
+	if rule.Dest != "" || rule.DestIPv6 != "" {
+		dest := rule.Dest
+		if rule.DestIPv6 != "" {
+			if dest != "" {
+				dest += " / "
+			}
+			dest += rule.DestIPv6
+		}
+		parts = append(parts, "目标 "+dest)
+	}
+	if rule.Iif != "" {
+		parts = append(parts, "入 "+rule.Iif)
+	}
+	if rule.Oif != "" {
+		parts = append(parts, "出 "+rule.Oif)
+	}
+	if rule.Sport != "" {
+		parts = append(parts, "源端口 "+rule.Sport)
+	}
+	if rule.Ports != "" {
+		parts = append(parts, "端口 "+rule.Ports)
+	}
+	if len(parts) == 0 {
+		return "未限制"
+	}
+	return strings.Join(parts, " ")
+}
+
 func (rule allowRule) nftLines() []string {
+	if rule.Kind == "rule" {
+		return rule.fullLines()
+	}
 	prefixes := []string{""}
 	if rule.Source != "" {
 		family := "ip6"
@@ -289,6 +461,78 @@ func (rule allowRule) nftLines() []string {
 	return result
 }
 
+func (rule allowRule) fullLines() []string {
+	verdict := "accept"
+	if rule.Verdict == "drop" {
+		verdict = "drop"
+	}
+	// A single-family address is stored in Source/Dest even when it is IPv6.
+	v4src, v4dst := rule.Source, rule.Dest
+	v6src, v6dst := rule.SourceIPv6, rule.DestIPv6
+	if v4src != "" && !sourcePrefix(v4src).Addr().Is4() {
+		v6src, v4src = v4src, ""
+	}
+	if v4dst != "" && !sourcePrefix(v4dst).Addr().Is4() {
+		v6dst, v4dst = v4dst, ""
+	}
+	var heads []string
+	if v4src != "" || v4dst != "" {
+		heads = append(heads, addressHead("ip", v4src, v4dst))
+	}
+	if v6src != "" || v6dst != "" {
+		heads = append(heads, addressHead("ip6", v6src, v6dst))
+	}
+	if len(heads) == 0 {
+		switch rule.familyMask() {
+		case 1:
+			heads = []string{"meta nfproto ipv4 "}
+		case 2:
+			heads = []string{"meta nfproto ipv6 "}
+		default:
+			heads = []string{""}
+		}
+	}
+	iface := ""
+	if rule.Iif != "" {
+		iface += `iifname "` + rule.Iif + `" `
+	}
+	if rule.Oif != "" {
+		iface += `oifname "` + rule.Oif + `" `
+	}
+	var result []string
+	for _, head := range heads {
+		for _, protocol := range []string{"tcp", "udp"} {
+			if protocolMask(rule.Protocol)&protocolMask(protocol) == 0 {
+				continue
+			}
+			var matches []string
+			if rule.Sport != "" {
+				matches = append(matches, protocol+" sport "+rule.Sport)
+			}
+			if rule.Ports != "" {
+				matches = append(matches, protocol+" dport "+rule.Ports)
+			}
+			l4 := "meta l4proto " + protocol
+			if len(matches) > 0 {
+				l4 = strings.Join(matches, " ")
+			}
+			result = append(result, iface+head+l4+` counter `+verdict+` comment "snail-rule:`+rule.ID+`"`)
+		}
+	}
+	return result
+}
+
+func addressHead(family, source, dest string) string {
+	head := ""
+	if source != "" {
+		head += family + " saddr " + source + " "
+	}
+	if dest != "" {
+		head += family + " daddr " + dest + " "
+	}
+	return head
+}
+
 func (rule allowRule) portBounds() (int, int) {
 	if rule.Ports == "" {
 		return 1, 65535
@@ -304,20 +548,49 @@ func (rule allowRule) covers(other allowRule) bool {
 	for _, family := range []int{1, 2} {
 		if other.familyMask()&family != 0 {
 			source, otherSource := rule.sourceForFamily(family), other.sourceForFamily(family)
-			if source != "" {
-				if otherSource == "" {
-					return false
-				}
-				a, b := sourcePrefix(source), sourcePrefix(otherSource)
-				if a.Bits() > b.Bits() || !a.Contains(b.Addr()) {
-					return false
-				}
+			if !prefixCovers(source, otherSource) || !prefixCovers(rule.destForFamily(family), other.destForFamily(family)) {
+				return false
 			}
 		}
 	}
+	if !textCovers(rule.Iif, other.Iif) || !textCovers(rule.Oif, other.Oif) {
+		return false
+	}
 	a, b := rule.portBounds()
 	c, d := other.portBounds()
-	return a <= c && b >= d
+	e, f := rule.sportBounds()
+	g, h := other.sportBounds()
+	return a <= c && b >= d && e <= g && f >= h
+}
+
+func (rule allowRule) destForFamily(family int) string {
+	if family == 2 && rule.DestIPv6 != "" {
+		return rule.DestIPv6
+	}
+	return rule.Dest
+}
+
+func (rule allowRule) sportBounds() (int, int) {
+	if rule.Sport == "" {
+		return 1, 65535
+	}
+	_, start, end, _ := parseRulePorts(rule.Sport)
+	return start, end
+}
+
+func prefixCovers(general, specific string) bool {
+	if general == "" {
+		return true
+	}
+	if specific == "" {
+		return false
+	}
+	wide, narrow := sourcePrefix(general), sourcePrefix(specific)
+	return wide.Bits() <= narrow.Bits() && wide.Contains(narrow.Addr())
+}
+
+func textCovers(general, specific string) bool {
+	return general == "" || general == specific
 }
 
 func (rule allowRule) overlaps(other allowRule) bool {
@@ -328,17 +601,38 @@ func (rule allowRule) overlaps(other allowRule) bool {
 	for _, family := range []int{1, 2} {
 		if rule.familyMask()&other.familyMask()&family != 0 {
 			source, otherSource := rule.sourceForFamily(family), other.sourceForFamily(family)
-			if source == "" || otherSource == "" || sourcePrefix(source).Overlaps(sourcePrefix(otherSource)) {
+			if prefixOverlaps(source, otherSource) && prefixOverlaps(rule.destForFamily(family), other.destForFamily(family)) {
 				familiesOverlap = true
 			}
 		}
 	}
-	if !familiesOverlap {
+	if !familiesOverlap || !textOverlaps(rule.Iif, other.Iif) || !textOverlaps(rule.Oif, other.Oif) {
 		return false
 	}
 	a, b := rule.portBounds()
 	c, d := other.portBounds()
-	return a <= d && c <= b
+	e, f := rule.sportBounds()
+	g, h := other.sportBounds()
+	return a <= d && c <= b && e <= h && g <= f
+}
+
+func prefixOverlaps(left, right string) bool {
+	if left == "" || right == "" {
+		return true
+	}
+	return sourcePrefix(left).Overlaps(sourcePrefix(right))
+}
+
+func textOverlaps(left, right string) bool {
+	return left == "" || right == "" || left == right || strings.Contains(left, "*") || strings.Contains(right, "*")
+}
+
+func (rule allowRule) sameSpec(other allowRule) bool {
+	return rule.familyMask() == other.familyMask() && rule.effectiveVerdict() == other.effectiveVerdict() &&
+		rule.Source == other.Source && rule.SourceIPv6 == other.SourceIPv6 &&
+		rule.Dest == other.Dest && rule.DestIPv6 == other.DestIPv6 &&
+		rule.Iif == other.Iif && rule.Oif == other.Oif &&
+		rule.Sport == other.Sport && rule.Ports == other.Ports && rule.Protocol == other.Protocol
 }
 
 func checkRuleRelations(candidate allowRule, rules []allowRule) ([]string, error) {
@@ -347,7 +641,7 @@ func checkRuleRelations(candidate allowRule, rules []allowRule) ([]string, error
 		if other.ID == candidate.ID {
 			continue
 		}
-		if other.Kind == candidate.Kind && other.familyMask() == candidate.familyMask() && other.Source == candidate.Source && other.SourceIPv6 == candidate.SourceIPv6 && other.Ports == candidate.Ports && other.Protocol == candidate.Protocol {
+		if candidate.sameSpec(other) {
 			return nil, fmt.Errorf("与规则 %s 完全重复，未保存", other.ID)
 		}
 		if !candidate.overlaps(other) {

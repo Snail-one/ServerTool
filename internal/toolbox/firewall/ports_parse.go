@@ -8,10 +8,11 @@ import (
 
 type livePortRule struct {
 	families, protocols      int // IPv4/TCP = 1, IPv6/UDP = 2.
-	sources                  []string
+	sources, dests           []string
 	ports, sourcePorts       portIntervals
 	hasPorts, hasSourcePorts bool
 	hasProtocol              bool
+	iif, oif                 string
 	verdict, target, id      string
 }
 
@@ -23,7 +24,7 @@ func (rule livePortRule) matchesPorts() portIntervals {
 }
 
 func (rule livePortRule) unconditional() bool {
-	return rule.families == 3 && rule.protocols == 3 && rule.sources == nil && !rule.hasPorts && !rule.hasSourcePorts
+	return rule.families == 3 && rule.protocols == 3 && rule.sources == nil && rule.dests == nil && rule.iif == "" && rule.oif == "" && !rule.hasPorts && !rule.hasSourcePorts
 }
 
 func (rule livePortRule) canMatchBusiness() bool {
@@ -65,7 +66,7 @@ func (parser livePortParser) mask(value any, family bool) (int, error) {
 	return mask, nil
 }
 
-func (parser livePortParser) sources(value any, family int) ([]string, error) {
+func (parser livePortParser) sources(value any, family int, label string) ([]string, error) {
 	values, err := parser.values(value, 0)
 	if err != nil {
 		return nil, err
@@ -79,11 +80,11 @@ func (parser livePortParser) sources(value any, family int) ([]string, error) {
 			prefix, ok := object["prefix"].(map[string]any)
 			length, valid := nftInt(prefix["len"])
 			if !ok || !valid {
-				return nil, fmt.Errorf("来源地址表达式无法识别")
+				return nil, fmt.Errorf("%s地址表达式无法识别", label)
 			}
 			raw = fmt.Sprintf("%v/%d", prefix["addr"], length)
 		} else {
-			return nil, fmt.Errorf("来源地址表达式无法识别")
+			return nil, fmt.Errorf("%s地址表达式无法识别", label)
 		}
 		normalized, err := normalizeSource(raw)
 		if err != nil {
@@ -91,7 +92,7 @@ func (parser livePortParser) sources(value any, family int) ([]string, error) {
 		}
 		address := sourcePrefix(normalized).Addr()
 		if address.Is4() != (family == 1) {
-			return nil, fmt.Errorf("来源地址与协议族不一致")
+			return nil, fmt.Errorf("%s地址与协议族不一致", label)
 		}
 		result = append(result, normalized)
 	}
@@ -139,19 +140,36 @@ func (parser livePortParser) rule(raw map[string]any) (livePortRule, error) {
 				}
 				left, _ := match["left"].(map[string]any)
 				if meta, ok := left["meta"].(map[string]any); ok {
-					family := meta["key"] == "nfproto"
-					if !family && meta["key"] != "l4proto" {
+					key, _ := meta["key"].(string)
+					switch key {
+					case "iifname", "oifname":
+						name, ok := match["right"].(string)
+						if !ok || strings.TrimSpace(name) == "" {
+							return rule, fmt.Errorf("网卡条件无法识别")
+						}
+						if key == "iifname" {
+							if rule.iif != "" && rule.iif != name {
+								return rule, fmt.Errorf("含多个来源网卡条件")
+							}
+							rule.iif = name
+						} else if rule.oif != "" && rule.oif != name {
+							return rule, fmt.Errorf("含多个目标网卡条件")
+						} else {
+							rule.oif = name
+						}
+					case "nfproto", "l4proto":
+						mask, err := parser.mask(match["right"], key == "nfproto")
+						if err != nil {
+							return rule, err
+						}
+						if key == "nfproto" {
+							rule.families &= mask
+						} else {
+							rule.protocols &= mask
+							rule.hasProtocol = true
+						}
+					default:
 						return rule, fmt.Errorf("含接口或其他额外匹配条件")
-					}
-					mask, err := parser.mask(match["right"], family)
-					if err != nil {
-						return rule, err
-					}
-					if family {
-						rule.families &= mask
-					} else {
-						rule.protocols &= mask
-						rule.hasProtocol = true
 					}
 				} else if payload, ok := left["payload"].(map[string]any); ok {
 					protocol, field := payload["protocol"], payload["field"]
@@ -177,22 +195,32 @@ func (parser livePortParser) rule(raw map[string]any) (livePortRule, error) {
 							}
 							rule.sourcePorts, rule.hasSourcePorts = ports, true
 						}
-					} else if (protocol == "ip" || protocol == "ip6") && field == "saddr" {
-						if rule.sources != nil {
-							return rule, fmt.Errorf("含多个来源条件")
-						}
+					} else if (protocol == "ip" || protocol == "ip6") && (field == "saddr" || field == "daddr") {
 						family := 1
 						if protocol == "ip6" {
 							family = 2
 						}
 						rule.families &= family
-						sources, err := parser.sources(match["right"], family)
+						label := "来源"
+						if field == "daddr" {
+							label = "目标"
+						}
+						addresses, err := parser.sources(match["right"], family, label)
 						if err != nil {
 							return rule, err
 						}
-						rule.sources = sources
+						if field == "saddr" {
+							if rule.sources != nil {
+								return rule, fmt.Errorf("含多个来源条件")
+							}
+							rule.sources = addresses
+						} else if rule.dests != nil {
+							return rule, fmt.Errorf("含多个目标条件")
+						} else {
+							rule.dests = addresses
+						}
 					} else {
-						return rule, fmt.Errorf("含目标地址、标志位或其他额外条件")
+						return rule, fmt.Errorf("含标志位或其他额外条件")
 					}
 				} else {
 					return rule, fmt.Errorf("不支持的匹配表达式")

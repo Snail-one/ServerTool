@@ -115,8 +115,8 @@ func TestAskRuleSupportsSeparateAndCombinedIPVersions(t *testing.T) {
 		{"3\n1\n443\n1\n", "ipv4", "", ""},
 		{"3\n2\n443\n1\n", "ipv6", "", ""},
 		{"3\n3\n443\n1\n", "both", "", ""},
-		{"2\n192.168.1.1\n2001:db8::1\n1\n443\n1\n", "ipv6", "2001:db8::1", ""},
-		{"3\n192.168.1.1/16\n2001:db8::1/32\n1\n443\n1\n", "both", "192.168.0.0/16", "2001:db8::/32"},
+		{"\n2\n192.168.1.1\n2001:db8::1\n\n\n\n\n443\n1\n", "ipv6", "2001:db8::1", ""},
+		{"\n3\n192.168.1.1/16\n2001:db8::1/32\n\n\n\n\n443\n1\n", "both", "192.168.0.0/16", "2001:db8::/32"},
 	} {
 		current := allowRule{ID: "1234abcd"}
 		if test.source == "" {
@@ -131,7 +131,7 @@ func TestAskRuleSupportsSeparateAndCombinedIPVersions(t *testing.T) {
 
 func TestEditDualStackSourcesToOneVersionKeepsTheChosenAddress(t *testing.T) {
 	current := allowRule{ID: "1234abcd", Kind: "source_port", Family: "both", Source: "192.168.0.0/16", SourceIPv6: "2001:db8::/32", Ports: "443", Protocol: "tcp"}
-	rule, err := askAllowRule(inputUI(t, "2\n\n\n\n\n"), current)
+	rule, err := askAllowRule(inputUI(t, "\n2\n\n\n\n\n\n\n\n"), current)
 	if err != nil || rule.Family != "ipv6" || rule.Source != current.SourceIPv6 || rule.SourceIPv6 != "" {
 		t.Fatalf("switching to IPv6 kept the wrong source: %+v %v", rule, err)
 	}
@@ -142,7 +142,7 @@ func TestDualStackSourceRuleIsSavedMovedQueriedAndDeletedAsOneID(t *testing.T) {
 	other := allowRule{ID: "aaaaaaaa", Kind: "port", Family: "ipv4", Ports: "53", Protocol: "udp"}
 	ruleTestConfig(t, []allowRule{other})
 	acceptRuleCommands(t)
-	if err := runAccessRuleManager(inputUI(t, "5\n1\n3\n192.168.1.1/16\n2001:db8::1/32\n1\n443\n3\n\nq\ns\ny\n")); err != nil {
+	if err := runAccessRuleManager(inputUI(t, "5\n1\n\n3\n192.168.1.1/16\n2001:db8::1/32\n\n\n\n\n443\n3\n\nq\ns\ny\n")); err != nil {
 		t.Fatal(err)
 	}
 	rules, err := managedRules(shared.ReadFileString(configPath))

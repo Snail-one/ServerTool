@@ -174,6 +174,45 @@ func TestUnsupportedOrChangedRoutingNeverClaimsPortsAreClosed(t *testing.T) {
 	}
 }
 
+func TestLoadedSummaryShowsDropRulesWithoutOpeningTheirPorts(t *testing.T) {
+	content := editPortFixture(t, func(objects []map[string]any) []map[string]any {
+		drop, err := decodeRules(`{"nftables":[{"rule":{"family":"inet","table":"snail","chain":"source_allow","handle":99,"comment":"snail-rule:drop0001","expr":[{"match":{"op":"==","left":{"meta":{"key":"iifname"}},"right":"eth0"}},{"match":{"op":"==","left":{"meta":{"key":"oifname"}},"right":"br-*"}},{"match":{"op":"==","left":{"payload":{"protocol":"ip","field":"saddr"}},"right":"203.0.113.8"}},{"match":{"op":"==","left":{"payload":{"protocol":"ip","field":"daddr"}},"right":"192.0.2.20"}},{"match":{"op":"==","left":{"payload":{"protocol":"tcp","field":"sport"}},"right":4000}},{"match":{"op":"==","left":{"payload":{"protocol":"tcp","field":"dport"}},"right":22}},{"drop":null}]}}]}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var result []map[string]any
+		inserted := false
+		for _, object := range objects {
+			rule, _ := object["rule"].(map[string]any)
+			if !inserted && rule["chain"] == "source_allow" && rule["handle"] == json.Number("37") {
+				result = append(result, drop...)
+				inserted = true
+			}
+			result = append(result, object)
+		}
+		if !inserted {
+			t.Fatal("source allow return rule missing")
+		}
+		return result
+	})
+	summary, err := summarizeLoadedPorts(content)
+	if err != nil || summary.problem != "" {
+		t.Fatalf("drop rule made the summary fail: %v %s", err, summary.problem)
+	}
+	if got := summary.ports[0][0][0].String(); got != "443, 2222, 8000-8002, 8443" {
+		t.Fatalf("drop rule changed the allow list: %s", got)
+	}
+	found := false
+	for _, rule := range summary.exceptions {
+		if rule.verdict == "drop" && rule.iif == "eth0" && rule.oif == "br-*" && len(rule.dests) == 1 && rule.dests[0] == "192.0.2.20" && rule.ports.String() == "22" && rule.sourcePorts.String() == "4000" {
+			found = strings.Contains(rule.description(), "目标 192.0.2.20") && strings.Contains(rule.description(), "入 eth0") && strings.Contains(rule.description(), "出 br-*")
+		}
+	}
+	if !found {
+		t.Fatalf("drop rule was not summarized: %+v", summary.exceptions)
+	}
+}
+
 func TestShowLoadedPortsReadsKernelOnlyAndDisplaysSystemExceptions(t *testing.T) {
 	setupTest(t)
 	if err := os.WriteFile(configPath, []byte("# un-applied file has TCP 9999\n"), 0600); err != nil {

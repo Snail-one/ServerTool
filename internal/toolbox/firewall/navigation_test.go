@@ -15,8 +15,8 @@ func TestAccessRulePagesReturnOneLevelAtATime(t *testing.T) {
 	}{
 		{"port-value", "2\n1\n1\n1\n", 5},
 		{"range-entry", "4\n1\n5\n1\n", 5},
-		{"source-ports", "5\n1\n1\n192.0.2.1\n1\n443\n", 7},
-		{"dual-stack-all-ports", "5\n1\n3\n192.0.2.1\n2001:db8::1\n2\n", 7},
+		{"source-ports", "5\n1\n\n1\n192.0.2.1\n\n\n\n\n443\n", 11},
+		{"dual-stack-all-ports", "5\n1\n\n3\n192.0.2.1\n2001:db8::1\n\n\n\n\n\n", 12},
 		{"edit-rule", "5\n2\n2\n", 4},
 		{"delete-by-id", "5\n3\n1\n", 4},
 		{"delete-by-port", "5\n3\n2\n443\n", 5},
@@ -39,9 +39,9 @@ func TestAccessRulePagesReturnOneLevelAtATime(t *testing.T) {
 }
 
 func TestSourceRuleCanChangeBranchAfterReturning(t *testing.T) {
-	// Return from ports to access scope, select all ports, then return from
-	// protocol. The skipped ports page must not reappear in the back history.
-	view := inputUI(t, "1\n192.0.2.1\n1\nq\n2\nq\nq\nq\nq\nparent-next\n")
+	// Leave the IPv6 source page, switch to IPv4, then return from protocol.
+	// The skipped IPv6 page must not reappear in the back history.
+	view := inputUI(t, "\n3\n192.0.2.1\nq\nq\n1\n192.0.2.1\n\n\n\n\n\nq\nq\nq\nq\nq\nq\nq\nq\nq\nparent-next\n")
 	if _, err := askAllowRule(view, allowRule{ID: "aaaaaaaa"}); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}

@@ -69,13 +69,17 @@ func showLoadedPorts() error {
 		if rule.families == 2 && rule.protocols == 2 && rule.sources == nil && rule.hasPorts && rule.hasSourcePorts && rule.ports.String() == "546" && rule.sourcePorts.String() == "547" {
 			system = append(system, ui.CardField{Label: "DHCPv6 客户端", Value: rule.description()})
 		} else {
-			exceptions = append(exceptions, ui.CardField{Label: "放行", Value: rule.description()})
+			label := "放行"
+			if rule.verdict == "drop" {
+				label = "拒绝"
+			}
+			exceptions = append(exceptions, ui.CardField{Label: label, Value: rule.description()})
 		}
 	}
 	if len(exceptions) > 0 {
-		fields := []ui.CardField{{Label: "匹配方式", Value: "优先于公网 / 内网基础端口放行"}}
+		fields := []ui.CardField{{Label: "匹配方式", Value: "优先于公网 / 内网基础端口"}}
 		fields = append(fields, exceptions...)
-		ui.PrintSectionCard("来源 IP 放行规则", fields...)
+		ui.PrintSectionCard("规则配置", fields...)
 	}
 	if len(summary.system) > 0 {
 		system = append(system, ui.CardField{Label: "其他系统流量", Value: strings.Join(summary.system, "、"), Detail: "具体条件见完整已加载规则"})

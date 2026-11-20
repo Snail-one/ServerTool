@@ -4,7 +4,7 @@ import "snail_tool/internal/ui"
 
 func sourceRulePage(stage string, rule allowRule) {
 	ui.ClearScreen()
-	ui.MenuTitle("防火墙管理", sessionTitle(), "来源 IP 放行", stage)
+	ui.MenuTitle("防火墙管理", sessionTitle(), "规则配置", stage)
 	var fields []ui.CardField
 	if rule.ID != "" {
 		fields = append(fields, ui.CardField{Label: "规则 ID", Value: rule.ID})
@@ -18,11 +18,33 @@ func sourceRulePage(stage string, rule allowRule) {
 	if rule.Source != "" {
 		fields = append(fields, ui.CardField{Label: "来源", Value: rule.sourceLabel(), Detail: rule.sourceRange()})
 	}
+	if rule.Dest != "" || rule.DestIPv6 != "" {
+		dest := rule.Dest
+		if rule.DestIPv6 != "" {
+			if dest != "" {
+				dest += " / "
+			}
+			dest += rule.DestIPv6
+		}
+		fields = append(fields, ui.CardField{Label: "目标", Value: dest})
+	}
+	if rule.Iif != "" {
+		fields = append(fields, ui.CardField{Label: "来源网卡", Value: rule.Iif})
+	}
+	if rule.Oif != "" {
+		fields = append(fields, ui.CardField{Label: "目标网卡", Value: rule.Oif})
+	}
+	if rule.Sport != "" {
+		fields = append(fields, ui.CardField{Label: "来源端口", Value: rule.Sport})
+	}
 	if rule.Ports != "" {
 		fields = append(fields, ui.CardField{Label: "端口", Value: rule.Ports})
 	}
 	if rule.Protocol != "" {
 		fields = append(fields, ui.CardField{Label: "协议", Value: protocolLabel(rule.Protocol)})
+	}
+	if rule.Verdict == "drop" {
+		fields = append(fields, ui.CardField{Label: "动作", Value: "拒绝"})
 	}
 	if len(fields) > 0 {
 		ui.PrintInfoCard("当前选择", fields...)

@@ -1,6 +1,7 @@
 package firewall
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -115,5 +116,76 @@ func TestNormalizedDuplicatesAreRejectedButOverlappingRulesStayIndependent(t *te
 	ipv6.ID, ipv6.Source = "eeeeeeee", "2001:db8::/32"
 	if warnings, err := checkRuleRelations(ipv6, []allowRule{base}); err != nil || len(warnings) != 0 {
 		t.Fatal("IPv4 and IPv6 source restrictions must not conflict")
+	}
+}
+
+func TestFullRuleDropsAtTheFrontAndLegacyLinesStayUnchanged(t *testing.T) {
+	legacy, err := normalizeAllowRule(allowRule{ID: "aaaaaaaa", Kind: "source_port", Source: "192.168.1.10", Ports: "443", Protocol: "tcp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyLine := strings.Join(legacy.nftLines(), "\n")
+	if legacy.Kind != "source_port" || strings.Contains(legacyLine, "daddr") || strings.Contains(legacyLine, "counter drop") || legacyLine != `ip saddr 192.168.1.10 tcp dport 443 counter accept comment "snail-rule:aaaaaaaa"` {
+		t.Fatalf("legacy source rule changed: %s", legacyLine)
+	}
+	portOnly, err := normalizeAllowRule(allowRule{ID: "bbbbbbbb", Family: "ipv4", Ports: "443", Protocol: "tcp"})
+	if err != nil || portOnly.Kind != "rule" {
+		t.Fatalf("port-only accept must be a new rule, not a legacy port exception: %+v %v", portOnly, err)
+	}
+	kept, err := normalizeAllowRule(allowRule{ID: "cccccccc", Kind: "port", Family: "ipv4", Ports: "443", Protocol: "tcp"})
+	if err != nil || kept.Kind != "port" || strings.Contains(strings.Join(kept.nftLines(), "\n"), "daddr") {
+		t.Fatalf("legacy port exception was rewritten: %+v %v", kept, err)
+	}
+	drop, err := normalizeAllowRule(allowRule{
+		ID: "dddddddd", Family: "ipv4", Verdict: "drop", Source: "203.0.113.10", Dest: "192.0.2.20",
+		Iif: "eth0", Oif: "br-*", Sport: "40000-40010", Ports: "3000", Protocol: "tcp",
+	})
+	if err != nil || drop.Kind != "rule" {
+		t.Fatalf("drop rule was not accepted: %+v %v", drop, err)
+	}
+	wantDrop := `iifname "eth0" oifname "br-*" ip saddr 203.0.113.10 ip daddr 192.0.2.20 tcp sport 40000-40010 tcp dport 3000 counter drop comment "snail-rule:dddddddd"`
+	if got := strings.Join(drop.nftLines(), "\n"); got != wantDrop || strings.Contains(got, dockerForwardMarkExpr) {
+		t.Fatalf("drop line = %s", got)
+	}
+	v6, err := normalizeAllowRule(allowRule{
+		ID: "eeeeeeee", Family: "ipv6", Verdict: "drop", Source: "2001:db8::5", Dest: "2001:db8::9", Iif: "eth0", Ports: "3000", Protocol: "tcp",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v6Line := strings.Join(v6.nftLines(), "\n")
+	if v6Line != `iifname "eth0" ip6 saddr 2001:db8::5 ip6 daddr 2001:db8::9 tcp dport 3000 counter drop comment "snail-rule:eeeeeeee"` {
+		t.Fatalf("IPv6 drop used the wrong family: %s", v6Line)
+	}
+	if _, err := normalizeAllowRule(allowRule{ID: "ffffffff", Protocol: "tcp"}); err == nil {
+		t.Fatal("a rule with no match was accepted")
+	}
+	base, err := buildConfig([]int{2222}, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := replaceManagedRules(base, []allowRule{drop, legacy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := managedRules(content)
+	if err != nil || !reflect.DeepEqual(got, []allowRule{drop, legacy}) {
+		t.Fatalf("full rule did not round-trip: %v %v", got, err)
+	}
+	markedBase, changed, err := withDockerForwardMark(base)
+	if err != nil || !changed {
+		t.Fatal(changed, err)
+	}
+	marked, err := replaceManagedRulesIn(markedBase, []allowRule{drop, legacy}, forwardRuleBlock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(marked, "\n") {
+		if strings.Contains(line, "counter drop") && strings.Contains(line, dockerForwardMarkExpr) {
+			t.Fatalf("drop was marked: %s", line)
+		}
+		if strings.Contains(line, "snail-rule:aaaaaaaa") && !strings.Contains(line, dockerForwardMarkExpr+" counter accept") {
+			t.Fatalf("forward accept lost its mark: %s", line)
+		}
 	}
 }
