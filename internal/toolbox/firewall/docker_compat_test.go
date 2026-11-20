@@ -123,3 +123,70 @@ func TestEnableDockerCompatWritesUnitAndMark(t *testing.T) {
 		t.Fatalf("unit = %s, err=%v", unit, err)
 	}
 }
+
+func TestDockerMarkExistsOnlyWhileCompatIsOn(t *testing.T) {
+	content, err := buildConfig([]int{22}, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(content, dockerForwardMarkExpr) {
+		t.Fatal("generated forward rules are marked while Docker compat is off")
+	}
+	rule := allowRule{ID: "aaaaaaaa", Kind: "source_port", Family: "ipv4", Source: "192.168.1.10", Ports: "443", Protocol: "tcp"}
+	rule, err = normalizeAllowRule(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := replaceManagedRulesIn(content, []allowRule{rule}, forwardRuleBlock)
+	if err != nil || strings.Contains(plain, dockerForwardMarkExpr) {
+		t.Fatalf("unmarked forward edit gained a mark, err=%v", err)
+	}
+	markedBase, changed, err := withDockerForwardMark(content)
+	if err != nil || !changed {
+		t.Fatal(changed, err)
+	}
+	marked, err := replaceManagedRulesIn(markedBase, []allowRule{rule}, forwardRuleBlock)
+	if err != nil || !strings.Contains(marked, dockerForwardMarkExpr+" counter accept comment") {
+		t.Fatalf("enabled forward edit lost the mark, err=%v", err)
+	}
+
+	setupTest(t)
+	if err := os.WriteFile(configPath, []byte(markedBase), 0600); err != nil {
+		t.Fatal(err)
+	}
+	commandExists = func(name string) bool { return name == "nft" || name == "iptables" }
+	commandOutput = func(name string, args ...string) (string, error) {
+		if name == "nft" {
+			return "", nil
+		}
+		if name == "iptables" && len(args) > 0 && args[0] == "-S" {
+			return "", errors.New("no chain")
+		}
+		t.Fatalf("unexpected command %s %v", name, args)
+		return "", errors.New("unexpected")
+	}
+	removed, err := disableDockerCompat()
+	if err != nil || !removed {
+		t.Fatal(removed, err)
+	}
+	saved, err := os.ReadFile(configPath)
+	if err != nil || strings.Contains(string(saved), dockerForwardMarkExpr) {
+		t.Fatalf("disable left the mark in place, err=%v", err)
+	}
+
+	if err := os.WriteFile(DockerForwardUnitPath, []byte("unit"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	commandExists = func(name string) bool { return name == "systemctl" }
+	commandOutput = func(name string, args ...string) (string, error) {
+		if name == "systemctl" && len(args) > 0 && args[0] == "is-enabled" {
+			return "enabled", nil
+		}
+		t.Fatalf("unexpected command %s %v", name, args)
+		return "", errors.New("unexpected")
+	}
+	rebuilt, err := applyDockerForwardMarkIfEnabled(content)
+	if err != nil || !strings.Contains(rebuilt, "ct state established,related "+dockerForwardMarkExpr+" counter accept") {
+		t.Fatalf("rebuild while enabled did not mark forward accepts, err=%v", err)
+	}
+}

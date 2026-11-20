@@ -311,7 +311,7 @@ func replaceManagedRulesIn(content string, rules []allowRule, section ruleBlock)
 		return "", err
 	}
 	body := renderRuleBody(rules)
-	if section.hook == "forward" {
+	if section.hook == "forward" && strings.Contains(content, dockerForwardMarkExpr) {
 		body = addDockerForwardMarkLines(body)
 	}
 	if !counters {

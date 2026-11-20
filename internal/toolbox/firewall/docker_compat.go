@@ -266,6 +266,30 @@ func removeDockerForwardUnit() error {
 	return nil
 }
 
+func applyDockerForwardMarkIfEnabled(content string) (string, error) {
+	enabled, err := dockerCompatEnabled()
+	if err != nil || !enabled {
+		return content, err
+	}
+	updated, _, err := withDockerForwardMark(content)
+	return updated, err
+}
+
+func clearDockerForwardMarks() (bool, error) {
+	version, err := readConfigVersion()
+	if err != nil || !version.exists || !strings.Contains(string(version.content), dockerForwardMarkExpr) {
+		return false, err
+	}
+	updated := withoutDockerForwardMark(string(version.content))
+	if err := writeConfig(updated, version); err != nil {
+		return false, err
+	}
+	if err := applyConfig([]byte(updated)); err != nil {
+		return true, fmt.Errorf("转发标记已从配置删除，但未成功加载；原配置已备份，可输入 r 重试: %w", err)
+	}
+	return true, nil
+}
+
 func prepareDockerForwardConfig() error {
 	version, err := readConfigVersion()
 	if err != nil {
@@ -340,7 +364,11 @@ func disableDockerCompat() (bool, error) {
 		}
 		removed = true
 	}
-	return removed, nil
+	cleared, err := clearDockerForwardMarks()
+	if err != nil {
+		return removed, err
+	}
+	return removed || cleared, nil
 }
 
 func fileExists(path string) bool {
@@ -427,7 +455,7 @@ func ConfigureDockerCompat(view *ui.UI) error {
 		}
 		ui.PrintSuccessCard("Docker 防火墙兼容已关闭",
 			ui.CardField{Label: "DOCKER-USER", Value: "已移除转发标记放行"},
-			ui.CardField{Label: "防火墙标记", Value: "配置里的标记保留，关闭后 Docker 不再认它"},
+			ui.CardField{Label: "防火墙标记", Value: "已从防火墙配置中去掉"},
 		)
 		return nil
 	}

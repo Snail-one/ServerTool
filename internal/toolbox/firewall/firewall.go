@@ -422,6 +422,10 @@ func configure(view *ui.UI) error {
 				if err != nil {
 					return err
 				}
+				content, err = applyDockerForwardMarkIfEnabled(content)
+				if err != nil {
+					return err
+				}
 				var err error
 				write, err = confirmConfig(view, &content, autostartAction)
 				return err
