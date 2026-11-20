@@ -331,17 +331,20 @@ func configure(view *ui.UI) error {
 	if err != nil {
 		return err
 	}
+	var droppedAccess, droppedForward int
 	if strings.Contains(string(version.content), rulesBegin) || strings.Contains(string(version.content), rulesEnd) {
 		preserved, err = managedRules(string(version.content))
 		if err != nil {
 			return err
 		}
+		preserved, droppedAccess = omitUnconvertedPortRules(preserved)
 	}
 	if strings.Contains(string(version.content), forwardRulesBegin) || strings.Contains(string(version.content), forwardRulesEnd) {
 		preservedForward, err = managedRulesIn(string(version.content), forwardRuleBlock)
 		if err != nil {
 			return err
 		}
+		preservedForward, droppedForward = omitUnconvertedPortRules(preservedForward)
 	}
 	ports, err := detectSSHPorts()
 	if err != nil {
@@ -354,6 +357,9 @@ func configure(view *ui.UI) error {
 		ui.CardField{Label: "端口", Value: portList(ports), Detail: "/usr/sbin/sshd -T"},
 		ui.CardField{Label: "放行协议", Value: "相同端口号同时放行 TCP / UDP，IPv4 / IPv6 同时应用"},
 		ui.CardField{Label: "附加放行规则", Value: fmt.Sprintf("保留已有 %d 条规则", len(preserved))},
+	}
+	if text := unconvertedPortRuleText(droppedAccess, droppedForward); text != "" {
+		sshFields = append(sshFields, ui.CardField{Label: "旧任意来源规则", Value: text})
 	}
 	if len(ports) > 1 {
 		sshFields = append(sshFields, ui.CardField{Label: "SSH 提示", Value: "检测到多个 SSH 端口。选择开放的范围会同时写入这些端口；建议在 SSH 安全配置中检查并关闭不再使用的旧端口"})
@@ -437,7 +443,7 @@ func configure(view *ui.UI) error {
 					return err
 				}
 				var err error
-				write, err = confirmConfig(view, &content, autostartAction)
+				write, err = confirmConfig(view, &content, autostartAction, droppedAccess, droppedForward)
 				return err
 			}},
 		)
@@ -557,9 +563,37 @@ func askWeb(view *ui.UI, scope string, fields ...ui.CardField) (bool, error) {
 	}
 }
 
+// Kind port is the old any-source port exception. Rebuild keeps source rules and
+// full rules. An exception the user has not moved into the base port lists is omitted.
+func omitUnconvertedPortRules(rules []allowRule) ([]allowRule, int) {
+	kept := make([]allowRule, 0, len(rules))
+	dropped := 0
+	for _, rule := range rules {
+		if rule.Kind == "port" {
+			dropped++
+			continue
+		}
+		kept = append(kept, rule)
+	}
+	return kept, dropped
+}
+
+func unconvertedPortRuleText(access, forward int) string {
+	switch {
+	case access > 0 && forward > 0:
+		return fmt.Sprintf("未转换的访问 %d 条、转发 %d 条不保留，生成配置时覆盖", access, forward)
+	case access > 0:
+		return fmt.Sprintf("未转换的 %d 条不保留，生成配置时覆盖", access)
+	case forward > 0:
+		return fmt.Sprintf("未转换的转发 %d 条不保留，生成配置时覆盖", forward)
+	default:
+		return ""
+	}
+}
+
 // A false result lets the caller return to the SSH and web-port choices; cancellation
 // uses ErrReturnToMenu so the generation wizard returns to its preceding step.
-func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, error) {
+func confirmConfig(view *ui.UI, draft *string, autostartAction string, droppedAccess, droppedForward int) (bool, error) {
 	for {
 		content := *draft
 		ui.ClearScreen()
@@ -590,9 +624,14 @@ func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, er
 		if err != nil {
 			return false, err
 		}
-		ui.PrintInfoCard("即将写入的配置",
-			ui.CardField{Label: "SSH 端口", Value: sshPorts},
-			ui.CardField{Label: "附加放行规则", Value: fmt.Sprintf("保留 %d 条，可额外放行来源和端口", len(extraRules))},
+		writeFields := []ui.CardField{
+			{Label: "SSH 端口", Value: sshPorts},
+			{Label: "附加放行规则", Value: fmt.Sprintf("保留 %d 条，可额外放行来源和端口", len(extraRules))},
+		}
+		if text := unconvertedPortRuleText(droppedAccess, droppedForward); text != "" {
+			writeFields = append(writeFields, ui.CardField{Label: "旧任意来源规则", Value: text})
+		}
+		writeFields = append(writeFields,
 			ui.CardField{Label: "ICMP / ICMPv6 回显", Value: pingState},
 			ui.CardField{Label: "数据包统计", Value: counterState},
 			ui.CardField{Label: "替换范围", Value: "使用当前草稿替换原配置；原端口、内网 IP 范围及手写规则不会自动沿用"},
@@ -603,6 +642,7 @@ func confirmConfig(view *ui.UI, draft *string, autostartAction string) (bool, er
 			ui.CardField{Label: "生效方式", Value: "写入后自动加载，立即生效"},
 			ui.CardField{Label: "开机自启", Value: autostartAction},
 		)
+		ui.PrintInfoCard("即将写入的配置", writeFields...)
 		fmt.Println()
 		ui.MenuOption("1", "校验、写入并立即加载")
 		ui.MenuOption("2", "预览完整配置")

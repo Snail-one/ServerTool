@@ -177,6 +177,56 @@ func TestRegeneratingBaseConfigurationPreservesManagedRules(t *testing.T) {
 	}
 }
 
+func TestRegenerationDropsUnconvertedPortRules(t *testing.T) {
+	setupTest(t)
+	kept := allowRule{ID: "bbbbbbbb", Kind: "source_port", Source: "192.168.0.0/16", Ports: "21069", Protocol: "udp"}
+	legacy := allowRule{ID: "aaaaaaaa", Kind: "port", Ports: "3100", Protocol: "both"}
+	version := ruleTestConfig(t, []allowRule{legacy, kept})
+	forwardLegacy, err := normalizeAllowRule(allowRule{ID: "cccccccc", Kind: "port", Family: "ipv4", Ports: "8211", Protocol: "tcp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	forwardKept, err := normalizeAllowRule(allowRule{ID: "dddddddd", Kind: "source", Source: "192.0.2.10", Protocol: "both"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := replaceManagedRulesIn(string(version.content), []allowRule{forwardLegacy, forwardKept}, forwardRuleBlock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	commandOutput = func(name string, args ...string) (string, error) {
+		if isSSHDTest(name, args) {
+			return sshdTestConfig(2222), nil
+		}
+		if name == "nft" && len(args) == 3 && args[0] == "-c" && args[1] == "-f" {
+			return "", nil
+		}
+		if name == "nft" && reflect.DeepEqual(args, []string{"-f", configPath}) {
+			return "", nil
+		}
+		t.Fatalf("unexpected command: %s %v", name, args)
+		return "", nil
+	}
+	if err := configure(inputUI(t, "\n\n\n\n1\n")); err != nil {
+		t.Fatal(err)
+	}
+	saved := shared.ReadFileString(configPath)
+	got, err := managedRules(saved)
+	if err != nil || !reflect.DeepEqual(got, []allowRule{kept}) {
+		t.Fatalf("access rules = %+v, err=%v", got, err)
+	}
+	forward, err := managedRulesIn(saved, forwardRuleBlock)
+	if err != nil || !reflect.DeepEqual(forward, []allowRule{forwardKept}) {
+		t.Fatalf("forward rules = %+v, err=%v", forward, err)
+	}
+	if strings.Contains(saved, "dport 3100") || strings.Contains(saved, "dport 8211") {
+		t.Fatal("unconverted port rules were written into the new config")
+	}
+}
+
 func TestFirewallBackupsNeverOverwriteAnEarlierSnapshot(t *testing.T) {
 	setupTest(t)
 	version := ruleTestConfig(t, nil)

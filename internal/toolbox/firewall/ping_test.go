@@ -239,7 +239,8 @@ func TestRemovePingConfigurationKeepsOtherRulesAndDoesNotRecreateOnRegeneration(
 			if _, found, err := readPingSetting(regenerated); err != nil || found {
 				t.Fatal("regeneration recreated the removed setting")
 			}
-			if rules, err := managedRules(regenerated); err != nil || !reflect.DeepEqual(rules, orderTestRules()) {
+			want, _ := omitUnconvertedPortRules(orderTestRules())
+			if rules, err := managedRules(regenerated); err != nil || !reflect.DeepEqual(rules, want) {
 				t.Fatal("regeneration lost unrelated allow rules")
 			}
 		})

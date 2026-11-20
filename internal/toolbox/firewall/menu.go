@@ -22,7 +22,7 @@ func showMenu() {
 	case err != nil:
 		ui.MenuOptionHint("7", "生成基础配置", "配置状态未知，选择查看原因")
 	case hasManagedConfig(string(version.content)):
-		ui.MenuOptionHint("7", "重建基础配置", "重新设置端口策略，备份后替换")
+		ui.MenuOptionHint("7", "重建基础配置", "重新设置端口策略，未转换的旧规则不保留")
 	case version.exists:
 		ui.MenuOptionHint("7", "生成默认配置", "备份现有配置后替换，首次配置开启自启")
 	default:
