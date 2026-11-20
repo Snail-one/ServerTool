@@ -25,6 +25,7 @@ snail <command>
 | `snail clean-backups` | 无 | 是 | 显示备份数量与大小，确认后清理全部模块备份 |
 | `snail clean-backups --yes` | 无 | 是 | 直接清理全部模块备份 |
 | `snail clean-data --yes` | 无 | 是 | 永久删除整个 `/var/lib/snailtool`，也供卸载时确认删除后调用 |
+| `snail sync-docker-forward` | 无 | 是 | Docker 启动后补上 `DOCKER-USER` 中的转发标记放行。由 `snail-docker-forward.service` 调用，不进入菜单 |
 
 未知命令会显示错误和用法，并以状态码 `2` 退出。
 

@@ -13,6 +13,7 @@ import (
 	"snail_tool/internal/container/runtime"
 	"snail_tool/internal/container/update"
 	"snail_tool/internal/shared"
+	"snail_tool/internal/toolbox/firewall"
 	"snail_tool/internal/ui"
 )
 
@@ -37,20 +38,21 @@ func Run(view *ui.UI) error {
 		}
 		ui.ClearScreen()
 		ui.MenuTitle("容器管理")
-		logSummary, proxySummary, clientProxySummary := "", "", ""
+		logSummary, proxySummary, clientProxySummary, firewallSummary := "", "", "", ""
 		if hasDocker {
 			logSummary = daemonlog.CurrentSummary()
 			proxySummary = daemonproxy.CurrentSummary()
 			clientProxySummary = clientproxy.CurrentSummary()
+			firewallSummary = firewall.DockerCompatSummary()
 		}
-		ui.PrintInfoCard("容器运行时状态", runtimeStatusFields(installedRuntimes, logSummary, proxySummary, clientProxySummary)...)
+		ui.PrintInfoCard("容器运行时状态", runtimeStatusFields(installedRuntimes, logSummary, proxySummary, clientProxySummary, firewallSummary)...)
 		fmt.Println()
 		ui.MenuOptionHint("1", "管理容器", "查看状态、日志与生命周期操作")
 		ui.MenuOptionHint("2", "Compose", "查看、更新与重建项目")
 		if hasDocker {
-			ui.MenuOptionHint("3", "Docker 配置", "服务代理、构建与容器代理、日志轮转")
+			ui.MenuOptionHint("3", "Docker 配置", "服务代理、构建与容器代理、日志轮转、防火墙")
 		} else {
-			ui.MenuOptionHint("3", "Docker 配置", "仅 Docker 可用；代理与日志轮转")
+			ui.MenuOptionHint("3", "Docker 配置", "仅 Docker 可用；代理、日志轮转与防火墙")
 		}
 		ui.MenuOptionHint("4", "清理容器资源", "容器、网络、镜像、数据卷与构建缓存")
 		ui.MenuOptionHint("5", fmt.Sprintf("卸载 %s", uninstallName), "可选择保留或永久删除数据")
@@ -107,7 +109,7 @@ func Run(view *ui.UI) error {
 	}
 }
 
-func runtimeStatusFields(installedRuntimes []runtime.Runtime, logSummary, proxySummary, clientProxySummary string) []ui.CardField {
+func runtimeStatusFields(installedRuntimes []runtime.Runtime, logSummary, proxySummary, clientProxySummary, firewallSummary string) []ui.CardField {
 	fields := []ui.CardField{{
 		Label: "当前运行时",
 		Value: runtime.DisplaySummary(installedRuntimes),
@@ -120,6 +122,7 @@ func runtimeStatusFields(installedRuntimes []runtime.Runtime, logSummary, proxyS
 			ui.CardField{Label: "容器日志", Value: logSummary},
 			ui.CardField{Label: "服务代理", Value: proxySummary},
 			ui.CardField{Label: "构建与容器代理", Value: clientProxySummary},
+			ui.CardField{Label: "防火墙兼容", Value: firewallSummary},
 		)
 	}
 	return fields
@@ -177,6 +180,7 @@ func runDockerConfigMenu(view *ui.UI) error {
 			ui.CardField{Label: "服务代理", Value: daemonproxy.CurrentSummary()},
 			ui.CardField{Label: "构建与容器代理", Value: clientproxy.CurrentSummary()},
 			ui.CardField{Label: "日志轮转", Value: daemonlog.CurrentSummary()},
+			ui.CardField{Label: "防火墙兼容", Value: firewall.DockerCompatSummary()},
 		)
 		fmt.Println()
 		ui.MenuOptionHint("1", "配置服务代理", "systemd 服务代理")
@@ -186,6 +190,7 @@ func runDockerConfigMenu(view *ui.UI) error {
 		ui.MenuOptionHint("4", "移除服务代理", "移除后重新加载 systemd，并尝试重启 Docker")
 		ui.MenuOptionHint("5", "移除构建与容器代理", "用于后续构建及新建容器，无需重启 Docker")
 		ui.MenuOptionHint("6", "移除日志轮转", "恢复默认日志设置，并尝试重启 Docker")
+		ui.MenuOptionHint("7", "防火墙", "开启或关闭对 Docker 转发的兼容")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -222,6 +227,10 @@ func runDockerConfigMenu(view *ui.UI) error {
 		case "6":
 			shared.RunAction(view, "Docker 日志轮转移除失败，已返回 Docker 配置", func() error {
 				return daemonlog.Remove(view)
+			})
+		case "7":
+			shared.RunAction(view, "Docker 防火墙兼容设置失败，已返回 Docker 配置", func() error {
+				return firewall.ConfigureDockerCompat(view)
 			})
 		default:
 			ui.InvalidChoice()

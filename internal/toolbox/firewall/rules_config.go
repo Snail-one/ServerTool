@@ -257,7 +257,7 @@ func managedRulesIn(content string, block ruleBlock) ([]allowRule, error) {
 		return nil, err
 	}
 	expected, _ := withoutCounterStatements(renderRuleBody(rules))
-	if compactRuleBody(actual) != compactRuleBody(expected) {
+	if compactRuleBody(withoutDockerForwardMark(actual)) != compactRuleBody(withoutDockerForwardMark(expected)) {
 		return nil, fmt.Errorf("规则托管区块已被手动修改，元数据与实际规则不一致；请先修正，避免覆盖手动规则")
 	}
 	return rules, nil
@@ -311,6 +311,9 @@ func replaceManagedRulesIn(content string, rules []allowRule, section ruleBlock)
 		return "", err
 	}
 	body := renderRuleBody(rules)
+	if section.hook == "forward" {
+		body = addDockerForwardMarkLines(body)
+	}
 	if !counters {
 		body, err = withoutCounterStatements(body)
 		if err != nil {

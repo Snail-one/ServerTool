@@ -13,6 +13,7 @@ import (
 	"snail_tool/internal/selfupdate"
 	"snail_tool/internal/startup"
 	"snail_tool/internal/system"
+	"snail_tool/internal/toolbox/firewall"
 	"snail_tool/internal/ui"
 	"snail_tool/internal/version"
 )
@@ -96,6 +97,16 @@ func handleArgs(args []string) bool {
 			os.Exit(1)
 		}
 		return true
+	case "sync-docker-forward":
+		if !system.IsRoot() {
+			log.Error("补上 Docker 转发兼容规则需要 root 权限")
+			os.Exit(1)
+		}
+		if err := firewall.SyncDockerForward(); err != nil {
+			log.Error(err)
+			os.Exit(1)
+		}
+		return true
 	case "clean-backups":
 		if len(args) > 2 || (len(args) == 2 && args[1] != "--yes") {
 			log.Error("用法：snail clean-backups [--yes]")
@@ -125,5 +136,5 @@ func handleArgs(args []string) bool {
 }
 
 func printUsage() {
-	fmt.Println("用法：snail [update|uninstall|clean-backups [--yes]|clean-data --yes|--version|-v|version]")
+	fmt.Println("用法：snail [update|uninstall|clean-backups [--yes]|clean-data --yes|sync-docker-forward|--version|-v|version]")
 }

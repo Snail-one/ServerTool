@@ -11,6 +11,7 @@ import (
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
+	"snail_tool/internal/toolbox/firewall"
 	"snail_tool/internal/ui"
 )
 
@@ -191,6 +192,16 @@ func (uninstaller *dockerUninstaller) uninstall() (bool, error) {
 	if !confirmed {
 		log.Info("已取消 Docker 卸载，未修改系统")
 		return false, nil
+	}
+
+	if uninstaller.fileExists(firewall.DockerForwardUnitPath) {
+		log.Info("[Docker 卸载/防火墙兼容] 关闭 ", firewall.DockerForwardUnitPath)
+		if err := uninstaller.run("systemctl", "disable", "--now", "snail-docker-forward.service"); err != nil {
+			return false, fmt.Errorf("Docker 卸载在关闭防火墙兼容阶段失败: %w", err)
+		}
+		if err := uninstaller.removeFile(firewall.DockerForwardUnitPath); err != nil {
+			return false, fmt.Errorf("Docker 卸载在删除防火墙兼容服务阶段失败: %w", err)
+		}
 	}
 
 	if len(plan.packages) > 0 || (plan.removeData && uninstaller.commandExists("docker")) {

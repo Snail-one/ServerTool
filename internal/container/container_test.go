@@ -12,8 +12,9 @@ func TestRuntimeStatusFieldsIncludeDockerLogAndProxy(t *testing.T) {
 		"json-file，100m × 3",
 		"http://admin:******@127.0.0.1:7890/",
 		"HTTP http://192.168.1.100:7890",
+		"已关闭",
 	)
-	if len(fields) != 4 {
+	if len(fields) != 5 {
 		t.Fatalf("fields = %#v", fields)
 	}
 	if fields[0].Label != "当前运行时" || fields[0].Value != "Docker" {
@@ -28,11 +29,15 @@ func TestRuntimeStatusFieldsIncludeDockerLogAndProxy(t *testing.T) {
 	if fields[3].Label != "构建与容器代理" || fields[3].Value != "HTTP http://192.168.1.100:7890" {
 		t.Fatalf("client proxy field = %#v", fields[3])
 	}
+	if fields[4].Label != "防火墙兼容" || fields[4].Value != "已关闭" {
+		t.Fatalf("firewall field = %#v", fields[4])
+	}
 }
 
 func TestRuntimeStatusFieldsOmitDockerDetailsWithoutDocker(t *testing.T) {
 	fields := runtimeStatusFields(
 		[]runtime.Runtime{{Name: "podman", Display: "Podman"}},
+		"不应显示",
 		"不应显示",
 		"不应显示",
 		"不应显示",
