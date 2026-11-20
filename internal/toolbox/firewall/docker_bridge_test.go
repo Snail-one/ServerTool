@@ -73,4 +73,23 @@ func TestDockerBridgeStaysOffUntilEnabled(t *testing.T) {
 	if _, _, err := readDockerBridge(strings.Replace(opened, dockerBridgeEnd, dockerBridgeEnd+"\n"+dockerBridgeEnd, 1)); err == nil {
 		t.Fatal("damaged docker bridge marker was accepted")
 	}
+	withoutChain := content
+	chainStart := strings.Index(withoutChain, "    chain forward_docker {")
+	chainEnd := strings.Index(withoutChain, "    chain forward {")
+	if chainStart < 0 || chainEnd < chainStart {
+		t.Fatal("template chain layout changed")
+	}
+	withoutChain = withoutChain[:chainStart] + withoutChain[chainEnd:]
+	withoutChain = strings.Replace(withoutChain, "        "+dockerBridgeBegin+"\n        "+dockerBridgeEnd+"\n", "", 1)
+	if strings.Contains(withoutChain, "chain forward_docker {") {
+		t.Fatal("old config still has the docker chain")
+	}
+	repaired, changed, err := withDockerBridge(withoutChain, true)
+	if err != nil || !changed {
+		t.Fatal(changed, err)
+	}
+	chainAt, jumpAt := strings.Index(repaired, "chain forward_docker {"), strings.Index(repaired, dockerBridgeJump)
+	if chainAt < 0 || jumpAt < chainAt || !strings.Contains(repaired, `iifname "br-*"`) {
+		t.Fatal("enabling an old config did not add the chain before the jump")
+	}
 }

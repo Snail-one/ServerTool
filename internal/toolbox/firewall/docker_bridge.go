@@ -60,13 +60,50 @@ func readDockerBridge(content string) (enabled, found bool, err error) {
 	}
 }
 
+const forwardDockerChain = `    chain forward_docker {
+        iifname "docker0" counter accept
+        oifname "docker0" counter accept
+        iifname "docker_gwbridge" counter accept
+        oifname "docker_gwbridge" counter accept
+        iifname "br-*" counter accept
+        oifname "br-*" counter accept
+        return
+    }
+`
+
+// Older files can contain the jump switch without this chain. The jump is then
+// rejected because the chain does not exist.
+func ensureForwardDockerChain(content string) (string, error) {
+	if strings.Contains(content, "chain forward_docker {") {
+		return content, nil
+	}
+	hook := strings.Index(content, "type filter hook forward")
+	if hook < 0 {
+		return "", fmt.Errorf("请先返回防火墙管理，选择 7 生成本工具防火墙配置，再设置 Docker 流量放行")
+	}
+	chain := strings.LastIndex(content[:hook], "chain forward {")
+	if chain < 0 {
+		return "", fmt.Errorf("请先返回防火墙管理，选择 7 生成本工具防火墙配置，再设置 Docker 流量放行")
+	}
+	line := strings.LastIndex(content[:chain], "\n") + 1
+	return content[:line] + forwardDockerChain + "\n" + content[line:], nil
+}
+
 func withDockerBridge(content string, enabled bool) (string, bool, error) {
+	original := content
+	if enabled {
+		var err error
+		content, err = ensureForwardDockerChain(content)
+		if err != nil {
+			return "", false, err
+		}
+	}
 	current, found, err := readDockerBridge(content)
 	if err != nil {
 		return "", false, err
 	}
 	if found && current == enabled || !found && !enabled {
-		return content, false, nil
+		return content, content != original, nil
 	}
 	block := dockerBridgeBlock(enabled)
 	if found {

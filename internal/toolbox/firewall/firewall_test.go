@@ -213,7 +213,7 @@ func TestBuildConfigKeepsPublicAndPrivatePortsSeparate(t *testing.T) {
 		}
 		for _, required := range []string{
 			"#!/usr/sbin/nft -f\n", "set snail_ssh_port {\n        type inet_service\n        flags interval\n        elements = { 2222, 22000 }\n    }",
-			"add table inet snail\nflush table inet snail", "type filter hook input priority 0; policy drop;",
+			"destroy table inet snail", "type filter hook input priority 0; policy drop;",
 			"ct state established,related counter accept", `iifname "lo" counter accept`,
 			"ip saddr $snail_private_ipv4 goto private_ports", "ip6 saddr $snail_private_ipv6 goto private_ports",
 			"udp sport 547 udp dport 546 counter accept", "mld2-listener-report", "nd-router-advert",
