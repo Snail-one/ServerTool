@@ -195,12 +195,12 @@ func (uninstaller *dockerUninstaller) uninstall() (bool, error) {
 	}
 
 	if uninstaller.fileExists(firewall.DockerForwardUnitPath) {
-		log.Info("[Docker 卸载/防火墙兼容] 关闭 ", firewall.DockerForwardUnitPath)
+		log.Info("[Docker 卸载/接受已放行] 关闭 ", firewall.DockerForwardUnitPath)
 		if err := uninstaller.run("systemctl", "disable", "--now", "snail-docker-forward.service"); err != nil {
-			return false, fmt.Errorf("Docker 卸载在关闭防火墙兼容阶段失败: %w", err)
+			return false, fmt.Errorf("Docker 卸载在关闭接受已放行阶段失败: %w", err)
 		}
 		if err := uninstaller.removeFile(firewall.DockerForwardUnitPath); err != nil {
-			return false, fmt.Errorf("Docker 卸载在删除防火墙兼容服务阶段失败: %w", err)
+			return false, fmt.Errorf("Docker 卸载在删除接受已放行服务阶段失败: %w", err)
 		}
 	}
 

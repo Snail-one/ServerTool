@@ -50,9 +50,9 @@ func Run(view *ui.UI) error {
 		ui.MenuOptionHint("1", "管理容器", "查看状态、日志与生命周期操作")
 		ui.MenuOptionHint("2", "Compose", "查看、更新与重建项目")
 		if hasDocker {
-			ui.MenuOptionHint("3", "Docker 配置", "服务代理、构建与容器代理、日志轮转、防火墙")
+			ui.MenuOptionHint("3", "Docker 配置", "服务代理、构建与容器代理、日志轮转、接受已放行")
 		} else {
-			ui.MenuOptionHint("3", "Docker 配置", "仅 Docker 可用；代理、日志轮转与防火墙")
+			ui.MenuOptionHint("3", "Docker 配置", "仅 Docker 可用；代理、日志轮转与接受已放行")
 		}
 		ui.MenuOptionHint("4", "清理容器资源", "容器、网络、镜像、数据卷与构建缓存")
 		ui.MenuOptionHint("5", fmt.Sprintf("卸载 %s", uninstallName), "可选择保留或永久删除数据")
@@ -122,7 +122,7 @@ func runtimeStatusFields(installedRuntimes []runtime.Runtime, logSummary, proxyS
 			ui.CardField{Label: "容器日志", Value: logSummary},
 			ui.CardField{Label: "服务代理", Value: proxySummary},
 			ui.CardField{Label: "构建与容器代理", Value: clientProxySummary},
-			ui.CardField{Label: "防火墙兼容", Value: firewallSummary},
+			ui.CardField{Label: "接受已放行", Value: firewallSummary},
 		)
 	}
 	return fields
@@ -180,7 +180,7 @@ func runDockerConfigMenu(view *ui.UI) error {
 			ui.CardField{Label: "服务代理", Value: daemonproxy.CurrentSummary()},
 			ui.CardField{Label: "构建与容器代理", Value: clientproxy.CurrentSummary()},
 			ui.CardField{Label: "日志轮转", Value: daemonlog.CurrentSummary()},
-			ui.CardField{Label: "防火墙兼容", Value: firewall.DockerCompatSummary()},
+			ui.CardField{Label: "接受已放行", Value: firewall.DockerCompatSummary()},
 		)
 		fmt.Println()
 		ui.MenuOptionHint("1", "配置服务代理", "systemd 服务代理")
@@ -190,7 +190,7 @@ func runDockerConfigMenu(view *ui.UI) error {
 		ui.MenuOptionHint("4", "移除服务代理", "移除后重新加载 systemd，并尝试重启 Docker")
 		ui.MenuOptionHint("5", "移除构建与容器代理", "用于后续构建及新建容器，无需重启 Docker")
 		ui.MenuOptionHint("6", "移除日志轮转", "恢复默认日志设置，并尝试重启 Docker")
-		ui.MenuOptionHint("7", "防火墙", "开启或关闭对 Docker 转发的兼容")
+		ui.MenuOptionHint("7", "接受已放行", "给本工具已放行的转发打标记，让 Docker 接受")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 
@@ -229,7 +229,7 @@ func runDockerConfigMenu(view *ui.UI) error {
 				return daemonlog.Remove(view)
 			})
 		case "7":
-			shared.RunAction(view, "Docker 防火墙兼容设置失败，已返回 Docker 配置", func() error {
+			shared.RunAction(view, "设置接受已放行失败，已返回 Docker 配置", func() error {
 				return firewall.ConfigureDockerCompat(view)
 			})
 		default:

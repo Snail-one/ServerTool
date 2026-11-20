@@ -29,7 +29,7 @@ func TestRuntimeStatusFieldsIncludeDockerLogAndProxy(t *testing.T) {
 	if fields[3].Label != "构建与容器代理" || fields[3].Value != "HTTP http://192.168.1.100:7890" {
 		t.Fatalf("client proxy field = %#v", fields[3])
 	}
-	if fields[4].Label != "防火墙兼容" || fields[4].Value != "已关闭" {
+	if fields[4].Label != "接受已放行" || fields[4].Value != "已关闭" {
 		t.Fatalf("firewall field = %#v", fields[4])
 	}
 }
