@@ -61,10 +61,8 @@ print_card() {
 	printf '%s%s%s\n' "$ORANGE" "╰──────────────────────────────────────────────" "$RESET"
 }
 
-print_completion_card() {
-	print_card "$GREEN" "$1完成" \
-		"版本" "$2" \
-		"位置" "$3"
+success() {
+	printf '%s✓%s %s\n' "$GREEN" "$RESET" "$1"
 }
 
 print_uninstall_completion_card() {
@@ -131,6 +129,8 @@ download_with_progress() {
 	shift
 	if [ ! -t 2 ] || [ "${TERM:-}" = dumb ]; then
 		"$@" || fail "发布文件下载失败（退出码 $?）：$ASSET"
+		DOWNLOAD_BYTES="$(stat -c %s "$DOWNLOAD_FILE")"
+		success "下载完成 · $DOWNLOAD_BYTES 字节"
 		return 0
 	fi
 
@@ -163,11 +163,11 @@ download_with_progress() {
 }
 
 print_release_info() {
-	print_card "$ORANGE" "发布信息" \
-		"平台" "Linux/$ARCH" \
-		"当前版本" "$1" \
-		"目标版本" "$2" \
-		"执行操作" "$3"
+	printf '\n%sServerTool%s  %s ' "$BOLD$ORANGE" "$RESET" "$3"
+	if [ "$1" != "未安装" ] && [ "$1" != "$2" ]; then
+		printf '%s → ' "$1"
+	fi
+	printf '%s · Linux/%s\n' "$2" "$ARCH"
 }
 
 usage() {
@@ -245,8 +245,6 @@ esac
 init_colors
 if [ "$MODE" = "uninstall" ]; then
 	print_banner "自身卸载"
-else
-	print_banner "自身安装与更新"
 fi
 
 case "$BINARY_NAME" in
@@ -425,9 +423,7 @@ if [ "$RELEASE" = "latest" ]; then
 	if download_with_direct_fallback "https://api.github.com/repos/${REPOSITORY}/releases/latest" "$RELEASE_METADATA"; then
 		RELEASE_VERSION="$(sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' "$RELEASE_METADATA" | sed -n '1p')"
 	fi
-	if [ -n "$RELEASE_VERSION" ]; then
-		info "最新正式版本：${RELEASE_VERSION}（GitHub Releases API）"
-	else
+	if [ -z "$RELEASE_VERSION" ]; then
 		warn "GitHub Releases API 不可用，正在通过 checksums.txt 解析最新版本"
 		CHECKSUM_FILE="${TEMP_DIR}/checksums.txt"
 		if ! download_with_direct_fallback "https://github.com/${REPOSITORY}/releases/latest/download/checksums.txt" "$CHECKSUM_FILE"; then
@@ -436,12 +432,10 @@ if [ "$RELEASE" = "latest" ]; then
 		if ! RELEASE_VERSION="$(release_version_from_checksums "$CHECKSUM_FILE")"; then
 			fail "checksums.txt 中没有唯一有效的 ServerTool 版本号"
 		fi
-		info "最新正式版本：${RELEASE_VERSION}（checksums.txt 兜底）"
 	fi
 	LATEST_RELEASE=true
 else
 	RELEASE_VERSION="$RELEASE"
-	info "指定发布版本：${RELEASE_VERSION}（用户指定）"
 	LATEST_RELEASE=false
 fi
 case "$RELEASE_VERSION" in
@@ -510,28 +504,22 @@ else
 fi
 
 printf '\n'
-step "下载发布文件"
-printf '  %s%s%s\n' "$DIM" "$ASSET" "$RESET"
+printf '%s下载%s %s\n' "$ORANGE" "$RESET" "$ASSET"
 download_asset "${DOWNLOAD_BASE}/${ASSET}" "$ASSET_FILE"
-info "发布文件下载完成"
 
 printf '\n'
-step "校验发布文件"
 ACTUAL_SHA256="$(file_sha256 "$ASSET_FILE")"
 [ "$ACTUAL_SHA256" = "$EXPECTED_SHA256" ] || fail "安装包 SHA-256 校验失败"
-result "SHA-256 校验通过"
+success "SHA-256 校验通过"
 
 chmod 0755 "$ASSET_FILE"
 DOWNLOADED_VERSION="$("$ASSET_FILE" --version 2>/dev/null | sed -n '1p')"
 [ -n "$DOWNLOADED_VERSION" ] || fail "下载的文件无法正常运行"
 
-printf '\n'
-step "安装程序"
-info "正在写入：${TARGET}"
 install -d -m 0755 "$INSTALL_DIR"
 STAGED_FILE="${INSTALL_DIR}/.${BINARY_NAME}.new.$$"
 install -m 0755 "$ASSET_FILE" "$STAGED_FILE"
 mv -f "$STAGED_FILE" "$TARGET"
 STAGED_FILE=""
 
-print_completion_card "$ACTION" "$RELEASE_VERSION" "$TARGET"
+success "${ACTION}完成 · ${TARGET}"
