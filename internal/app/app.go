@@ -77,7 +77,7 @@ func (a *App) Run() error {
 			shared.RunAction(a.ui, "容器管理失败，已返回菜单", func() error {
 				return container.Run(a.ui)
 			})
-		case "7":
+		case "c":
 			shared.RunAction(a.ui, "清理配置失败，已返回菜单", func() error {
 				return cleanup.Run(a.ui)
 			})
@@ -119,7 +119,7 @@ func showMenu(status status.Status) {
 	ui.MenuOptionStatus("5", "WireGuard", toolpackages.WireGuardBadge())
 	ui.MenuOptionStatus("6", "容器管理", ui.SoftwareBadge(defaultStatus(status.Runtime, "未安装"), runtimeConfigured))
 	fmt.Println()
-	ui.MenuOption("7", "清理配置")
+	ui.MenuShortcutHint("c", "清理配置", "")
 	ui.MenuExit("0/q", "退出")
 }
 
