@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net"
 	"net/netip"
 	"os"
@@ -168,12 +169,16 @@ func createWireGuardProfile(view *ui.UI) error {
 	if !isRoot() {
 		return fmt.Errorf("写入 WireGuard 配置需要 root 权限")
 	}
-	name, err := view.Ask("请输入接口名，例如 wg0（0/q 返回）：")
+	name, err := view.Ask("请输入接口名（回车使用默认配置 wg0，0/q 返回）：")
 	if err != nil {
 		return err
 	}
 	if shared.IsReturnChoice(name) {
 		return shared.ErrReturnToMenu
+	}
+	useDefaults := name == ""
+	if useDefaults {
+		name = "wg0"
 	}
 	if !validWireGuardName(name) {
 		return fmt.Errorf("接口名无效，支持 1–15 个字母、数字及 _ = + . -")
@@ -190,11 +195,14 @@ func createWireGuardProfile(view *ui.UI) error {
 	if _, valid := wireGuardKey(key); err != nil || !valid {
 		return fmt.Errorf("生成 WireGuard 私钥失败")
 	}
-	initial := "[Interface]\nPrivateKey = " + key + "\n"
-	template := initial + "# Address = 10.77.0.1/24\n# ListenPort = 51820\n\n# [Peer]\n# PublicKey = 对端公钥\n# AllowedIPs = 10.77.0.2/32\n"
-	data, err := editWireGuardCopy([]byte(template))
-	if err != nil {
-		return err
+	port := 20000 + rand.IntN(60000-20000+1)
+	data := []byte(fmt.Sprintf("[Interface]\nPrivateKey = %s\nAddress = 10.77.0.1/24\nListenPort = %d\n", key, port))
+	if !useDefaults {
+		data = append(data, []byte("\n# [Peer]\n# PublicKey = 对端公钥\n# AllowedIPs = 10.77.0.2/32\n")...)
+		data, err = editWireGuardCopy(data)
+		if err != nil {
+			return err
+		}
 	}
 	return saveWireGuardProfile(view, name, nil, data)
 }
@@ -290,6 +298,9 @@ func saveWireGuardProfile(view *ui.UI, name string, before, after []byte) error 
 		{Label: "对端数量", Value: strconv.Itoa(len(config.peers))},
 		{Label: "生效方式", Value: "下次启动或重启接口时读取"},
 	}
+	fields = append(fields, wireGuardFields(config.device, [][2]string{
+		{"address", "隧道地址"}, {"listenport", "监听端口"},
+	})...)
 	if strings.EqualFold(wireGuardValue(config.device, "saveconfig"), "true") {
 		fields = append(fields, ui.CardField{Label: "SaveConfig", Value: "接口停止时写回运行状态，可能覆盖尚未应用的修改"})
 	}

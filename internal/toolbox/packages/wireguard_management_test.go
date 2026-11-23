@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -50,7 +51,7 @@ func TestWireGuardConfigAndPeers(t *testing.T) {
 		if !strings.Contains(data, privateKey) {
 			t.Fatal("editing copy does not contain the generated key")
 		}
-		return os.WriteFile(path, []byte(strings.Replace(data, "# Address", "Address", 1)), 0600)
+		return os.WriteFile(path, []byte(strings.Replace(data, "Address = 10.77.0.1/24", "Address = 10.77.0.10/24", 1)), 0600)
 	}
 
 	if err := createWireGuardProfile(newUIWithInput(t, "wg0\ny\n")); err != nil {
@@ -225,5 +226,47 @@ func TestWireGuardUsesWGQuickWithoutSystemd(t *testing.T) {
 	}
 	if _, err := os.Stat(wireGuardProfilePath("wg0")); !os.IsNotExist(err) {
 		t.Fatalf("deleted profile remains: %v", err)
+	}
+}
+
+func TestWireGuardEnterUsesDefaults(t *testing.T) {
+	setupWireGuardManagement(t)
+	key := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{4}, 32))
+	var generated int
+	commandOutput = func(name string, args ...string) (string, error) {
+		if name != "wg" || !reflect.DeepEqual(args, []string{"genkey"}) {
+			t.Fatalf("unexpected command: %s %v", name, args)
+		}
+		generated++
+		return key + "\n", nil
+	}
+	commandExists = func(name string) bool { return name == "vim" }
+	commandRun = func(name string, args ...string) error {
+		t.Fatalf("default setup must not launch an editor: %s %v", name, args)
+		return nil
+	}
+	output := wireGuardTestOutput(t, func() {
+		if err := createWireGuardProfile(newUIWithInput(t, "\ny\n")); err != nil {
+			t.Fatal(err)
+		}
+	})
+	content, err := readWireGuardProfile("wg0")
+	if err != nil || generated != 1 {
+		t.Fatalf("default profile not created as expected: key generations=%d, error=%v", generated, err)
+	}
+	config, err := parseWireGuardConfig(content)
+	if err != nil || wireGuardValue(config.device, "privatekey") != key || wireGuardValue(config.device, "address") != "10.77.0.1/24" {
+		t.Fatal("default profile has incorrect key or address")
+	}
+	listenPort := wireGuardValue(config.device, "listenport")
+	port, err := strconv.Atoi(listenPort)
+	if err != nil || port < 20000 || port > 60000 {
+		t.Fatalf("invalid randomly generated listening port: %q", listenPort)
+	}
+	if !strings.Contains(output, "10.77.0.1/24") || !strings.Contains(output, listenPort) || strings.Contains(output, key) {
+		t.Fatal("confirmation must display defaults and hide the private key")
+	}
+	if err := createWireGuardProfile(newUIWithInput(t, "\n")); err == nil || generated != 1 {
+		t.Fatal("default setup must reject an existing wg0 profile")
 	}
 }
