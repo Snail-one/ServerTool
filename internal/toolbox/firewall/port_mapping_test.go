@@ -51,13 +51,18 @@ func TestPortMappingsRoundTrip(t *testing.T) {
 func TestPortMappingManagerSavesAndLoads(t *testing.T) {
 	setupTest(t)
 	ruleTestConfig(t, nil)
+	writeForwardingValue(t, ipv4Forwarding, "1")
+	writeForwardingValue(t, ipv6Forwarding, "0")
 	calls := acceptRuleCommands(t)
 	output := capturePortOutput(t, func() {
 		if err := runPortMappingManager(inputUI(t, "1\ntcp 192.0.2.10:8080 192.168.1.20:80\ny\n\n0\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 			t.Fatal(err)
 		}
 	})
-	for _, want := range []string{"端口映射已保存并加载", "本机端点 → 目标端点", "已启用", "192.0.2.10:8080 → 192.168.1.20:80"} {
+	for _, want := range []string{
+		"端口映射状态", "内核转发：IPv4 已开启 · IPv6 已关闭", "共 1 条 · 已启用 1 条 · 已停用 0 条",
+		"端口映射已保存并加载", "本机端点 → 目标端点", "已启用", "192.0.2.10:8080 → 192.168.1.20:80",
+	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("missing %q in output:\n%s", want, output)
 		}
@@ -230,6 +235,9 @@ func TestPortMappingSNATSwitch(t *testing.T) {
 	output := run("5\n1\nwg0 10.77.0.1\ny\n")
 	if !strings.Contains(output, "*:8211 → 10.77.0.2:8211 · SNAT 已开启（wg0，源 IP 10.77.0.1）") {
 		t.Fatalf("expected SNAT status after the target endpoint:\n%s", output)
+	}
+	if !strings.Contains(output, "SNAT 配置：已启用 1 条") {
+		t.Fatalf("expected the SNAT count in the status card:\n%s", output)
 	}
 	mapping, content := read()
 	want := `oifname "wg0" ct direction original ct status dnat ip daddr 10.77.0.2 udp dport 8211 ct original ip saddr 192.0.2.0/24 ct original proto-dst 8211 snat ip to 10.77.0.1`

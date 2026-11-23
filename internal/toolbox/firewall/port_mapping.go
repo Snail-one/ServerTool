@@ -394,6 +394,7 @@ func runPortMappingManager(view *ui.UI) error {
 			return err
 		}
 		portMappingPage("")
+		printPortMappingStatus(mappings)
 		printPortMappings(mappings)
 		ui.MenuOption("1", "添加端口映射")
 		options := map[string]string{"1": "添加"}
@@ -418,6 +419,23 @@ func runPortMappingManager(view *ui.UI) error {
 func portMappingPage(stage string) {
 	ui.ClearScreen()
 	ui.MenuTitle("防火墙管理", "端口映射管理", stage)
+}
+
+func printPortMappingStatus(mappings []portMapping) {
+	enabled, snatEnabled := 0, 0
+	for _, mapping := range mappings {
+		if !mapping.disabled {
+			enabled++
+		}
+		if mapping.snatEnabled() {
+			snatEnabled++
+		}
+	}
+	ui.PrintInfoCard("端口映射状态",
+		forwardingStateField(inspectForwarding()),
+		ui.CardField{Label: "已保存映射", Value: fmt.Sprintf("共 %d 条 · 已启用 %d 条 · 已停用 %d 条", len(mappings), enabled, len(mappings)-enabled)},
+		ui.CardField{Label: "SNAT 配置", Value: fmt.Sprintf("已启用 %d 条", snatEnabled)},
+	)
 }
 
 func printPortMappings(mappings []portMapping) {
