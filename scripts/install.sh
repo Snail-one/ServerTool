@@ -9,6 +9,7 @@ RELEASE="${SERVERTOOL_VERSION:-latest}"
 MODE="install"
 TEMP_DIR=""
 STAGED_FILE=""
+DOWNLOAD_PID=""
 
 RESET=""
 BOLD=""
@@ -99,6 +100,68 @@ fail() {
 	exit 1
 }
 
+print_download_progress() {
+	awk -v bytes="$1" -v total="$2" -v done="$3" -v accent="$ORANGE" -v muted="$DIM" -v reset="$RESET" '
+		function size(n) {
+			if (n >= 1048576) return sprintf("%.1f MiB", n / 1048576)
+			if (n >= 1024) return sprintf("%.1f KiB", n / 1024)
+			return sprintf("%d B", n)
+		}
+		BEGIN {
+			width = 24
+			percent = done ? 100 : (total > 0 ? int(bytes * 100 / total) : 0)
+			if (!done && percent > 99) percent = 99
+			filled = int(width * percent / 100)
+			printf "\r  %s", accent
+			for (i = 0; i < filled; i++) printf "■"
+			printf "%s%s", reset, muted
+			for (i = filled; i < width; i++) printf "·"
+			printf "%s", reset
+			if (done || total > 0) printf " %3d%%", percent
+			else printf "  --%%"
+			amount = size(bytes)
+			if (total > 0) amount = amount " / " size(total)
+			printf "  %-25s", amount
+		}
+	' >&2
+}
+
+download_with_progress() {
+	DOWNLOAD_FILE="$1"
+	shift
+	if [ ! -t 2 ] || [ "${TERM:-}" = dumb ]; then
+		"$@" || fail "发布文件下载失败（退出码 $?）：$ASSET"
+		return 0
+	fi
+
+	"$@" &
+	DOWNLOAD_PID=$!
+	while kill -0 "$DOWNLOAD_PID" 2>/dev/null; do
+		DOWNLOAD_BYTES="$(stat -c %s "$DOWNLOAD_FILE" 2>/dev/null || printf 0)"
+		DOWNLOAD_TOTAL=0
+		if [ -f "$DOWNLOAD_FILE.headers" ]; then
+			DOWNLOAD_TOTAL="$(awk '
+				{ sub(/^[[:space:]]+/, ""); sub(/\r$/, "") }
+				/^HTTP\/[0-9.]+ [0-9][0-9][0-9]/ { status = $2; total = 0 }
+				tolower($1) == "content-length:" && $2 ~ /^[0-9]+$/ { total = $2 }
+				END { print (status == 200 ? total : 0) }
+			' "$DOWNLOAD_FILE.headers")"
+		fi
+		print_download_progress "$DOWNLOAD_BYTES" "$DOWNLOAD_TOTAL" 0
+		sleep 0.15
+	done
+	DOWNLOAD_STATUS=0
+	wait "$DOWNLOAD_PID" || DOWNLOAD_STATUS=$?
+	DOWNLOAD_PID=""
+	if [ "$DOWNLOAD_STATUS" -ne 0 ]; then
+		printf '\n' >&2
+		fail "发布文件下载失败（退出码 $DOWNLOAD_STATUS）：$ASSET"
+	fi
+	DOWNLOAD_BYTES="$(stat -c %s "$DOWNLOAD_FILE")"
+	print_download_progress "$DOWNLOAD_BYTES" "$DOWNLOAD_BYTES" 1
+	printf '\n' >&2
+}
+
 print_release_info() {
 	print_card "$ORANGE" "发布信息" \
 		"平台" "Linux/$ARCH" \
@@ -124,6 +187,11 @@ EOF
 }
 
 cleanup() {
+	if [ -n "$DOWNLOAD_PID" ]; then
+		kill "$DOWNLOAD_PID" 2>/dev/null || :
+		wait "$DOWNLOAD_PID" 2>/dev/null || :
+		printf '\n' >&2
+	fi
 	if [ -n "$STAGED_FILE" ]; then
 		rm -f "$STAGED_FILE"
 	fi
@@ -279,7 +347,7 @@ if command -v curl >/dev/null 2>&1; then
 		curl --fail --location --silent --show-error --retry 3 --connect-timeout 15 --output "$2" "$1"
 	}
 	download_asset() {
-		curl --fail --location --show-error --retry 3 --connect-timeout 15 --progress-bar --output "$2" "$1"
+		download_with_progress "$2" curl --fail --location --silent --show-error --retry 3 --connect-timeout 15 --dump-header "$2.headers" --output "$2" "$1"
 	}
 	download_optional() {
 		curl --fail --location --silent --retry 1 --connect-timeout 15 --output "$2" "$1"
@@ -292,7 +360,7 @@ elif command -v wget >/dev/null 2>&1; then
 		wget --quiet --tries=3 --timeout=15 --output-document="$2" "$1"
 	}
 	download_asset() {
-		wget --tries=3 --timeout=15 --output-document="$2" "$1"
+		download_with_progress "$2" wget --tries=3 --timeout=15 --no-verbose --server-response --output-file="$2.headers" --output-document="$2" "$1"
 	}
 	download_optional() {
 		wget --quiet --tries=1 --timeout=15 --output-document="$2" "$1"
@@ -443,9 +511,9 @@ fi
 
 printf '\n'
 step "下载发布文件"
-info "正在下载：${ASSET}"
+printf '  %s%s%s\n' "$DIM" "$ASSET" "$RESET"
 download_asset "${DOWNLOAD_BASE}/${ASSET}" "$ASSET_FILE"
-result "发布文件下载完成"
+info "发布文件下载完成"
 
 printf '\n'
 step "校验发布文件"
