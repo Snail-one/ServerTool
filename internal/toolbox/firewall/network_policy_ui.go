@@ -141,6 +141,17 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 			return "", err
 		}
 		if shared.IsReturnChoice(choice) {
+			if len(policyChangeFields(original, draft)) == 0 {
+				return "", shared.ErrReturnToMenu
+			}
+			discard, err := view.Confirm("还有未保存的配置，是否放弃修改并返回？(y/N)：")
+			if errors.Is(err, shared.ErrReturnToMenu) || err == nil && !discard {
+				notice = "草稿已保留"
+				continue
+			}
+			if err != nil {
+				return "", err
+			}
 			return "", shared.ErrReturnToMenu
 		}
 		switch strings.ToLower(choice) {

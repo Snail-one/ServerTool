@@ -49,3 +49,33 @@ func TestSourceRuleCanChangeBranchAfterReturning(t *testing.T) {
 		t.Fatalf("branch change left a stale page in history: next=%q err=%v", next, err)
 	}
 }
+
+func TestRuleDraftDefaultsToKeepingUnsavedChanges(t *testing.T) {
+	for _, forward := range []bool{false, true} {
+		t.Run(map[bool]string{false: "access", true: "forward"}[forward], func(t *testing.T) {
+			setupTest(t)
+			version := ruleTestConfig(t, nil)
+			if forward {
+				defer useForwardSession()()
+			}
+			view := inputUI(t, "3\n1\n1\n1\n8443\n0\n\nq\nq\ns\nparent-next\n")
+			var draft string
+			output := capturePortOutput(t, func() {
+				var err error
+				draft, err = editAccessRulesDraft(view, string(version.content), false)
+				if err != nil {
+					t.Fatal(err)
+				}
+			})
+			if strings.Count(output, "还有未保存的配置，是否放弃修改并返回？(y/N)") != 2 || !strings.Contains(draft, "8443") {
+				t.Fatal("declining either prompt should retain the edited draft")
+			}
+			if shared.ReadFileString(configPath) != string(version.content) {
+				t.Fatal("closing the confirmation must never write the draft")
+			}
+			if next, err := view.ReadLine(); err != nil || next != "parent-next" {
+				t.Fatalf("draft navigation consumed parent input: %q %v", next, err)
+			}
+		})
+	}
+}

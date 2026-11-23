@@ -197,7 +197,7 @@ func TestDeleteByIDStaysInDraftUntilSaved(t *testing.T) {
 	setupTest(t)
 	rules := []allowRule{{ID: "aaaaaaaa", Kind: "port", Ports: "443", Protocol: "tcp"}}
 	version := ruleTestConfig(t, rules)
-	if err := runAccessRuleManager(inputUI(t, "5\n3\n1\naaaaaaaa\n\nq\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := runAccessRuleManager(inputUI(t, "5\n3\n1\naaaaaaaa\n\nq\nq\ny\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if shared.ReadFileString(configPath) != string(version.content) {

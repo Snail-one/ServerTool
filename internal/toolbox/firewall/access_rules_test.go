@@ -72,7 +72,7 @@ func TestAccessManagerSharesOneDraftAndOneSaveAcrossPortsAndSources(t *testing.T
 }
 
 func TestAccessDraftDiscardAndRestoreIncludeSourceChanges(t *testing.T) {
-	for _, ending := range []string{"q\n", "r\ns\nq\n"} {
+	for _, ending := range []string{"q\ny\n", "r\ns\nq\n"} {
 		t.Run(ending, func(t *testing.T) {
 			setupTest(t)
 			version := ruleTestConfig(t, nil)
