@@ -465,10 +465,17 @@ func runPortMappingManager(view *ui.UI) error {
 }
 
 func askPortMapping(view *ui.UI, disabled bool) (portMapping, error) {
-	ui.PrintInfoCard("端口映射格式",
-		ui.CardField{Label: "输入", Value: "协议 本机地址:端口 目标地址:端口 [入站网卡|-] [来源IP或网段|-]"},
-		ui.CardField{Label: "示例", Value: "both *:8080-8082 192.168.1.20:80-82 eth0 192.0.2.0/24"},
-		ui.CardField{Label: "说明", Value: "both 同时匹配 TCP 和 UDP；* 匹配目标协议族中的所有本机地址；- 表示不限网卡或来源"},
+	ui.PrintInfoCard("端口映射配置说明",
+		ui.CardField{Label: "输入顺序", Value: "协议 本机地址:端口 目标地址:端口 [入站网卡] [来源IP或网段]", Detail: "用空格分开，前 3 项必填，后 2 项可省略"},
+		ui.CardField{Label: "协议", Value: "tcp、udp 或 both（同时匹配 TCP 和 UDP）"},
+		ui.CardField{Label: "本机地址", Value: "指定本机 IP，或用 * 匹配同一地址族的所有本机 IP"},
+		ui.CardField{Label: "目标地址", Value: "填写接收流量的 IP 和端口", Detail: "IPv4 和 IPv6 分开配置，IPv6 地址用方括号包住，例如 [fd00::20]:80"},
+		ui.CardField{Label: "端口", Value: "可填单端口或连续范围。目标可填单端口或等长范围"},
+		ui.CardField{Label: "入站网卡", Value: "填 eth0 等网卡名，只匹配从该网卡进入的流量。省略时匹配任意网卡"},
+		ui.CardField{Label: "来源", Value: "填客户端的 IP 或 CIDR 网段。只限制来源时，用 - 跳过网卡"},
+		ui.CardField{Label: "不限网卡", Value: "tcp *:80 192.168.1.20:80"},
+		ui.CardField{Label: "只限 eth0", Value: "tcp *:80 192.168.1.20:80 eth0"},
+		ui.CardField{Label: "只限来源", Value: "tcp *:80 192.168.1.20:80 - 192.168.1.0/24"},
 	)
 	line, err := view.Ask("请输入映射配置（0/q 返回）：")
 	if err != nil {

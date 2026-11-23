@@ -107,16 +107,20 @@ func askRuleSource(view *ui.UI, current, family string) (string, error) {
 	}
 }
 
-func askOptionalSource(view *ui.UI, current, family string, required bool) (string, error) {
+func askOptionalAddress(view *ui.UI, current, family, role string, required bool) (string, error) {
 	for {
 		label := map[string]string{"ipv4": "IPv4", "ipv6": "IPv6"}[family]
-		prompt := "请输入 " + label + " 地址 / CIDR（回车跳过，- 清除，0/q 返回）："
+		address := label + " 地址 / CIDR"
+		if role != "" {
+			address = role + " " + address
+		}
+		prompt := "请输入 " + address + "（回车跳过，- 清除，0/q 返回）："
 		if required && current != "" {
-			prompt = "请输入 " + label + " 地址 / CIDR（回车保留 " + current + "，0/q 返回）："
+			prompt = "请输入 " + address + "（回车保留 " + current + "，0/q 返回）："
 		} else if required {
-			prompt = "请输入 " + label + " 地址 / CIDR（0/q 返回）："
+			prompt = "请输入 " + address + "（0/q 返回）："
 		} else if current != "" {
-			prompt = "请输入 " + label + " 地址 / CIDR（回车保留 " + current + "，- 清除，0/q 返回）："
+			prompt = "请输入 " + address + "（回车保留 " + current + "，- 清除，0/q 返回）："
 		}
 		value, err := view.Ask(prompt)
 		if err != nil {
@@ -392,7 +396,7 @@ func askMatchSource(view *ui.UI, current, rule allowRule, second bool) (string, 
 	sourceRulePage(title, rule)
 	ui.PrintField("说明", "回车跳过表示不限制来源。输入 - 清除")
 	ui.MenuExit("0/q", "返回上一步")
-	return askOptionalSource(view, fallback, family, second)
+	return askOptionalAddress(view, fallback, family, "来源", second)
 }
 
 func askMatchDest(view *ui.UI, current, rule allowRule, second bool) (string, error) {
@@ -410,7 +414,7 @@ func askMatchDest(view *ui.UI, current, rule allowRule, second bool) (string, er
 	sourceRulePage(title, rule)
 	ui.PrintField("说明", "回车跳过表示不限制目标。输入 - 清除")
 	ui.MenuExit("0/q", "返回上一步")
-	return askOptionalSource(view, fallback, family, second)
+	return askOptionalAddress(view, fallback, family, "", second)
 }
 
 func askRuleFamily(view *ui.UI, current, rule allowRule) (allowRule, error) {
