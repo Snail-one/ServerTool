@@ -2,7 +2,6 @@ package firewall
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -151,28 +150,37 @@ func mappingPortText(ports portInterval) string {
 	return fmt.Sprintf("%d-%d", ports.first, ports.last)
 }
 
-func (mapping portMapping) description() string {
-	protocol := strings.ToUpper(mapping.protocol)
-	if mapping.protocol == "both" {
-		protocol = "TCP/UDP"
-	}
-	version := "IPv4"
+func (mapping portMapping) familyLabel() string {
 	if mapping.to.addr.Is6() {
-		version = "IPv6"
+		return "IPv6"
 	}
-	fields := []string{version + " " + protocol + " " + mapping.from.String() + " → " + mapping.to.String()}
+	return "IPv4"
+}
+
+func (mapping portMapping) endpointsLabel() string {
+	return mapping.from.String() + " → " + mapping.to.String()
+}
+
+func (mapping portMapping) detailLabels() []string {
+	var fields []string
 	if mapping.iface != "" {
 		fields = append(fields, "入站 "+mapping.iface)
 	}
 	if mapping.source.IsValid() {
 		fields = append(fields, "来源 "+mapping.source.String())
 	}
-	if mapping.disabled {
-		fields = append(fields, "已停用")
-	}
 	if mapping.snat.address.IsValid() {
 		fields = append(fields, "SNAT "+mapping.snatDescription())
 	}
+	return fields
+}
+
+func (mapping portMapping) description() string {
+	fields := []string{mapping.familyLabel() + " " + protocolLabel(mapping.protocol) + " " + mapping.endpointsLabel()}
+	if mapping.disabled {
+		fields = append(fields, "已停用")
+	}
+	fields = append(fields, mapping.detailLabels()...)
 	return strings.Join(fields, " · ")
 }
 
@@ -385,36 +393,72 @@ func runPortMappingManager(view *ui.UI) error {
 		if err != nil {
 			return err
 		}
-		ui.ClearScreen()
-		ui.MenuTitle("防火墙管理", "端口映射管理")
-		if len(mappings) == 0 {
-			ui.PrintInfoCard("尚未配置端口映射")
-		} else {
-			fields := make([]ui.CardField, 0, len(mappings))
-			for i, mapping := range mappings {
-				fields = append(fields, ui.CardField{Label: strconv.Itoa(i + 1), Value: mapping.description()})
-			}
-			ui.PrintInfoCard("已保存的端口映射", fields...)
-		}
+		portMappingPage("")
+		printPortMappings(mappings)
 		ui.MenuOption("1", "添加端口映射")
 		options := map[string]string{"1": "添加"}
 		if len(mappings) > 0 {
-			ui.MenuOption("2", "删除端口映射")
-			ui.MenuOption("3", "编辑端口映射")
+			ui.MenuOption("2", "编辑端口映射")
+			ui.MenuOption("3", "删除端口映射")
 			ui.MenuOption("4", "启用或停用端口映射")
 			ui.MenuOption("5", "SNAT 设置")
-			options["2"], options["3"], options["4"], options["5"] = "删除", "编辑", "切换", "SNAT"
+			options["2"], options["3"], options["4"], options["5"] = "编辑", "删除", "切换", "SNAT"
 		}
 		ui.MenuExit("0/q", "返回防火墙管理")
 		action, err := askRuleChoice(view, "请选择", "", options)
 		if err != nil {
 			return err
 		}
-		err = changePortMapping(view, version, mappings, action)
-		if errors.Is(err, shared.ErrReturnToMenu) {
-			continue
+		shared.RunAction(view, "修改端口映射失败，已返回端口映射管理", func() error {
+			return changePortMapping(view, version, mappings, action)
+		})
+	}
+}
+
+func portMappingPage(stage string) {
+	ui.ClearScreen()
+	ui.MenuTitle("防火墙管理", "端口映射管理", stage)
+}
+
+func printPortMappings(mappings []portMapping) {
+	fmt.Println()
+	if len(mappings) == 0 {
+		fmt.Println("尚未配置端口映射")
+		fmt.Println()
+		return
+	}
+	fmt.Println(ui.InfoText("   " + ui.TableCell("序号", 6) + ui.TableCell("IP 版本", 9) +
+		ui.TableCell("协议", 10) + ui.TableCell("状态", 9) + "本机端点 → 目标端点"))
+	for i, mapping := range mappings {
+		status := "已启用"
+		if mapping.disabled {
+			status = "已停用"
 		}
-		return err
+		fmt.Println("   " + ui.TableCell(strconv.Itoa(i+1), 6) + ui.TableCell(mapping.familyLabel(), 9) +
+			ui.TableCell(protocolLabel(mapping.protocol), 10) + ui.TableCell(status, 9) + mapping.endpointsLabel())
+		if details := mapping.detailLabels(); len(details) > 0 {
+			fmt.Println("         " + strings.Join(details, " · "))
+		}
+	}
+	fmt.Println()
+}
+
+func choosePortMapping(view *ui.UI, mappings []portMapping, stage string) (int, error) {
+	portMappingPage(stage)
+	printPortMappings(mappings)
+	ui.MenuExit("0/q", "返回端口映射管理")
+	for {
+		line, err := view.Ask("请输入列表序号（0/q 返回）：")
+		if err != nil {
+			return 0, err
+		}
+		if shared.IsReturnChoice(line) {
+			return 0, shared.ErrReturnToMenu
+		}
+		if number, err := strconv.Atoi(line); err == nil && number >= 1 && number <= len(mappings) {
+			return number - 1, nil
+		}
+		fmt.Println("未找到该序号，请从当前列表选择")
 	}
 }
 
@@ -422,26 +466,27 @@ func changePortMapping(view *ui.UI, version configVersion, mappings []portMappin
 	index := len(mappings)
 	var current portMapping
 	if action != "添加" {
-		line, err := view.Ask("输入映射编号（0/q 返回端口映射列表）：")
+		stage := "选择要" + action + "的端口映射"
+		switch action {
+		case "切换":
+			stage = "选择要启用或停用的端口映射"
+		case "SNAT":
+			stage = "选择要设置 SNAT 的端口映射"
+		}
+		selected, err := choosePortMapping(view, mappings, stage)
 		if err != nil {
 			return err
 		}
-		if shared.IsReturnChoice(line) {
-			return shared.ErrReturnToMenu
-		}
-		number, err := strconv.Atoi(line)
-		if err != nil || number < 1 || number > len(mappings) {
-			return fmt.Errorf("端口映射编号无效")
-		}
-		index = number - 1
+		index = selected
 		current = mappings[index]
 	}
 
 	var mapping portMapping
 	switch action {
 	case "添加", "编辑":
+		portMappingPage(action + "端口映射")
 		if action == "编辑" {
-			ui.PrintInfoCard("正在编辑", ui.CardField{Label: "当前配置", Value: current.description()})
+			ui.PrintInfoCard("当前选择", ui.CardField{Label: "端口映射", Value: current.description()})
 		}
 		updated, err := askPortMapping(view, current)
 		if err != nil {
@@ -452,6 +497,7 @@ func changePortMapping(view *ui.UI, version configVersion, mappings []portMappin
 			return shared.ErrReturnToMenu
 		}
 	case "SNAT":
+		portMappingPage("SNAT 设置")
 		updated, change, err := askPortMappingSNAT(view, current)
 		if err != nil {
 			return err
@@ -491,7 +537,8 @@ func changePortMapping(view *ui.UI, version configVersion, mappings []portMappin
 		return err
 	}
 
-	ui.PrintInfoCard("确认端口映射变更",
+	portMappingPage("确认端口映射变更")
+	ui.PrintInfoCard("端口映射变更",
 		ui.CardField{Label: "操作", Value: action + " " + mapping.description()},
 		ui.CardField{Label: "转发条件", Value: "远程目标需要开启内核转发、放行转发后的目标端口，回包须经本机"},
 		ui.CardField{Label: "生效方式", Value: "保存并加载整份防火墙配置，映射用于新连接"},

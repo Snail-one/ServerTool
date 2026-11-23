@@ -53,12 +53,14 @@ func TestPortMappingManagerSavesAndLoads(t *testing.T) {
 	ruleTestConfig(t, nil)
 	calls := acceptRuleCommands(t)
 	output := capturePortOutput(t, func() {
-		if err := runPortMappingManager(inputUI(t, "1\ntcp 192.0.2.10:8080 192.168.1.20:80\ny\n")); err != nil {
+		if err := runPortMappingManager(inputUI(t, "1\ntcp 192.0.2.10:8080 192.168.1.20:80\ny\n\n0\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 			t.Fatal(err)
 		}
 	})
-	if !strings.Contains(output, "端口映射已保存并加载") {
-		t.Fatal(output)
+	for _, want := range []string{"端口映射已保存并加载", "本机端点 → 目标端点", "已启用", "192.0.2.10:8080 → 192.168.1.20:80"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("missing %q in output:\n%s", want, output)
+		}
 	}
 	if !reflect.DeepEqual(*calls, []string{"check", "load"}) {
 		t.Fatalf("expected a validation and a load, got %v", *calls)
@@ -143,11 +145,11 @@ func TestEditAndDisablePortMapping(t *testing.T) {
 	calls := acceptRuleCommands(t)
 	for _, input := range []string{
 		"1\ntcp 192.0.2.10:8080 192.168.1.20:80\ny\n",
-		"3\n1\ntcp 192.0.2.10:8080 192.168.1.21:80 eth0 192.0.2.0/24\ny\n",
+		"2\n1\ntcp 192.0.2.10:8080 192.168.1.21:80 eth0 192.0.2.0/24\ny\n",
 		"4\n1\ny\n",
 	} {
 		capturePortOutput(t, func() {
-			if err := runPortMappingManager(inputUI(t, input)); err != nil {
+			if err := runPortMappingManager(inputUI(t, input+"\n0\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 				t.Fatal(err)
 			}
 		})
@@ -181,14 +183,18 @@ func TestPortMappingCancelReturnsToList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	view := inputUI(t, "2\n0\n2\n1\nq\n0\nnext\n")
+	view := inputUI(t, "3\n0\n3\n9\n1\nq\n0\nnext\n")
 	output := capturePortOutput(t, func() {
 		if err := runPortMappingManager(view); !errors.Is(err, shared.ErrReturnToMenu) {
 			t.Fatalf("expected to exit only from the mapping list: %v", err)
 		}
 	})
-	if strings.Count(output, "已保存的端口映射") != 3 {
+	if strings.Count(output, "返回防火墙管理") != 3 {
 		t.Fatal("canceling the selection and confirmation should redraw the mapping list")
+	}
+	if strings.Count(output, "选择要删除的端口映射") != 2 ||
+		!strings.Contains(output, "未找到该序号") {
+		t.Fatalf("expected a selection page that retries invalid numbers:\n%s", output)
 	}
 	if next, err := view.ReadLine(); err != nil || next != "next" {
 		t.Fatalf("unexpected remaining input %q: %v", next, err)
@@ -205,7 +211,7 @@ func TestPortMappingSNATSwitch(t *testing.T) {
 	run := func(input string) {
 		t.Helper()
 		capturePortOutput(t, func() {
-			if err := runPortMappingManager(inputUI(t, input)); err != nil {
+			if err := runPortMappingManager(inputUI(t, input+"\n0\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 				t.Fatal(err)
 			}
 		})
@@ -243,13 +249,13 @@ func TestPortMappingSNATSwitch(t *testing.T) {
 	}
 
 	run("4\n1\ny\n")
-	run("3\n1\nudp *:8211 10.77.0.3:8211 eth0 192.0.2.0/24\ny\n")
+	run("2\n1\nudp *:8211 10.77.0.3:8211 eth0 192.0.2.0/24\ny\n")
 	mapping, content = read()
 	if !mapping.snatEnabled() || !strings.Contains(content, "ip daddr 10.77.0.3 udp dport 8211") || strings.Contains(content, "10.77.0.2") {
 		t.Fatal("editing the target must update the associated SNAT")
 	}
 
-	run("2\n1\ny\n")
+	run("3\n1\ny\n")
 	if content := shared.ReadFileString(configPath); strings.Contains(content, portMappingsBegin) || strings.Contains(content, "hook postrouting") {
 		t.Fatal("deleting the last mapping must also remove its SNAT")
 	}

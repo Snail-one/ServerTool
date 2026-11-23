@@ -118,7 +118,7 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 		ui.MenuOptionHint("1", "端口放行", "同时设置公网和内网端口")
 		ui.MenuOptionHint("2", "公网端口", "单独设置公网开放端口")
 		ui.MenuOptionHint("3", "内网端口", "单独设置内网开放端口")
-		ui.MenuOptionHint("4", "内网 IP 范围", "设置哪些 IP / 网段按内网处理")
+		ui.MenuOptionHint("l", "内网 IP 范围", "设置哪些 IP / 网段按内网处理")
 		ui.MenuOptionHint("5", "规则配置", "来源、目标、网卡和端口；接受或拒绝")
 		fmt.Println()
 		ui.MenuOptionHint("p", "预览配置", "查看本次变更及完整配置")
@@ -154,7 +154,8 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 			}
 			return "", shared.ErrReturnToMenu
 		}
-		switch strings.ToLower(choice) {
+		choice = strings.ToLower(choice)
+		switch choice {
 		case "p":
 			ui.ClearScreen()
 			ui.MenuTitle("防火墙管理", sessionTitle(), "预览配置")
@@ -211,7 +212,7 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 					updated, editErr = changePolicyLists(view, draft, indices)
 					return editErr
 				})
-			case "4":
+			case "l":
 				for {
 					ui.ClearScreen()
 					ui.MenuTitle("防火墙管理", sessionTitle(), "内网 IP 范围")

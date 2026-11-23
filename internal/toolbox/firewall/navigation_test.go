@@ -14,7 +14,7 @@ func TestAccessRulePagesReturnOneLevelAtATime(t *testing.T) {
 		backs         int
 	}{
 		{"port-value", "2\n1\n1\n1\n", 5},
-		{"range-entry", "4\n1\n5\n1\n", 5},
+		{"range-entry", "l\n1\n5\n1\n", 5},
 		{"source-ports", "5\n1\n\n1\n192.0.2.1\n\n\n\n\n443\n", 11},
 		{"dual-stack-all-ports", "5\n1\n\n3\n192.0.2.1\n2001:db8::1\n\n\n\n\n\n", 12},
 		{"edit-rule", "5\n2\n2\n", 4},

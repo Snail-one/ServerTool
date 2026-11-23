@@ -132,8 +132,8 @@ func TestPolicyManagerBatchesDraftAndSavesOnce(t *testing.T) {
 	// Add to both public/private policies, subtract only from private IPv4 TCP,
 	// then edit both address lists and save the complete draft once.
 	input := "1\n3\n3\n1\n443,8000-8100\n" +
-		"3\n1\n1\n2\n8050-8060\n4\n1\n3\n10.20.1.1/16\n" +
-		"4\n2\n5\n2\n2001:db8:1::123/64\ns\n"
+		"3\n1\n1\n2\n8050-8060\nl\n1\n3\n10.20.1.1/16\n" +
+		"L\n2\n5\n2\n2001:db8:1::123/64\ns\n"
 	if err := runAccessRuleManager(inputUI(t, input)); err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestPolicyManagerCancellationAndRestoreNeverWrite(t *testing.T) {
 		"3\n1\n1\n1\n8443\nq\n",
 		"3\n1\n1\n1\n8443\nr\ns\nq\n",
 		"3\n3\nq\nq\n",
-		"4\n2\n5\nq\nq\n",
+		"l\n2\n5\nq\nq\n",
 		"3\n1\n1\n1\n8443\n", // EOF also discards the draft.
 	} {
 		t.Run(input, func(t *testing.T) {
@@ -212,7 +212,7 @@ func TestPolicyEditorRetriesInvalidInputsWithoutChangingOtherLists(t *testing.T)
 	setupTest(t)
 	version := ruleTestConfig(t, nil)
 	acceptRuleCommands(t)
-	input := "3\n1\n1\n1\n65536\n443,,80\n8443\n4\n1\n3\n::1\n10.42.1.1/16\ns\n"
+	input := "3\n1\n1\n1\n65536\n443,,80\n8443\nl\n1\n3\n::1\n10.42.1.1/16\ns\n"
 	if err := runAccessRuleManager(inputUI(t, input)); err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +290,7 @@ func TestInitialGenerationSupportsAdvancedPolicyDraft(t *testing.T) {
 		return "", nil
 	}
 	// First generation -> custom private IPv6 UDP -> return to final confirmation -> save.
-	if err := configure(inputUI(t, "\n\nn\nn\n4\n3\n2\n2\n1\n51820\n4\n2\n3\nfd12::/48\ns\ny\n1\n")); err != nil {
+	if err := configure(inputUI(t, "\n\nn\nn\n4\n3\n2\n2\n1\n51820\nl\n2\n3\nfd12::/48\ns\ny\n1\n")); err != nil {
 		t.Fatal(err)
 	}
 	content := shared.ReadFileString(configPath)
