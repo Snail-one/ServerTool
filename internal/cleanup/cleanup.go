@@ -57,7 +57,7 @@ func runMenu(view *ui.UI, account *system.Account, steps []cleanupStep) error {
 		ui.MenuOptionHint(backupChoice, "清理备份", "按模块 / 全部")
 		ui.MenuOptionHint(allChoice, "清理全部本工具配置", "成功后删除整个软件数据目录")
 		ui.MenuOptionHint(dataChoice, "删除软件数据目录", shared.DataDir+"，包含全部备份和隐藏文件")
-		ui.MenuOptionHint(tempChoice, "清理中断临时文件", "/tmp、/etc 与 /opt/go 中的本工具残留")
+		ui.MenuOptionHint(tempChoice, "清理中断临时文件", "临时目录、/etc、软件数据目录及 /opt/go 中的本工具残留")
 		ui.MenuExit("0/q", "返回")
 		fmt.Println()
 

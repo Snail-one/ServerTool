@@ -15,11 +15,11 @@ func TestEditMenuAutomaticallyValidatesAndLoadsSavedFile(t *testing.T) {
 	commandExists = func(name string) bool { return name == "nft" || name == "vim" }
 	var operations []string
 	commandRun = func(name string, args ...string) error {
-		if name != "vim" || !reflect.DeepEqual(args, []string{configPath}) {
-			t.Fatalf("unexpected command: %s %v", name, args)
+		if name != "vim" {
+			t.Fatalf("unexpected editor: %s", name)
 		}
 		operations = append(operations, "edit")
-		return os.WriteFile(configPath, []byte("table inet snail {}\n"), 0644)
+		return os.WriteFile(firewallEditPath(t, args), []byte("table inet snail {}\n"), 0600)
 	}
 	commandOutput = func(name string, args ...string) (string, error) {
 		if name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {

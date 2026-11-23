@@ -3,6 +3,7 @@ package firewall
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -90,7 +91,7 @@ func TestReloadSkipsSyncedRulesAndConfirmsChangesOrUnknownState(t *testing.T) {
 	}
 }
 
-func TestEditorWithoutContentChangesDoesNotValidateOrPromptForReload(t *testing.T) {
+func TestEditorWithoutContentChangesDoesNotBackUpOrLoad(t *testing.T) {
 	for _, exists := range []bool{true, false} {
 		t.Run(map[bool]string{true: "existing unchanged", false: "new file not saved"}[exists], func(t *testing.T) {
 			setupTest(t)
@@ -99,19 +100,39 @@ func TestEditorWithoutContentChangesDoesNotValidateOrPromptForReload(t *testing.
 					t.Fatal(err)
 				}
 			}
+			var existingBackups []string
+			if exists {
+				for i := 0; i < shared.MaxBackupSnapshots; i++ {
+					if _, err := backupFirewallConfig(); err != nil {
+						t.Fatal(err)
+					}
+				}
+				var err error
+				existingBackups, err = filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))
+				if err != nil || len(existingBackups) != shared.MaxBackupSnapshots {
+					t.Fatalf("failed to seed backup history: %v %v", existingBackups, err)
+				}
+			}
 			commandExists = func(name string) bool { return name == "vim" }
 			commandRun = func(name string, args ...string) error {
-				if name != "vim" || !reflect.DeepEqual(args, []string{configPath}) {
-					t.Fatalf("unexpected editor: %s %v", name, args)
+				if name != "vim" {
+					t.Fatalf("unexpected editor: %s", name)
 				}
-				return nil
+				draft := firewallEditPath(t, args)
+				return os.WriteFile(draft, []byte(shared.ReadFileString(draft)), 0600)
 			}
 			output := capturePortOutput(t, func() {
-				if err := editConfig(); err != nil {
-					t.Fatal(err)
+				for i := 0; i < shared.MaxBackupSnapshots; i++ {
+					if err := editConfig(); err != nil {
+						t.Fatal(err)
+					}
 				}
 			})
-			if !strings.Contains(output, "配置内容未修改，无需加载") || strings.Contains(output, "是否立即加载") {
+			backups, err := filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))
+			if err != nil || !reflect.DeepEqual(backups, existingBackups) {
+				t.Fatalf("unchanged edit changed backup history: %v %v", backups, err)
+			}
+			if !strings.Contains(output, "配置内容未修改，无需备份或加载") || strings.Contains(output, "是否立即加载") {
 				t.Fatalf("unchanged edit triggered reload: %s", output)
 			}
 		})

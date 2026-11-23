@@ -486,6 +486,15 @@ func TestConfigureClosesPublicSSHBeforeWebQuestions(t *testing.T) {
 	}
 }
 
+func firewallEditPath(t *testing.T, args []string) string {
+	t.Helper()
+	if len(args) != 1 || args[0] == configPath || filepath.Dir(args[0]) != filepath.Join(dataDir, shared.DataTempDirName) ||
+		!strings.HasPrefix(filepath.Base(args[0]), ".snail-nftables-edit-") {
+		t.Fatalf("expected an editing copy in the ServerTool temporary directory, got %v", args)
+	}
+	return args[0]
+}
+
 func TestEditConfigUsesFirstAvailableEditorAndBacksUp(t *testing.T) {
 	for _, available := range [][]string{{"vim", "vi", "nano"}, {"vi", "nano"}, {"nano"}, nil} {
 		t.Run(strings.Join(available, "+"), func(t *testing.T) {
@@ -506,10 +515,11 @@ func TestEditConfigUsesFirstAvailableEditorAndBacksUp(t *testing.T) {
 			validations, loads := 0, 0
 			commandRun = func(name string, args ...string) error {
 				launched = name
-				if !reflect.DeepEqual(args, []string{configPath}) {
-					t.Fatalf("unexpected editor arguments: %v", args)
+				draft := firewallEditPath(t, args)
+				if shared.ReadFileString(draft) != original || shared.ReadFileString(configPath) != original {
+					t.Fatal("editing copy must start with the original configuration")
 				}
-				return os.WriteFile(configPath, []byte("# edited\n"), 0644)
+				return os.WriteFile(draft, []byte("# edited\n"), 0600)
 			}
 			commandOutput = func(name string, args ...string) (string, error) {
 				if launched == "" || shared.ReadFileString(configPath) != "# edited\n" {
@@ -547,10 +557,10 @@ func TestEditConfigValidationFailurePreservesEditsAndReportsDetails(t *testing.T
 	setupTest(t)
 	commandExists = func(name string) bool { return name == "vim" }
 	commandRun = func(name string, args ...string) error {
-		if name != "vim" || !reflect.DeepEqual(args, []string{configPath}) {
-			t.Fatalf("unexpected mutation: %s %v", name, args)
+		if name != "vim" {
+			t.Fatalf("unexpected editor: %s", name)
 		}
-		return os.WriteFile(configPath, []byte("invalid nft config\n"), 0644)
+		return os.WriteFile(firewallEditPath(t, args), []byte("invalid nft config\n"), 0600)
 	}
 	commandOutput = func(name string, args ...string) (string, error) {
 		if name != "nft" || !reflect.DeepEqual(args, []string{"-c", "-f", configPath}) {

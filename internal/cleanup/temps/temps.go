@@ -19,9 +19,10 @@ import (
 
 // Locations are the only directories scanned for interrupted temporary files.
 type Locations struct {
-	TempDirs []string
-	EtcDirs  []string
-	GoRoot   string
+	TempDirs    []string
+	EtcDirs     []string
+	DataTempDir string
+	GoRoot      string
 }
 
 type kind int
@@ -55,8 +56,9 @@ var (
 		regexp.MustCompile(`^snail-ssh-key-[0-9]+\.pub$`),
 		regexp.MustCompile(`^snail-sshd-[0-9]+\.conf$`),
 	}
-	tempInstallDir = regexp.MustCompile(`^servertool-install\.[A-Za-z0-9]{6}$`)
-	etcFiles       = []*regexp.Regexp{
+	firewallEditFile = regexp.MustCompile(`^\.snail-nftables-edit-[0-9]+\.conf$`)
+	tempInstallDir   = regexp.MustCompile(`^servertool-install\.[A-Za-z0-9]{6}$`)
+	etcFiles         = []*regexp.Regexp{
 		regexp.MustCompile(`^\.servertool-atomic-[0-9]+$`),
 		regexp.MustCompile(`^\.snail-nftables-[0-9]+\.conf$`),
 		regexp.MustCompile(`^\.snail-ssh-ports-[0-9]+\.nft$`),
@@ -64,7 +66,7 @@ var (
 )
 
 // DefaultLocations scans the system temp directory, /tmp, the /etc directories
-// this tool writes, and the Go install root.
+// this tool writes, the ServerTool temporary workspace, and the Go install root.
 func DefaultLocations() Locations {
 	return Locations{
 		TempDirs: []string{os.TempDir(), "/tmp"},
@@ -80,7 +82,8 @@ func DefaultLocations() Locations {
 			"/etc/yum.repos.d",
 			"/etc/pki/rpm-gpg",
 		},
-		GoRoot: "/opt/go",
+		DataTempDir: filepath.Join(shared.DataDir, shared.DataTempDirName),
+		GoRoot:      "/opt/go",
 	}
 }
 
@@ -112,7 +115,7 @@ func run(view *ui.UI, locations Locations) error {
 		}
 	}
 	ui.PrintWarningCard("中断临时文件",
-		ui.CardField{Label: "扫描位置", Value: "系统临时目录、/tmp、/etc 配置目录、/opt/go"},
+		ui.CardField{Label: "扫描位置", Value: "系统临时目录、/tmp、/etc 配置目录、ServerTool 临时目录、/opt/go"},
 		ui.CardField{Label: "数量", Value: fmt.Sprintf("%d 项", len(items))},
 		ui.CardField{Label: "删除规则", Value: "只删除名称可识别的本工具残留"},
 	)
@@ -163,6 +166,15 @@ func Scan(locations Locations) ([]Item, []string, error) {
 	}
 	for _, dir := range uniquePaths(locations.EtcDirs) {
 		found, err := scanNamed(dir, classifyEtcName)
+		if err != nil {
+			return nil, nil, err
+		}
+		items = append(items, found...)
+	}
+	if dir := strings.TrimSpace(locations.DataTempDir); dir != "" {
+		found, err := scanNamed(dir, func(name string) (kind, bool) {
+			return kindFile, firewallEditFile.MatchString(name)
+		})
 		if err != nil {
 			return nil, nil, err
 		}

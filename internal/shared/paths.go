@@ -11,6 +11,9 @@ import (
 // configuration files remain in their original locations.
 const DataDir = "/var/lib/snailtool"
 
+// DataTempDirName is the workspace for temporary files kept under DataDir.
+const DataTempDirName = "tmp"
+
 // EnsurePrivateDir creates a directory with private permissions and refuses
 // symlinks anywhere in its path. Existing ancestor permissions are preserved.
 func EnsurePrivateDir(path string) error {

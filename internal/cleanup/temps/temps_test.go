@@ -85,7 +85,8 @@ func TestScanKeepsOnlyRecognizedInterruptFiles(t *testing.T) {
 	tempDir := filepath.Join(root, "tmp")
 	etcDir := filepath.Join(root, "etc", "ssh")
 	goRoot := filepath.Join(root, "opt", "go")
-	for _, dir := range []string{tempDir, etcDir, goRoot} {
+	dataTempDir := filepath.Join(root, "snailtool", "tmp")
+	for _, dir := range []string{tempDir, etcDir, goRoot, dataTempDir} {
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -94,6 +95,8 @@ func TestScanKeepsOnlyRecognizedInterruptFiles(t *testing.T) {
 		filepath.Join(tempDir, "servertool-action-notes.sh"),
 		filepath.Join(tempDir, "servertool-install.ABCDEFG"),
 		filepath.Join(tempDir, "unrelated"),
+		filepath.Join(dataTempDir, "nftables.conf"),
+		filepath.Join(dataTempDir, ".snail-nftables-12.conf"),
 		filepath.Join(etcDir, "sshd_config"),
 		filepath.Join(etcDir, ".servertool-atomic-"),
 		filepath.Join(goRoot, "go1.24.1", "bin", "go"),
@@ -106,6 +109,7 @@ func TestScanKeepsOnlyRecognizedInterruptFiles(t *testing.T) {
 		filepath.Join(tempDir, "snail-sshd-10.conf"),
 		filepath.Join(etcDir, ".servertool-atomic-11"),
 		filepath.Join(etcDir, ".snail-nftables-12.conf"),
+		filepath.Join(dataTempDir, ".snail-nftables-edit-16.conf"),
 		filepath.Join(etcDir, ".snail-ssh-ports-13.nft"),
 		filepath.Join(goRoot, ".download-14.tar.gz"),
 	}
@@ -135,7 +139,7 @@ func TestScanKeepsOnlyRecognizedInterruptFiles(t *testing.T) {
 		}
 	}
 
-	items, busy, err := Scan(Locations{TempDirs: []string{tempDir, tempDir}, EtcDirs: []string{etcDir, filepath.Join(root, "missing")}, GoRoot: goRoot})
+	items, busy, err := Scan(Locations{TempDirs: []string{tempDir, tempDir}, EtcDirs: []string{etcDir, filepath.Join(root, "missing")}, DataTempDir: dataTempDir, GoRoot: goRoot})
 	if err != nil {
 		t.Fatal(err)
 	}
