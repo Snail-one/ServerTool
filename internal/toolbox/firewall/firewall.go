@@ -76,9 +76,9 @@ func Run(view *ui.UI) error {
 			shared.RunAction(view, "端口映射设置失败，已返回防火墙管理", func() error {
 				return runPortMappingManager(view)
 			})
-		case "6":
+		case "c":
 			shared.RunAction(view, "读取配置文件失败，已返回防火墙管理", showConfigFile)
-		case "7":
+		case "v":
 			shared.RunAction(view, "编辑或加载配置失败，已返回防火墙管理", editConfig)
 		case "r":
 			shared.RunAction(view, "加载防火墙配置失败，已返回防火墙管理", func() error {

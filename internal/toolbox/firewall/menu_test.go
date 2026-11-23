@@ -41,7 +41,7 @@ func TestEditMenuAutomaticallyValidatesAndLoadsSavedFile(t *testing.T) {
 		}
 		return "", nil
 	}
-	if err := Run(inputUI(t, "7\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := Run(inputUI(t, "v\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	want := []string{"edit", "validate", "load"}
