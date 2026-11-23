@@ -35,8 +35,9 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 		"2   SSH 管理",
 		"3   配置管理",
 		"4   系统工具",
-		"5   容器管理",
-		"6   清理配置",
+		"5   WireGuard",
+		"6   容器管理",
+		"7   清理配置",
 		"0/q 退出",
 	} {
 		if !strings.Contains(output, expected) {
@@ -48,7 +49,7 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 	}
 	if toolbox := strings.Index(output, "4   系统工具"); toolbox < 0 {
 		t.Fatalf("系统工具应在第 4 项：\n%s", output)
-	} else if cleanup := strings.Index(output, "6   清理配置"); cleanup < 0 || cleanup < toolbox {
+	} else if cleanup := strings.Index(output, "7   清理配置"); cleanup < 0 || cleanup < toolbox {
 		t.Fatalf("清理配置应在系统工具之后：\n%s", output)
 	}
 	for _, removed := range []string{"开发环境", "通用配置", "一键配置", "一键初始化"} {
@@ -80,7 +81,7 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 }
 
 func isMainStatusRow(line string) bool {
-	for _, label := range []string{"2   SSH 管理", "5   容器管理"} {
+	for _, label := range []string{"2   SSH 管理", "5   WireGuard", "6   容器管理"} {
 		if strings.Contains(line, label) {
 			return true
 		}

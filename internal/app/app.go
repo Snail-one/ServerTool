@@ -16,6 +16,7 @@ import (
 	"snail_tool/internal/system"
 	"snail_tool/internal/toolbox"
 	"snail_tool/internal/toolbox/firewall"
+	toolpackages "snail_tool/internal/toolbox/packages"
 	"snail_tool/internal/ui"
 	"snail_tool/internal/version"
 )
@@ -70,10 +71,14 @@ func (a *App) Run() error {
 				return toolbox.Run(a.ui, a.startup)
 			})
 		case "5":
+			shared.RunAction(a.ui, "WireGuard 管理失败，已返回菜单", func() error {
+				return toolpackages.RunWireGuard(a.ui)
+			})
+		case "6":
 			shared.RunAction(a.ui, "容器管理失败，已返回菜单", func() error {
 				return container.Run(a.ui)
 			})
-		case "6":
+		case "7":
 			shared.RunAction(a.ui, "清理配置失败，已返回菜单", func() error {
 				return cleanup.Run(a.ui)
 			})
@@ -111,8 +116,9 @@ func showMenu(status status.Status) {
 	ui.MenuOptionStatus("2", "SSH 管理", ui.ConfiguredBadge(status.SSH))
 	ui.MenuOption("3", "配置管理")
 	ui.MenuOption("4", "系统工具")
-	ui.MenuOptionStatus("5", "容器管理", ui.SoftwareBadge(defaultStatus(status.Runtime, "未安装"), runtimeConfigured))
-	ui.MenuOption("6", "清理配置")
+	ui.MenuOptionStatus("5", "WireGuard", toolpackages.WireGuardBadge())
+	ui.MenuOptionStatus("6", "容器管理", ui.SoftwareBadge(defaultStatus(status.Runtime, "未安装"), runtimeConfigured))
+	ui.MenuOption("7", "清理配置")
 	ui.MenuExit("0/q", "退出")
 }
 
