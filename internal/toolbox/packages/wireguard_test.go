@@ -29,6 +29,10 @@ func TestWireGuardMenuInstallsAndRemovesSystemPackage(t *testing.T) {
 			return "wireguard-tools v1.0.20250521\n", nil
 		case name == "wg" && reflect.DeepEqual(args, []string{"show", "interfaces"}):
 			return "wg0\n", nil
+		case name == "wg" && reflect.DeepEqual(args, []string{"show", "all", "listen-port"}):
+			return "wg0\t51820\n", nil
+		case name == "wg" && reflect.DeepEqual(args, []string{"show", "all", "peers"}):
+			return "", nil
 		default:
 			t.Fatalf("unexpected query: %s %v", name, args)
 			return "", nil
@@ -82,17 +86,24 @@ func TestWireGuardListsAndOpensInterfacesOnHomePage(t *testing.T) {
 	}
 	for i := 0; i < 9; i++ {
 		path := wireGuardProfilePath(fmt.Sprintf("wg%d", i))
-		if err := os.WriteFile(path, []byte("[Interface]\n"), 0600); err != nil {
+		content := fmt.Sprintf("[Interface]\nAddress = 10.77.0.%d/24\nListenPort = 51820\n", i+1)
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	commandExists = func(name string) bool { return name == "wg" || name == "wg-quick" }
+	commandExists = func(name string) bool { return name == "wg" || name == "wg-quick" || name == "ip" }
 	commandOutput = func(name string, args ...string) (string, error) {
 		switch {
 		case name == "wg" && reflect.DeepEqual(args, []string{"show", "interfaces"}):
-			return "wgruntime\n", nil
+			return "wg0 wgruntime\n", nil
 		case name == "wg" && reflect.DeepEqual(args, []string{"--version"}):
 			return "wireguard-tools v1.0\n", nil
+		case name == "wg" && reflect.DeepEqual(args, []string{"show", "all", "listen-port"}):
+			return "wg0\t56912\nwgruntime\t42899\n", nil
+		case name == "wg" && reflect.DeepEqual(args, []string{"show", "all", "peers"}):
+			return "wg0\tpeer1\nwg0\tpeer2\n", nil
+		case name == "ip" && reflect.DeepEqual(args, []string{"-brief", "address", "show"}):
+			return "wg0 UNKNOWN 10.77.0.20/24 fd77::20/64\nwgruntime UNKNOWN 10.88.0.1/24\n", nil
 		default:
 			t.Fatalf("unexpected query: %s %v", name, args)
 			return "", nil
@@ -104,7 +115,12 @@ func TestWireGuardListsAndOpensInterfacesOnHomePage(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	for _, want := range []string{"1   wg0", "9   wg8", "10  wgruntime", "WireGuard  ›  wg8", "已有配置", "仅运行时接口", "卸载 WireGuard 工具"} {
+	for _, want := range []string{
+		"1   wg0", "9   wg8", "10  wgruntime", "WireGuard  ›  wg8", "已有配置", "仅运行时接口", "卸载 WireGuard 工具",
+		"wg0：监听端口 UDP 56912 · 隧道地址 10.77.0.20/24, fd77::20/64 · 对端 2 个",
+		"wg8：配置端口 UDP 51820 · 隧道地址 10.77.0.9/24 · 对端 0 个",
+		"wgruntime：监听端口 UDP 42899 · 隧道地址 10.88.0.1/24 · 对端 0 个",
+	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("missing menu output %q", want)
 		}

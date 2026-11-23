@@ -57,6 +57,7 @@ func RunWireGuard(view *ui.UI) error {
 		if len(profiles) == 0 && readErr == nil && (!tools.wg || activeErr == nil) {
 			fields = append(fields, ui.CardField{Label: "接口", Value: "暂无接口或配置"})
 		}
+		fields = append(fields, wireGuardInterfaceSummaries(profiles)...)
 		ui.PrintInfoCard("WireGuard", fields...)
 		for i, profile := range profiles {
 			state := "已停止"

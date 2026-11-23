@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -61,6 +62,98 @@ func wireGuardInterfaces() ([]wireGuardInterface, error, error) {
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].name < result[j].name })
 	return result, activeErr, readErr
+}
+
+func wireGuardInterfaceSummaries(profiles []wireGuardInterface) []ui.CardField {
+	ports, addresses := map[string]string{}, map[string]string{}
+	var peers map[string]int
+	if slices.ContainsFunc(profiles, func(profile wireGuardInterface) bool { return profile.active }) {
+		if output, err := commandOutput("wg", "show", "all", "listen-port"); err == nil {
+			for _, line := range strings.Split(output, "\n") {
+				if fields := strings.Fields(line); len(fields) == 2 {
+					ports[fields[0]] = fields[1]
+				}
+			}
+		}
+		if output, err := commandOutput("wg", "show", "all", "peers"); err == nil {
+			peers = make(map[string]int)
+			for _, line := range strings.Split(output, "\n") {
+				if fields := strings.Fields(line); len(fields) == 2 {
+					peers[fields[0]]++
+				}
+			}
+		}
+		if commandExists("ip") {
+			if output, err := commandOutput("ip", "-brief", "address", "show"); err == nil {
+				for _, line := range strings.Split(output, "\n") {
+					if fields := strings.Fields(line); len(fields) >= 2 {
+						name, _, _ := strings.Cut(fields[0], "@")
+						addresses[name] = strings.Join(fields[2:], ", ")
+					}
+				}
+			}
+		}
+	}
+
+	fields := make([]ui.CardField, 0, len(profiles))
+	for _, profile := range profiles {
+		if !profile.active {
+			fields = append(fields, savedWireGuardInterfaceSummary(profile.name))
+			continue
+		}
+		port := "读取失败"
+		switch value := ports[profile.name]; value {
+		case "0":
+			port = "未监听"
+		case "":
+		default:
+			port = "UDP " + value
+		}
+		address := "未读取"
+		if value, found := addresses[profile.name]; found {
+			address = value
+			if address == "" {
+				address = "未配置"
+			}
+		}
+		count := "读取失败"
+		if peers != nil {
+			count = fmt.Sprintf("%d 个", peers[profile.name])
+		}
+		fields = append(fields, ui.CardField{Label: profile.name,
+			Value: fmt.Sprintf("监听端口 %s · 隧道地址 %s · 对端 %s", port, address, count)})
+	}
+	return fields
+}
+
+func savedWireGuardInterfaceSummary(name string) ui.CardField {
+	field := ui.CardField{Label: name, Value: "配置读取失败"}
+	data, err := readWireGuardProfile(name)
+	if err != nil {
+		return field
+	}
+	config, err := parseWireGuardConfig(data)
+	if err != nil {
+		return field
+	}
+	port := wireGuardValue(config.device, "listenport")
+	if port == "" || port == "0" {
+		port = "启动时分配"
+	} else {
+		port = "UDP " + port
+	}
+	var addresses []string
+	for _, setting := range config.device {
+		if setting.key == "address" && setting.value != "" {
+			addresses = append(addresses, setting.value)
+		}
+	}
+	address := "未配置"
+	if len(addresses) > 0 {
+		address = strings.Join(addresses, ", ")
+	}
+	field.Value = fmt.Sprintf("配置端口 %s · 隧道地址 %s · 对端 %d 个", port, address, len(config.peers))
+	return field
 }
 
 type wireGuardUnit struct {
