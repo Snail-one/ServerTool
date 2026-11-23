@@ -2,6 +2,8 @@ package packages
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,11 +13,13 @@ import (
 	"strings"
 	"time"
 
+	"snail_tool/internal/input"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/ui"
 )
 
 var wireGuardQuick = func(args ...string) error { return exec.Command("wg-quick", args...).Run() }
+var wireGuardRuntimeQuery = packageQueryOutputContext
 
 type wireGuardInterface struct {
 	name   string
@@ -260,8 +264,8 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 			actions["a"] = func() error { return changeWireGuardAutostart(view, name, unit) }
 		}
 		if running {
-			ui.MenuShortcutHint("c", "查看运行状态", "")
-			actions["c"] = func() error { return showWireGuardRuntime(name) }
+			ui.MenuShortcutHint("c", "查看运行状态", "每秒刷新")
+			actions["c"] = func() error { return monitorWireGuardRuntime(view, name, time.Second) }
 		}
 		if saved {
 			if canRotate {
@@ -314,12 +318,64 @@ func wireGuardPeerCountField(name string, data []byte, saved, running bool) ui.C
 	return ui.CardField{Label: "对端数量", Value: strings.Join(counts, " · ")}
 }
 
-func showWireGuardRuntime(name string) error {
-	ui.ClearScreen()
-	ui.MenuTitle("WireGuard", name, "查看运行状态")
+func monitorWireGuardRuntime(view *ui.UI, name string, interval time.Duration) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	refresh := func() {
+		if ctx.Err() != nil {
+			return
+		}
+		queryCtx, endQuery := context.WithTimeout(ctx, 3*time.Second)
+		defer endQuery()
+		fields, peers, err := readWireGuardRuntime(queryCtx, name)
+		if ctx.Err() != nil {
+			return
+		}
+		ui.ClearScreen()
+		ui.MenuTitle("WireGuard", name, "查看运行状态")
+		fmt.Println(ui.MutedText("每秒刷新 · " + time.Now().Format("15:04:05")))
+		fmt.Println()
+		if err == nil {
+			printWireGuardRuntime(fields, peers)
+		} else {
+			ui.PrintInfoCard("读取运行状态失败", ui.CardField{Label: "原因", Value: err.Error()})
+		}
+		ui.MenuExit("0/q", "返回接口菜单")
+		fmt.Print(ui.PrimaryText("❯ ") + "回车返回： ")
+	}
+	refresh()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				refresh()
+			}
+		}
+	}()
+	defer func() { cancel(); <-done }()
+	for {
+		choice, err := view.ReadLine()
+		if errors.Is(err, input.ErrInvalid) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if choice == "" || shared.IsReturnChoice(choice) {
+			return shared.ErrReturnToMenu
+		}
+	}
+}
+
+func readWireGuardRuntime(ctx context.Context, name string) ([]ui.CardField, map[string][]ui.CardField, error) {
 	fields := []ui.CardField{{Label: "接口", Value: name}}
 	if commandExists("ip") {
-		if output, err := commandOutput("ip", "-brief", "address", "show", "dev", name); err == nil {
+		if output, err := wireGuardRuntimeQuery(ctx, "ip", "-brief", "address", "show", "dev", name); err == nil {
 			if status := strings.Join(strings.Fields(output), " "); status != "" {
 				fields = append(fields, ui.CardField{Label: "接口地址", Value: status})
 			}
@@ -334,12 +390,15 @@ func showWireGuardRuntime(name string) error {
 		{"endpoints", "端点", true}, {"allowed-ips", "允许地址", true},
 		{"latest-handshakes", "最近握手", true}, {"transfer", "接收 / 发送（字节）", true},
 	} {
-		output, err := commandOutput("wg", "show", name, field.selector)
+		output, err := wireGuardRuntimeQuery(ctx, "wg", "show", name, field.selector)
 		if err != nil {
-			return fmt.Errorf("读取 WireGuard %s 失败: %w", field.label, err)
+			return nil, nil, fmt.Errorf("读取 WireGuard %s 失败: %w", field.label, err)
 		}
 		value := strings.TrimSpace(output)
 		if !field.peer {
+			if field.selector == "public-key" {
+				value = shortWireGuardPublicKey(value)
+			}
 			fields = append(fields, ui.CardField{Label: field.label, Value: value})
 			continue
 		}
@@ -365,6 +424,10 @@ func showWireGuardRuntime(name string) error {
 		}
 	}
 	fields = append(fields, ui.CardField{Label: "对端数量", Value: strconv.Itoa(len(peers))})
+	return fields, peers, nil
+}
+
+func printWireGuardRuntime(fields []ui.CardField, peers map[string][]ui.CardField) {
 	ui.PrintInfoCard("WireGuard 运行状态", fields...)
 	keys := make([]string, 0, len(peers))
 	for key := range peers {
@@ -372,10 +435,17 @@ func showWireGuardRuntime(name string) error {
 	}
 	sort.Strings(keys)
 	for i, key := range keys {
-		peerFields := []ui.CardField{{Label: "公钥", Value: key}}
+		peerFields := []ui.CardField{{Label: "公钥", Value: shortWireGuardPublicKey(key)}}
 		ui.PrintSectionCard(fmt.Sprintf("对端 %d", i+1), append(peerFields, peers[key]...)...)
 	}
-	return nil
+}
+
+func shortWireGuardPublicKey(key string) string {
+	const visible = 6
+	if len(key) <= 2*visible {
+		return key
+	}
+	return key[:visible] + "…" + key[len(key)-visible:]
 }
 
 func changeWireGuardRuntime(view *ui.UI, name, action string) error {

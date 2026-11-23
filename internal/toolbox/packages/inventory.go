@@ -112,7 +112,11 @@ func queryInstalledPackages(manager packageManager) (map[string]bool, error) {
 }
 
 func packageQueryOutput(name string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	return packageQueryOutputContext(context.Background(), name, args...)
+}
+
+func packageQueryOutputContext(ctx context.Context, name string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.WaitDelay = time.Second

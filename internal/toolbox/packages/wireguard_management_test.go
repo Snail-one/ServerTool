@@ -2,8 +2,10 @@ package packages
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,16 +13,20 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"snail_tool/internal/shared"
+	"snail_tool/internal/ui"
 )
 
 func setupWireGuardManagement(t *testing.T) string {
 	t.Helper()
 	restoreDependencies(t)
 	configDir, dataDir, quick := wireGuardConfigDir, wireGuardDataDir, wireGuardQuick
+	runtimeQuery := wireGuardRuntimeQuery
 	t.Cleanup(func() {
 		wireGuardConfigDir, wireGuardDataDir, wireGuardQuick = configDir, dataDir, quick
+		wireGuardRuntimeQuery = runtimeQuery
 	})
 	root := t.TempDir()
 	wireGuardConfigDir = filepath.Join(root, "etc", "wireguard")
@@ -126,6 +132,9 @@ func TestWireGuardRuntimeAndBootControls(t *testing.T) {
 		t.Fatal(err)
 	}
 	var up, enabled bool
+	wireGuardRuntimeQuery = func(_ context.Context, name string, args ...string) (string, error) {
+		return commandOutput(name, args...)
+	}
 	commandExists = func(name string) bool { return name == "wg" || name == "wg-quick" || name == "systemctl" }
 	commandOutput = func(name string, args ...string) (string, error) {
 		switch name {
@@ -207,6 +216,68 @@ func TestWireGuardRuntimeAndBootControls(t *testing.T) {
 	want := []string{"start", "enable", "restart", "stop", "disable"}
 	if !errors.Is(err, shared.ErrReturnToMenu) || !reflect.DeepEqual(actions, want) || up || enabled {
 		t.Fatalf("actions: %v, running: %v, autostart: %v, error: %v", actions, up, enabled, err)
+	}
+}
+
+func TestWireGuardRuntimeRefreshesAndStopsOnReturn(t *testing.T) {
+	setupWireGuardManagement(t)
+	commandExists = func(name string) bool { return name == "wg" }
+	blocked, cancelled := make(chan struct{}), make(chan struct{})
+	localKey := "AbCd12" + strings.Repeat("x", 32) + "Yz345="
+	peerKey := "EdFg67" + strings.Repeat("y", 32) + "Rt890="
+	frames := 0
+	wireGuardRuntimeQuery = func(ctx context.Context, _ string, args ...string) (string, error) {
+		switch args[2] {
+		case "public-key":
+			frames++
+			if frames == 3 {
+				close(blocked)
+				<-ctx.Done()
+				close(cancelled)
+				return "", ctx.Err()
+			}
+			return localKey + "\n", nil
+		case "transfer":
+			return fmt.Sprintf("%s\t%d\t180\n", peerKey, frames*92), nil
+		}
+		return "", nil
+	}
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	defer writer.Close()
+	oldStdin := os.Stdin
+	os.Stdin = reader
+	view := ui.New()
+	os.Stdin = oldStdin
+	go func() {
+		select {
+		case <-blocked:
+		case <-time.After(2 * time.Second):
+		}
+		_, _ = writer.WriteString("q\nnext\n")
+	}()
+	output := wireGuardTestOutput(t, func() {
+		if err := monitorWireGuardRuntime(view, "wg0", time.Millisecond); !errors.Is(err, shared.ErrReturnToMenu) {
+			t.Fatal(err)
+		}
+	})
+	select {
+	case <-cancelled:
+	default:
+		t.Fatal("return should cancel and wait for any status refresh")
+	}
+	if frames != 3 || !strings.Contains(output, "92 / 180") || !strings.Contains(output, "184 / 180") {
+		t.Fatalf("expected two snapshots with different counters (queries=%d):\n%s", frames, output)
+	}
+	if !strings.Contains(output, "本机公钥：AbCd12…Yz345=") || !strings.Contains(output, "公钥：EdFg67…Rt890=") ||
+		strings.Contains(output, localKey) || strings.Contains(output, peerKey) {
+		t.Fatal("running status should show both public keys in abbreviated form")
+	}
+	if next, err := view.ReadLine(); err != nil || next != "next" {
+		t.Fatalf("monitor should leave the next menu input intact: %q, %v", next, err)
 	}
 }
 
