@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"snail_tool/internal/shared"
+	"snail_tool/internal/tempguard"
 )
 
 // Preserve the first pre-tool state before changing configuration or services.
@@ -122,6 +123,11 @@ func saveOriginalState() error {
 	if err != nil {
 		return err
 	}
+	release, err := tempguard.Use()
+	if err != nil {
+		return err
+	}
+	defer release()
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".firewall-original-*")
 	if err != nil {
 		return err

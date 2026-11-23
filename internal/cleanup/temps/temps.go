@@ -19,10 +19,12 @@ import (
 
 // Locations are the only directories scanned for interrupted temporary files.
 type Locations struct {
-	TempDirs    []string
-	EtcDirs     []string
-	DataTempDir string
-	GoRoot      string
+	TempDirs          []string
+	EtcDirs           []string
+	DataTempDir       string
+	ProgramInstallDir string
+	FirewallBackupDir string
+	GoRoot            string
 }
 
 type kind int
@@ -56,17 +58,19 @@ var (
 		regexp.MustCompile(`^snail-ssh-key-[0-9]+\.pub$`),
 		regexp.MustCompile(`^snail-sshd-[0-9]+\.conf$`),
 	}
-	firewallEditFile = regexp.MustCompile(`^\.snail-nftables-edit-[0-9]+\.conf$`)
-	tempInstallDir   = regexp.MustCompile(`^servertool-install\.[A-Za-z0-9]{6}$`)
-	etcFiles         = []*regexp.Regexp{
+	firewallEditFile     = regexp.MustCompile(`^\.snail-nftables-edit-[0-9]+\.conf$`)
+	firewallOriginalFile = regexp.MustCompile(`^\.firewall-original-[0-9]+$`)
+	stagedProgramFile    = regexp.MustCompile(`^\.snail\.new\.[1-9][0-9]*$`)
+	tempInstallDir       = regexp.MustCompile(`^servertool-install\.[A-Za-z0-9]{6}$`)
+	etcFiles             = []*regexp.Regexp{
 		regexp.MustCompile(`^\.servertool-atomic-[0-9]+$`),
 		regexp.MustCompile(`^\.snail-nftables-[0-9]+\.conf$`),
 		regexp.MustCompile(`^\.snail-ssh-ports-[0-9]+\.nft$`),
 	}
 )
 
-// DefaultLocations scans the system temp directory, /tmp, the /etc directories
-// this tool writes, the ServerTool temporary workspace, and the Go install root.
+// DefaultLocations includes system temporary directories and the application
+// directories where ServerTool stages files before publishing them.
 func DefaultLocations() Locations {
 	return Locations{
 		TempDirs: []string{os.TempDir(), "/tmp"},
@@ -82,8 +86,10 @@ func DefaultLocations() Locations {
 			"/etc/yum.repos.d",
 			"/etc/pki/rpm-gpg",
 		},
-		DataTempDir: filepath.Join(shared.DataDir, shared.DataTempDirName),
-		GoRoot:      "/opt/go",
+		DataTempDir:       filepath.Join(shared.DataDir, shared.DataTempDirName),
+		ProgramInstallDir: "/usr/local/sbin",
+		FirewallBackupDir: filepath.Join(shared.DataDir, "backups", "firewall"),
+		GoRoot:            "/opt/go",
 	}
 }
 
@@ -115,7 +121,7 @@ func run(view *ui.UI, locations Locations) error {
 		}
 	}
 	ui.PrintWarningCard("中断临时文件",
-		ui.CardField{Label: "扫描位置", Value: "系统临时目录、/tmp、/etc 配置目录、ServerTool 临时目录、/opt/go"},
+		ui.CardField{Label: "扫描位置", Value: "系统临时目录、/etc 配置目录、ServerTool 数据目录、/usr/local/sbin、/opt/go"},
 		ui.CardField{Label: "数量", Value: fmt.Sprintf("%d 项", len(items))},
 		ui.CardField{Label: "删除规则", Value: "只删除名称可识别的本工具残留"},
 	)
@@ -171,9 +177,20 @@ func Scan(locations Locations) ([]Item, []string, error) {
 		}
 		items = append(items, found...)
 	}
-	if dir := strings.TrimSpace(locations.DataTempDir); dir != "" {
+	for _, location := range []struct {
+		dir     string
+		pattern *regexp.Regexp
+	}{
+		{locations.DataTempDir, firewallEditFile},
+		{locations.ProgramInstallDir, stagedProgramFile},
+		{locations.FirewallBackupDir, firewallOriginalFile},
+	} {
+		dir := strings.TrimSpace(location.dir)
+		if dir == "" {
+			continue
+		}
 		found, err := scanNamed(dir, func(name string) (kind, bool) {
-			return kindFile, firewallEditFile.MatchString(name)
+			return kindFile, location.pattern.MatchString(name)
 		})
 		if err != nil {
 			return nil, nil, err

@@ -86,7 +86,9 @@ func TestScanKeepsOnlyRecognizedInterruptFiles(t *testing.T) {
 	etcDir := filepath.Join(root, "etc", "ssh")
 	goRoot := filepath.Join(root, "opt", "go")
 	dataTempDir := filepath.Join(root, "snailtool", "tmp")
-	for _, dir := range []string{tempDir, etcDir, goRoot, dataTempDir} {
+	programDir := filepath.Join(root, "usr", "local", "sbin")
+	firewallBackupDir := filepath.Join(root, "snailtool", "backups", "firewall")
+	for _, dir := range []string{tempDir, etcDir, goRoot, dataTempDir, programDir, firewallBackupDir} {
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -97,6 +99,12 @@ func TestScanKeepsOnlyRecognizedInterruptFiles(t *testing.T) {
 		filepath.Join(tempDir, "unrelated"),
 		filepath.Join(dataTempDir, "nftables.conf"),
 		filepath.Join(dataTempDir, ".snail-nftables-12.conf"),
+		filepath.Join(programDir, "snail"),
+		filepath.Join(programDir, ".other.new.17"),
+		filepath.Join(programDir, ".snail.new.notes"),
+		filepath.Join(firewallBackupDir, "state.original.json"),
+		filepath.Join(firewallBackupDir, ".firewall-original-notes"),
+		filepath.Join(firewallBackupDir, "etc", "nftables.conf.bak.20261122_000000-1"),
 		filepath.Join(etcDir, "sshd_config"),
 		filepath.Join(etcDir, ".servertool-atomic-"),
 		filepath.Join(goRoot, "go1.24.1", "bin", "go"),
@@ -110,6 +118,7 @@ func TestScanKeepsOnlyRecognizedInterruptFiles(t *testing.T) {
 		filepath.Join(etcDir, ".servertool-atomic-11"),
 		filepath.Join(etcDir, ".snail-nftables-12.conf"),
 		filepath.Join(dataTempDir, ".snail-nftables-edit-16.conf"),
+		filepath.Join(programDir, ".snail.new.17"),
 		filepath.Join(etcDir, ".snail-ssh-ports-13.nft"),
 		filepath.Join(goRoot, ".download-14.tar.gz"),
 	}
@@ -139,7 +148,16 @@ func TestScanKeepsOnlyRecognizedInterruptFiles(t *testing.T) {
 		}
 	}
 
-	items, busy, err := Scan(Locations{TempDirs: []string{tempDir, tempDir}, EtcDirs: []string{etcDir, filepath.Join(root, "missing")}, DataTempDir: dataTempDir, GoRoot: goRoot})
+	linkedSnapshot := filepath.Join(firewallBackupDir, ".firewall-original-18")
+	if err := os.Link(filepath.Join(firewallBackupDir, "state.original.json"), linkedSnapshot); err != nil {
+		t.Fatal(err)
+	}
+	remove = append(remove, linkedSnapshot)
+
+	items, busy, err := Scan(Locations{
+		TempDirs: []string{tempDir, tempDir}, EtcDirs: []string{etcDir, filepath.Join(root, "missing")},
+		DataTempDir: dataTempDir, ProgramInstallDir: programDir, FirewallBackupDir: firewallBackupDir, GoRoot: goRoot,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
