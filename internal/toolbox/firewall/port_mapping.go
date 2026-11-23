@@ -161,16 +161,13 @@ func (mapping portMapping) endpointsLabel() string {
 	return mapping.from.String() + " → " + mapping.to.String()
 }
 
-func (mapping portMapping) detailLabels() []string {
+func (mapping portMapping) matchLabels() []string {
 	var fields []string
 	if mapping.iface != "" {
 		fields = append(fields, "入站 "+mapping.iface)
 	}
 	if mapping.source.IsValid() {
 		fields = append(fields, "来源 "+mapping.source.String())
-	}
-	if mapping.snat.address.IsValid() {
-		fields = append(fields, "SNAT "+mapping.snatDescription())
 	}
 	return fields
 }
@@ -180,7 +177,10 @@ func (mapping portMapping) description() string {
 	if mapping.disabled {
 		fields = append(fields, "已停用")
 	}
-	fields = append(fields, mapping.detailLabels()...)
+	fields = append(fields, mapping.matchLabels()...)
+	if mapping.snat.address.IsValid() {
+		fields = append(fields, "SNAT "+mapping.snatDescription())
+	}
 	return strings.Join(fields, " · ")
 }
 
@@ -434,10 +434,14 @@ func printPortMappings(mappings []portMapping) {
 		if mapping.disabled {
 			status = "已停用"
 		}
+		endpoints := mapping.endpointsLabel()
+		if mapping.snat.address.IsValid() {
+			endpoints += " · SNAT " + mapping.snatDescription()
+		}
 		fmt.Println("   " + ui.TableCell(strconv.Itoa(i+1), 6) + ui.TableCell(mapping.familyLabel(), 9) +
-			ui.TableCell(protocolLabel(mapping.protocol), 10) + ui.TableCell(status, 9) + mapping.endpointsLabel())
-		if details := mapping.detailLabels(); len(details) > 0 {
-			fmt.Println("         " + strings.Join(details, " · "))
+			ui.TableCell(protocolLabel(mapping.protocol), 10) + ui.TableCell(status, 9) + endpoints)
+		if matches := mapping.matchLabels(); len(matches) > 0 {
+			fmt.Println("         " + strings.Join(matches, " · "))
 		}
 	}
 	fmt.Println()

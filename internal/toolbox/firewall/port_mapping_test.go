@@ -208,9 +208,9 @@ func TestPortMappingSNATSwitch(t *testing.T) {
 	setupTest(t)
 	ruleTestConfig(t, nil)
 	calls := acceptRuleCommands(t)
-	run := func(input string) {
+	run := func(input string) string {
 		t.Helper()
-		capturePortOutput(t, func() {
+		return capturePortOutput(t, func() {
 			if err := runPortMappingManager(inputUI(t, input+"\n0\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 				t.Fatal(err)
 			}
@@ -227,7 +227,10 @@ func TestPortMappingSNATSwitch(t *testing.T) {
 	}
 
 	run("1\nudp *:8211 10.77.0.2:8211 eth0 192.0.2.0/24\ny\n")
-	run("5\n1\nwg0 10.77.0.1\ny\n")
+	output := run("5\n1\nwg0 10.77.0.1\ny\n")
+	if !strings.Contains(output, "*:8211 → 10.77.0.2:8211 · SNAT 已开启（wg0，源 IP 10.77.0.1）") {
+		t.Fatalf("expected SNAT status after the target endpoint:\n%s", output)
+	}
 	mapping, content := read()
 	want := `oifname "wg0" ct direction original ct status dnat ip daddr 10.77.0.2 udp dport 8211 ct original ip saddr 192.0.2.0/24 ct original proto-dst 8211 snat ip to 10.77.0.1`
 	if !mapping.snatEnabled() || !strings.Contains(content, want) || !strings.Contains(content, "type nat hook postrouting priority 101") {
