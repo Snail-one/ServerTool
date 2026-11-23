@@ -150,31 +150,43 @@ detect_download_route() {
 print_download_route() {
 	if [ "$DOWNLOAD_ROUTE_NEXT" != "$DOWNLOAD_ROUTE" ]; then
 		DOWNLOAD_ROUTE="$DOWNLOAD_ROUTE_NEXT"
-		success "访问方式：$DOWNLOAD_ROUTE"
+		success "下载方式：$DOWNLOAD_ROUTE"
 	fi
 }
 
 check_release_download() {
 	detect_download_route "$1" "$2"
-	if [ ! -t 2 ] || [ "${TERM:-}" = dumb ]; then
-		print_download_route
-		"$@"
-		return $?
+	if [ "${4:-}" = "proxy-fallback" ]; then
+		DOWNLOAD_ROUTE_NEXT="直连（代理访问受限）"
+	fi
+	case "$2" in
+		https://api.github.com/*)
+			RELEASE_ROUTE_LABEL="API访问：${DOWNLOAD_ROUTE_NEXT%访问}"
+			;;
+		*)
+			RELEASE_ROUTE_LABEL="${RELEASE_CHECK_ACTION}-下载方式：$DOWNLOAD_ROUTE_NEXT"
+			;;
+	esac
+
+	if [ -t 2 ] && [ "${TERM:-}" != dumb ]; then
+		(
+			while :; do
+				for RELEASE_FRAME in '⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏'; do
+					printf '\r%s%s%s %s' "$ORANGE" "$RELEASE_FRAME" "$RESET" "$RELEASE_ROUTE_LABEL" >&2
+					sleep 0.1
+				done
+			done
+		) &
+		RELEASE_SPINNER_PID=$!
+	else
+		case "$2" in
+			https://api.github.com/*) printf '%s\n' "$RELEASE_ROUTE_LABEL" ;;
+		esac
 	fi
 
-	(
-		while :; do
-			for RELEASE_FRAME in '⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏'; do
-				printf '\r%s%s%s %s-访问方式：%s' "$ORANGE" "$RELEASE_FRAME" "$RESET" "$RELEASE_CHECK_ACTION" "$DOWNLOAD_ROUTE_NEXT" >&2
-				sleep 0.1
-			done
-		done
-	) &
-	RELEASE_SPINNER_PID=$!
 	RELEASE_DOWNLOAD_STATUS=0
-	"$@" 2>"$TEMP_DIR/release-download.err" || RELEASE_DOWNLOAD_STATUS=$?
+	"$1" "$2" "$3" 2>"$TEMP_DIR/release-download.err" || RELEASE_DOWNLOAD_STATUS=$?
 	stop_release_spinner
-	cat "$TEMP_DIR/release-download.err" >&2
 	return "$RELEASE_DOWNLOAD_STATUS"
 }
 
@@ -464,9 +476,20 @@ download_with_direct_fallback() {
 	if check_release_download download "$1" "$2"; then
 		return 0
 	fi
-	proxy_configured || return 1
-	warn "GitHub 请求失败，正在尝试强制直连"
-	check_release_download download_api_direct "$1" "$2"
+	if ! proxy_configured; then
+		cat "$TEMP_DIR/release-download.err" >&2
+		return 1
+	fi
+
+	RELEASE_FALLBACK=""
+	if [ "$DOWNLOAD_ROUTE_NEXT" = "代理访问" ]; then
+		RELEASE_FALLBACK="proxy-fallback"
+	fi
+	if check_release_download download_api_direct "$1" "$2" "$RELEASE_FALLBACK"; then
+		return 0
+	fi
+	cat "$TEMP_DIR/release-download.err" >&2
+	return 1
 }
 
 release_version_from_checksums() {
@@ -514,6 +537,9 @@ if [ "$RELEASE" = "latest" ]; then
 	RELEASE_METADATA="${TEMP_DIR}/release.json"
 	RELEASE_VERSION=""
 	if download_with_direct_fallback "https://api.github.com/repos/${REPOSITORY}/releases/latest" "$RELEASE_METADATA"; then
+		if [ -t 2 ] && [ "${TERM:-}" != dumb ]; then
+			success "API访问：${DOWNLOAD_ROUTE_NEXT%访问}"
+		fi
 		RELEASE_VERSION="$(sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' "$RELEASE_METADATA" | sed -n '1p')"
 	fi
 	if [ -z "$RELEASE_VERSION" ]; then
@@ -548,7 +574,10 @@ if [ ! -s "$CHECKSUM_FILE" ] && ! check_release_download download_optional "${DO
 	CHECKSUM_NAME="checksums_${RELEASE_VERSION}.txt"
 	CHECKSUM_FILE="${TEMP_DIR}/${CHECKSUM_NAME}"
 	info "该版本使用旧版校验文件名，正在兼容处理"
-	check_release_download download "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"
+	if ! check_release_download download "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"; then
+		cat "$TEMP_DIR/release-download.err" >&2
+		fail "无法下载发布校验文件"
+	fi
 fi
 EXPECTED_SHA256="$(awk -v asset="$ASSET" '$2 == asset || $2 == "*" asset { print $1; exit }' "$CHECKSUM_FILE")"
 # 兼容早期未在二进制文件名末尾添加版本号的 Release。
