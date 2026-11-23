@@ -35,6 +35,9 @@ func policyFields(content string) []ui.CardField {
 }
 
 func policyChangeFields(before, after string) []ui.CardField {
+	if before == after {
+		return nil
+	}
 	var fields []ui.CardField
 	old, next := policyFields(before), policyFields(after)
 	for i := range old {
@@ -106,6 +109,7 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 	draft := original
 	notice := ""
 	for {
+		changes := policyChangeFields(original, draft)
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理", sessionTitle())
 		summary := accessSummaryFields(draft)
@@ -125,7 +129,7 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 		ui.MenuOptionHint("r", "还原本次草稿", "撤销本次全部修改")
 		if generating {
 			ui.MenuShortcutHint("s", "采用草稿并返回", "进入最终确认，暂不写入配置")
-		} else {
+		} else if len(changes) > 0 {
 			ui.MenuShortcutHint("s", "保存并立即生效", "校验、备份并应用全部修改")
 		}
 		fmt.Println()
@@ -141,7 +145,7 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 			return "", err
 		}
 		if shared.IsReturnChoice(choice) {
-			if len(policyChangeFields(original, draft)) == 0 {
+			if len(changes) == 0 {
 				return "", shared.ErrReturnToMenu
 			}
 			discard, err := view.Confirm("还有未保存的配置，是否放弃修改并返回？(y/N)：")
@@ -159,8 +163,8 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 		case "p":
 			ui.ClearScreen()
 			ui.MenuTitle("防火墙管理", sessionTitle(), "预览配置")
-			if fields := policyChangeFields(original, draft); len(fields) > 0 {
-				ui.PrintInfoCard("待应用的变更", fields...)
+			if len(changes) > 0 {
+				ui.PrintInfoCard("待应用的变更", changes...)
 			}
 			fmt.Println(draft)
 			view.PauseWithPrompt("按回车返回草稿…")
@@ -168,8 +172,7 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 			draft = original
 			notice = "已还原本次全部修改"
 		case "s":
-			fields := policyChangeFields(original, draft)
-			if len(fields) == 0 {
+			if len(changes) == 0 {
 				if generating {
 					return original, nil
 				}
@@ -181,7 +184,7 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 			}
 			ui.ClearScreen()
 			ui.MenuTitle("防火墙管理", sessionTitle(), "确认变更")
-			ui.PrintInfoCard("待应用的变更", fields...)
+			ui.PrintInfoCard("待应用的变更", changes...)
 			prompt := "确认采用此草稿并返回最终确认页？(y/N，0/q 返回)："
 			confirmed, err := view.Confirm(prompt)
 			if errors.Is(err, shared.ErrReturnToMenu) || err == nil && !confirmed {
@@ -252,10 +255,7 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 				continue
 			}
 			if updated != draft {
-				notice = "已更新草稿；输入 s 保存并立即生效，输入 r 还原全部修改"
-				if generating {
-					notice = "已更新草稿；输入 s 采用草稿并返回，输入 r 还原全部修改"
-				}
+				notice = "已更新草稿"
 			}
 			draft = updated
 		}

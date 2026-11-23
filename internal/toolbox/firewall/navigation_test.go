@@ -79,3 +79,21 @@ func TestRuleDraftDefaultsToKeepingUnsavedChanges(t *testing.T) {
 		})
 	}
 }
+
+func TestRuleDraftShowsSaveOnlyWithChanges(t *testing.T) {
+	setupTest(t)
+	version := ruleTestConfig(t, nil)
+	output := capturePortOutput(t, func() {
+		view := inputUI(t, "3\n1\n1\n1\n8443\nr\nq\n")
+		if _, err := editAccessRulesDraft(view, string(version.content), false); !errors.Is(err, shared.ErrReturnToMenu) {
+			t.Fatal(err)
+		}
+	})
+	before, rest, found := strings.Cut(output, "已更新草稿")
+	if !found {
+		t.Fatal("expected an updated draft")
+	}
+	if strings.Count(before, "保存并立即生效") != 1 || strings.Contains(rest, "保存并立即生效") {
+		t.Fatalf("save should appear only between editing and restoring:\n%s", output)
+	}
+}
