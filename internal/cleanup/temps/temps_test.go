@@ -118,6 +118,7 @@ func TestScanKeepsOnlyRecognizedInterruptFiles(t *testing.T) {
 		filepath.Join(etcDir, ".servertool-atomic-11"),
 		filepath.Join(etcDir, ".snail-nftables-12.conf"),
 		filepath.Join(dataTempDir, ".snail-nftables-edit-16.conf"),
+		filepath.Join(dataTempDir, ".wireguard-edit-19.conf"),
 		filepath.Join(programDir, ".snail.new.17"),
 		filepath.Join(etcDir, ".snail-ssh-ports-13.nft"),
 		filepath.Join(goRoot, ".download-14.tar.gz"),

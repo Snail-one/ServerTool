@@ -49,7 +49,7 @@ snail --version
 | SSH 管理 | 查看、添加和删除公钥，配置随机端口、禁用密码登录，单独管理 Root SSH 登录策略，查看生效配置 |
 | 配置管理 | 一键初始化 SSH 公钥、安全策略、Vim 和 Bash；单独管理 Vim、Bash、Bash 自动补全、HTTP/HTTPS 代理和 tmux 状态栏 |
 | 系统工具 | 单独或批量安装常用命令行工具，安装、更新、切换、修复和卸载 Go 官方稳定版本并管理用户 PATH，配置 UPS（NUT），查看本次启动信息 |
-| WireGuard | 安装或卸载 WireGuard 工具，查看版本和当前接口 |
+| WireGuard | 安装工具，新建、导入和编辑配置，管理对端、接口启停和开机自启，查看握手和流量 |
 | 容器管理 | 管理 Docker/Podman 容器和 Compose 项目，配置或单独移除 Docker 服务代理、构建与容器代理及日志轮转，清理资源 |
 | 清理配置 | 按项或全部清理 SSH、Vim、Bash、代理、tmux、防火墙、UPS、Docker、Go 环境配置，支持统一备份及旧备份清理 |
 

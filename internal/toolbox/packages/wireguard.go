@@ -62,6 +62,11 @@ func RunWireGuard(view *ui.UI) error {
 		if tools.wg || tools.quick {
 			ui.MenuOptionHint("2", "卸载 WireGuard 工具", "保留 /etc/wireguard 配置")
 		}
+		ui.MenuOption("3", "接口与配置")
+		if tools.wg {
+			ui.MenuOption("4", "新建配置")
+		}
+		ui.MenuOption("5", "导入配置")
 		ui.MenuOption("r", "刷新状态")
 		ui.MenuExit("0/q", "返回主菜单")
 
@@ -82,6 +87,18 @@ func RunWireGuard(view *ui.UI) error {
 		case choice == "2" && (tools.wg || tools.quick):
 			shared.RunAction(view, "卸载 WireGuard 失败，已返回管理菜单", func() error {
 				return uninstallWireGuard(view)
+			})
+		case choice == "3":
+			shared.RunAction(view, "读取 WireGuard 接口失败，已返回管理菜单", func() error {
+				return runWireGuardInterfaces(view)
+			})
+		case choice == "4" && tools.wg:
+			shared.RunAction(view, "新建 WireGuard 配置失败，已返回管理菜单", func() error {
+				return createWireGuardProfile(view, false)
+			})
+		case choice == "5":
+			shared.RunAction(view, "导入 WireGuard 配置失败，已返回管理菜单", func() error {
+				return createWireGuardProfile(view, true)
 			})
 		default:
 			ui.InvalidChoice()

@@ -22,6 +22,7 @@ var modules = []module{
 	{"2", "SSH", "ssh"},
 	{"3", "Docker", "docker"},
 	{"4", "UPS", "ups"},
+	{"7", "WireGuard", "wireguard"},
 }
 
 type inventory struct {

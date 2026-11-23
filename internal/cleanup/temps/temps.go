@@ -58,7 +58,7 @@ var (
 		regexp.MustCompile(`^snail-ssh-key-[0-9]+\.pub$`),
 		regexp.MustCompile(`^snail-sshd-[0-9]+\.conf$`),
 	}
-	firewallEditFile     = regexp.MustCompile(`^\.snail-nftables-edit-[0-9]+\.conf$`)
+	configEditFile       = regexp.MustCompile(`^\.(snail-nftables|wireguard)-edit-[0-9]+\.conf$`)
 	firewallOriginalFile = regexp.MustCompile(`^\.firewall-original-[0-9]+$`)
 	stagedProgramFile    = regexp.MustCompile(`^\.snail\.new\.[1-9][0-9]*$`)
 	tempInstallDir       = regexp.MustCompile(`^servertool-install\.[A-Za-z0-9]{6}$`)
@@ -181,7 +181,7 @@ func Scan(locations Locations) ([]Item, []string, error) {
 		dir     string
 		pattern *regexp.Regexp
 	}{
-		{locations.DataTempDir, firewallEditFile},
+		{locations.DataTempDir, configEditFile},
 		{locations.ProgramInstallDir, stagedProgramFile},
 		{locations.FirewallBackupDir, firewallOriginalFile},
 	} {
