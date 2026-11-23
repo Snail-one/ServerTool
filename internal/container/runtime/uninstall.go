@@ -63,7 +63,6 @@ func selectRuntimeToUninstall(view dockerUninstallPrompter, runtimes []Runtime) 
 			ui.MenuOption(strconv.Itoa(index+1), current.Display)
 		}
 		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return Runtime{}, false, err

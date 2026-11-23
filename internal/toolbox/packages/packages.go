@@ -74,7 +74,6 @@ func (inventory *Inventory) Run(view *ui.UI) error {
 		ui.MenuOptionHint("a", "安装全部缺失工具", "使用系统包管理器")
 		ui.MenuOption("r", "刷新安装状态")
 		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 
 		choice, err := view.Ask("请选择：")
 		if err != nil {

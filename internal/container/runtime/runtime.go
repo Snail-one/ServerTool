@@ -37,7 +37,6 @@ func Ensure(view *ui.UI) error {
 		ui.MenuOptionHint("2", "安装 Docker", "Docker 官方脚本 get.docker.com")
 		ui.MenuOptionHint("3", "安装 Podman", "apt 软件包")
 		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 
 		choice, err := view.Ask("请选择：")
 		if err != nil {

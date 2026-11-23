@@ -118,6 +118,11 @@ func chooseTrafficTable(view *ui.UI, current trafficTable) (trafficTable, error)
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理", "实时查看规则", "选择规则表")
 		ui.PrintInfoCard("选择规则表", ui.CardField{Label: "当前表", Value: current.label()})
+		if notice != "" {
+			ui.PrintField("提示", notice)
+			fmt.Println()
+			notice = ""
+		}
 		for i, table := range choices {
 			var hints []string
 			if table == defaultTrafficTable {
@@ -133,10 +138,6 @@ func chooseTrafficTable(view *ui.UI, current trafficTable) (trafficTable, error)
 		}
 		ui.MenuOption("r", "刷新表列表")
 		ui.MenuExit("0/q", "返回当前规则表")
-		if notice != "" {
-			ui.PrintField("提示", notice)
-			notice = ""
-		}
 		choice, err := view.Ask("请选择规则表（回车默认 inet snail）：")
 		if err != nil {
 			return trafficTable{}, err

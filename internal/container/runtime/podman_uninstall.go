@@ -58,7 +58,6 @@ func selectPodmanUninstallMode(view dockerUninstallPrompter) (bool, bool, error)
 		ui.MenuOptionHint("1", "卸载运行时", "保留容器、镜像和卷数据")
 		ui.MenuOptionHint("2", "完全卸载", "永久删除容器、镜像和卷数据")
 		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return false, false, err

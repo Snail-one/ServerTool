@@ -23,7 +23,6 @@ func Run(view *ui.UI) error {
 		ui.MenuOption("3", "查看生效配置")
 		ui.MenuOption("4", "Root SSH 登录策略")
 		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 
 		choice, err := view.Ask("请选择：")
 		if err != nil {

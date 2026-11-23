@@ -207,7 +207,7 @@ func MenuOptionStatusHint(key, label, status, hint string) {
 
 // MenuExit renders the return/exit row separately from regular actions.
 func MenuExit(key, label string) {
-	fmt.Printf("  %s %s\n", menuKey(key, bold+yellow), paint(dim, label))
+	fmt.Printf("  %s %s\n\n", menuKey(key, bold+yellow), paint(dim, label))
 }
 
 // MenuSection renders a consistent heading for choices nested inside a screen.

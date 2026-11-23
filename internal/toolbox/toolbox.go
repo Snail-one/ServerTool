@@ -34,7 +34,6 @@ func Run(view *ui.UI, report *startup.Report) error {
 		ui.MenuOptionStatus("3", "UPS（NUT）", ui.ConfiguredBadge(commonups.IsUPSConfigured()))
 		ui.MenuOption("4", "查看本次启动信息")
 		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 
 		choice, err := view.Ask("请选择：")
 		if err != nil {

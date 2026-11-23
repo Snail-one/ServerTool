@@ -94,7 +94,6 @@ func ConfigureUPS(view *ui.UI) error {
 		ui.MenuOptionHint("2", "恢复首次备份", "官方默认配置")
 		ui.MenuOption("3", "删除 UPS 配置备份")
 		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 
 		choice, err := view.Ask("请选择：")
 		if err != nil {
@@ -172,7 +171,6 @@ func ensureNUTInstalled(view *ui.UI) (bool, error) {
 	ui.MenuOptionHint("1", "手动安装", "显示安装命令并返回")
 	ui.MenuOptionHint("2", "自动安装 NUT", "使用系统包管理器")
 	ui.MenuExit("0/q", "取消")
-	fmt.Println()
 
 	for {
 		choice, err := view.Ask("请选择：")

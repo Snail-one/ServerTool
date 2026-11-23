@@ -63,6 +63,11 @@ func reorderAllowRulesDraft(view *ui.UI, rules []allowRule) ([]allowRule, error)
 			ui.CardField{Label: "调整范围", Value: "采用顺序后返回" + sessionTitle() + "，统一保存才生效"},
 		)
 		printRuleOrder(draft, selected)
+		if notice != "" {
+			ui.PrintField("提示", notice)
+			fmt.Println()
+			notice = ""
+		}
 		ui.PrintField("选择规则", "输入列表序号或完整规则 ID")
 		ui.MenuShortcutHint("u", "上移", "")
 		ui.MenuShortcutHint("d", "下移", "")
@@ -71,10 +76,6 @@ func reorderAllowRulesDraft(view *ui.UI, rules []allowRule) ([]allowRule, error)
 		ui.MenuShortcutHint("r", "还原草稿", "")
 		ui.MenuShortcutHint("s", "采用顺序并返回", "加入"+sessionDraftName()+"，最后统一保存")
 		ui.MenuExit("0/q", "放弃草稿并返回")
-		if notice != "" {
-			ui.PrintField("提示", notice)
-			notice = ""
-		}
 		choice, err := view.Ask("请选择操作或规则：")
 		if err != nil {
 			return nil, err

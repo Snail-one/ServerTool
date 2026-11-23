@@ -40,7 +40,6 @@ func (a *App) Run() error {
 	for {
 		ui.ClearScreen()
 		showMenu(menuStatus)
-		fmt.Println()
 
 		choice, err := a.ui.Ask("请选择：")
 		if err != nil {

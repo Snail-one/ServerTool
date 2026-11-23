@@ -55,7 +55,6 @@ func Run(view *ui.UI) error {
 		ui.MenuOptionHint("4", "清理容器资源", "容器、网络、镜像、数据卷与构建缓存")
 		ui.MenuOptionHint("5", fmt.Sprintf("卸载 %s", uninstallName), "可选择保留或永久删除数据")
 		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 
 		choice, err := view.Ask("请选择：")
 		if err != nil {
@@ -134,7 +133,6 @@ func runComposeMenu(view *ui.UI) error {
 		ui.MenuOptionHint("3", "更新运行中应用", "docker compose pull && docker compose up -d")
 		ui.MenuOptionHint("4", "重建运行中项目", "docker compose down && docker compose up -d")
 		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 
 		choice, err := view.Ask("请选择：")
 		if err != nil {
@@ -187,7 +185,6 @@ func runDockerConfigMenu(view *ui.UI) error {
 		ui.MenuOptionHint("5", "移除构建与容器代理", "用于后续构建及新建容器，无需重启 Docker")
 		ui.MenuOptionHint("6", "移除日志轮转", "恢复默认日志设置，并尝试重启 Docker")
 		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 
 		choice, err := view.Ask("请选择：")
 		if err != nil {

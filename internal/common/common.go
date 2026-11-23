@@ -27,7 +27,6 @@ func Run(view *ui.UI) error {
 		ui.MenuOptionStatus("5", "HTTP/HTTPS 代理", ui.ConfiguredBadge(status.proxy))
 		ui.MenuOptionStatusHint("6", "tmux 配置", ui.ConfiguredBadge(status.tmux), "~/.tmux.conf")
 		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 
 		choice, err := view.Ask("请选择：")
 		if err != nil {

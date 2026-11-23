@@ -82,15 +82,6 @@ func runDockerCleanup(view *ui.UI, rt runtime.Runtime) error {
 		ui.MenuTitle("容器管理", "清理容器资源")
 		printContainerDiskUsage(rt, "当前 "+rt.Display+" 磁盘占用")
 		fmt.Println()
-		for index := 1; index <= 10; index++ {
-			key := strconv.Itoa(index)
-			plan, err := cleanupPlanForRuntime(key, rt.Name)
-			if err == nil {
-				ui.MenuOptionHint(key, plan.name, rt.Name+" "+strings.Join(plan.args[:len(plan.args)-1], " "))
-			}
-		}
-		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 		volumeNote := "仅选项 10 删除；常规与深度系统清理均保留"
 		if rt.Name == "docker" {
 			volumeNote = "选项 9 仅清理匿名卷；选项 10 包括命名卷；选项 7/8 保留卷"
@@ -100,6 +91,14 @@ func runDockerCleanup(view *ui.UI, rt runtime.Runtime) error {
 			ui.CardField{Label: "卷内数据", Value: "未使用不代表无用，删除前请确认备份"},
 		)
 		fmt.Println()
+		for index := 1; index <= 10; index++ {
+			key := strconv.Itoa(index)
+			plan, err := cleanupPlanForRuntime(key, rt.Name)
+			if err == nil {
+				ui.MenuOptionHint(key, plan.name, rt.Name+" "+strings.Join(plan.args[:len(plan.args)-1], " "))
+			}
+		}
+		ui.MenuExit("0/q", "返回")
 
 		choice, err := view.Ask("请选择：")
 		if err != nil {

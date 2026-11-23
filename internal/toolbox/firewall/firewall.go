@@ -731,7 +731,6 @@ func confirmConfig(view *ui.UI, draft *string, autostartAction string, droppedAc
 		ui.MenuOptionHint("4", "自定义访问规则", "端口 / 内网 IP 范围 / 规则配置，先调整草稿")
 		ui.MenuOptionHint("5", "自定义转发规则", "转发端口 / 转发内网范围 / 规则配置，先调整草稿")
 		ui.MenuExit("0/q", "返回局域网 Web 端口选择")
-		fmt.Println()
 		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return false, err

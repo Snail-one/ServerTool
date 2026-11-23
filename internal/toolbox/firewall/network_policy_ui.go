@@ -119,6 +119,12 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 			card = "转发规则草稿（尚未保存）"
 		}
 		ui.PrintInfoCard(card, summary...)
+		if notice != "" {
+			fmt.Println()
+			ui.PrintSectionCard("提示", ui.CardField{Value: notice})
+			fmt.Println()
+			notice = ""
+		}
 		ui.MenuOptionHint("1", "端口放行", "同时设置公网和内网端口")
 		ui.MenuOptionHint("2", "公网端口", "单独设置公网开放端口")
 		ui.MenuOptionHint("3", "内网端口", "单独设置内网开放端口")
@@ -134,12 +140,6 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 		}
 		fmt.Println()
 		ui.MenuExit("0/q", "放弃草稿并返回")
-		if notice != "" {
-			fmt.Println()
-			ui.PrintSectionCard("提示", ui.CardField{Value: notice})
-			fmt.Println()
-			notice = ""
-		}
 		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return "", err

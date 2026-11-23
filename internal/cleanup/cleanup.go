@@ -59,7 +59,6 @@ func runMenu(view *ui.UI, account *system.Account, steps []cleanupStep) error {
 		ui.MenuOptionHint(dataChoice, "删除软件数据目录", shared.DataDir+"，包含全部备份和隐藏文件")
 		ui.MenuOptionHint(tempChoice, "清理中断临时文件", "临时目录、配置目录、软件数据目录及安装目录中的本工具残留")
 		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 
 		choice, err := view.Ask("请选择：")
 		if err != nil {

@@ -33,7 +33,6 @@ func showMenu() {
 	}
 	ui.MenuShortcutHint("r", "校验加载配置", "使当前配置文件立即生效")
 	ui.MenuExit("0/q", "返回主菜单")
-	fmt.Println()
 }
 
 func runFeatureSettings(view *ui.UI) error {

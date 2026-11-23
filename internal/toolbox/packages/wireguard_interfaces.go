@@ -157,27 +157,29 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 			}
 		}
 
+		if !saved && !running {
+			return shared.ErrReturnToMenu
+		}
 		canDelete := activeErr == nil && !running && !unit.active && !unit.enabled
-		if saved && (unit.available || canDelete) {
+		canRotate := saved && commandExists("wg")
+		if saved && (unit.available || canDelete || canRotate) {
 			fmt.Println()
 			if unit.available {
 				label := "开启开机自启"
 				if unit.enabled {
 					label = "关闭开机自启"
 				}
-				add("8", label, func() error { return changeWireGuardAutostart(view, name, unit) })
+				ui.MenuShortcutHint("a", label, "")
+				actions["a"] = func() error { return changeWireGuardAutostart(view, name, unit) }
 			}
 			if canDelete {
-				add("9", "删除配置", func() error { return deleteWireGuardProfile(view, name) })
+				ui.MenuShortcutHint("d", "删除配置", "")
+				actions["d"] = func() error { return deleteWireGuardProfile(view, name) }
 			}
-		}
-		if !saved && !running {
-			return shared.ErrReturnToMenu
-		}
-		if saved && commandExists("wg") {
-			fmt.Println()
-			ui.MenuShortcutHint("k", "更换密钥", "更换接口私钥和已配置的预共享密钥")
-			actions["k"] = func() error { return rotateWireGuardKeys(view, name) }
+			if canRotate {
+				ui.MenuShortcutHint("k", "更换密钥", "更换接口私钥和已配置的预共享密钥")
+				actions["k"] = func() error { return rotateWireGuardKeys(view, name) }
+			}
 		}
 		ui.MenuExit("0/q", "返回 WireGuard")
 		choice, err := view.Ask("请选择：")

@@ -36,7 +36,6 @@ func Run(view *ui.UI) error {
 		ui.MenuOptionHint("6", "修复当前 Go", "重新安装并修复 PATH")
 		ui.MenuOption("7", "清理 Go 安装残留")
 		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 
 		choice, err := view.Ask("请选择：")
 		if err != nil {
@@ -167,7 +166,6 @@ func selectRelease(view *ui.UI, releases []release, arch string) (release, error
 			ui.MenuOption("p", "上一页")
 		}
 		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 
 		raw, err := view.Ask("请选择版本：")
 		if err != nil {
@@ -259,7 +257,6 @@ func selectInstalled(view *ui.UI, versions []string, prompt string) (string, err
 			ui.MenuOptionHint(strconv.Itoa(i+1), version, versionInstallPath(version))
 		}
 		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 		raw, err := view.Ask(prompt)
 		if err != nil {
 			return "", err
@@ -355,7 +352,6 @@ func promptGoUninstall(view *ui.UI, versions []string, official bool, root strin
 					ui.MenuOptionHint(strconv.Itoa(i+1+offset), version, versionInstallPath(version))
 				}
 				ui.MenuExit("0/q", "返回")
-				fmt.Println()
 				raw, err := view.Ask("请选择卸载项：")
 				if err != nil {
 					return err

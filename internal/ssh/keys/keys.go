@@ -98,7 +98,6 @@ func ensureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		ui.MenuOption("1", "粘贴公钥")
 		ui.MenuOptionHint("2", "使用编辑器打开", "自动选择 vim / vi / nano")
 		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 
 		choice, err := view.Ask("请选择：")
 		if err != nil {
@@ -179,7 +178,6 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		ui.MenuOptionHint("3", "编辑文件", "自动选择 vim / vi / nano")
 		ui.MenuOption("4", "删除公钥")
 		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 
 		choice, err := view.Ask("请选择：")
 		if err != nil {

@@ -319,7 +319,6 @@ func confirmUnmanagedProxyOverride(view *ui.UI, bashrc string) (bool, error) {
 	ui.MenuOptionHint("1", "保留现有配置", "不修改并返回")
 	ui.MenuOptionHint("2", "替换现有配置", "删除已有代理行并写入新配置")
 	ui.MenuExit("0/q", "取消")
-	fmt.Println()
 
 	for {
 		choice, err := view.Ask("请选择：")

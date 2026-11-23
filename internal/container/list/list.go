@@ -394,7 +394,6 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 			ui.MenuOptionHint(strconv.Itoa(index+1), action.Label, command)
 		}
 		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 
 		raw, err := view.Ask("请选择：")
 		if err != nil {
@@ -1156,7 +1155,6 @@ func manageSingleProject(view *ui.UI, compose update.ComposeCommand, dir string)
 		ui.MenuOptionHint("3", "重启服务容器", compose.Display+" restart")
 		ui.MenuOptionHint("4", "删除 Compose 项目资源", compose.Display+" down")
 		ui.MenuExit("0/q", "返回")
-		fmt.Println()
 
 		raw, err := view.Ask("请选择：")
 		if err != nil {

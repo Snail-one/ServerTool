@@ -71,7 +71,6 @@ func configure(view promptReader, account *system.Account) error {
 	fmt.Println("支持 IP/主机名:端口或 [IPv6]:端口，可带 http:// 或 https://。")
 	fmt.Println("认证格式：用户名:密码@地址；密码中的 @、#、% 等字符请使用 URL 编码。")
 	ui.MenuExit("0/q", "返回")
-	fmt.Println()
 	for {
 		raw, err := view.Ask("请输入构建与容器代理地址：")
 		if err != nil {

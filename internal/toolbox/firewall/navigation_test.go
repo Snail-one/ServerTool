@@ -93,7 +93,9 @@ func TestRuleDraftShowsSaveOnlyWithChanges(t *testing.T) {
 	if !found {
 		t.Fatal("expected an updated draft")
 	}
-	if strings.Count(before, "保存并立即生效") != 1 || strings.Contains(rest, "保存并立即生效") {
+	edited, restored, found := strings.Cut(rest, "已还原本次全部修改")
+	if !found || strings.Contains(before, "保存并立即生效") ||
+		strings.Count(edited, "保存并立即生效") != 1 || strings.Contains(restored, "保存并立即生效") {
 		t.Fatalf("save should appear only between editing and restoring:\n%s", output)
 	}
 }
