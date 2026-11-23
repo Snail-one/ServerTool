@@ -56,20 +56,23 @@ func runFeatureSettings(view *ui.UI) error {
 		fields = append(fields, forwardingStateField(inspectForwarding()))
 		fields = append(fields, sshAccessStateField(), dockerBridgeStateField(), dockerCompatStateField())
 		ui.PrintInfoCard("功能状态", fields...)
+		fmt.Println()
 		switch {
 		case autostart.err != nil:
-			ui.MenuOptionHint("1", "开机自启设置", autostart.label+"，选择查看原因")
+			ui.MenuOptionHint("1", "开机自启设置", "查看状态与原因")
 		case autostart.enabled:
 			ui.MenuOptionHint("1", "关闭开机自启", "当前规则保持生效")
 		default:
-			ui.MenuOptionHint("1", "开启开机自启", "下次开机自动加载配置")
+			ui.MenuOptionHint("1", "开启开机自启", "开机时加载规则")
 		}
-		ui.MenuOptionHint("2", "ICMP 回显（Ping）", "允许 / 禁止 IPv4 / IPv6 回显请求")
-		ui.MenuOptionHint("3", "数据包统计", "开启 / 关闭规则中的 counter")
-		ui.MenuOptionHint("4", "内核转发", "分别开启 / 关闭 IPv4、IPv6 转发")
-		ui.MenuOptionHint("5", "SSH 访问", "开放 / 关闭公网、局域网 SSH 端口")
-		ui.MenuOptionHint("6", "Docker 流量放行", "网桥流量交给 Docker 自己的规则，需已安装 Docker，默认关闭")
-		ui.MenuOptionHint("7", "Docker 放行标记", "给本工具已放行的转发打标记，让 Docker 接受，需已安装 Docker")
+		ui.MenuOptionHint("2", "ICMP 回显（Ping）", "设置 IPv4 / IPv6 入站 Ping")
+		ui.MenuOptionHint("3", "数据包统计", "统计规则命中的包数与字节数")
+		ui.MenuOptionHint("4", "内核转发", "分别设置 IPv4 / IPv6 转发")
+		ui.MenuOptionHint("5", "SSH 访问", "分别设置公网 / 内网 SSH 访问")
+		fmt.Println()
+		ui.MenuOptionHint("6", "Docker 流量放行", "由 Docker 管理网桥转发")
+		ui.MenuOptionHint("7", "Docker 放行标记", "让 Docker 接受 ServerTool 已放行的转发")
+		fmt.Println()
 		ui.MenuExit("0/q", "返回防火墙管理")
 		choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "autostart", "2": "ping", "3": "counters", "4": "forwarding", "5": "ssh", "6": "docker", "7": "compat"})
 		if err != nil {
