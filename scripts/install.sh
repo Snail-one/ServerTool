@@ -150,7 +150,7 @@ detect_download_route() {
 print_download_route() {
 	if [ "$DOWNLOAD_ROUTE_NEXT" != "$DOWNLOAD_ROUTE" ]; then
 		DOWNLOAD_ROUTE="$DOWNLOAD_ROUTE_NEXT"
-		printf '访问方式：%s\n' "$DOWNLOAD_ROUTE"
+		success "访问方式：$DOWNLOAD_ROUTE"
 	fi
 }
 
