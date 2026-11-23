@@ -13,10 +13,18 @@ import (
 
 func TestWireGuardMenuInstallsAndRemovesSystemPackage(t *testing.T) {
 	setupWireGuardManagement(t)
-	installed := false
+	if err := os.MkdirAll(wireGuardConfigDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	profile := "[Interface]\nAddress = 10.77.0.1/24\n"
+	path := wireGuardProfilePath("wg0")
+	if err := os.WriteFile(path, []byte(profile), 0600); err != nil {
+		t.Fatal(err)
+	}
+	installed, running, enabled := false, false, true
 	isRoot = func() bool { return true }
 	commandExists = func(name string) bool {
-		return name == "apt-get" || installed && (name == "wg" || name == "wg-quick")
+		return name == "apt-get" || name == "systemctl" || installed && (name == "wg" || name == "wg-quick") || name == "ip"
 	}
 	commandOutput = func(name string, args ...string) (string, error) {
 		switch {
@@ -28,38 +36,71 @@ func TestWireGuardMenuInstallsAndRemovesSystemPackage(t *testing.T) {
 		case name == "wg" && reflect.DeepEqual(args, []string{"--version"}):
 			return "wireguard-tools v1.0.20250521\n", nil
 		case name == "wg" && reflect.DeepEqual(args, []string{"show", "interfaces"}):
-			return "wg0\n", nil
+			if running {
+				return "wg0\n", nil
+			}
+			return "", nil
 		case name == "wg" && reflect.DeepEqual(args, []string{"show", "all", "listen-port"}):
 			return "wg0\t51820\n", nil
 		case name == "wg" && reflect.DeepEqual(args, []string{"show", "all", "peers"}):
 			return "", nil
+		case name == "ip" && reflect.DeepEqual(args, []string{"-brief", "address", "show"}):
+			return "wg0 UNKNOWN 10.77.0.1/24\n", nil
+		case name == "systemctl" && reflect.DeepEqual(args, []string{"show", "--property=LoadState,ActiveState,UnitFileState", "wg-quick@wg0.service"}):
+			activeState, bootState := "inactive", "disabled"
+			if running {
+				activeState = "active"
+			}
+			if enabled {
+				bootState = "enabled"
+			}
+			return "LoadState=loaded\nActiveState=" + activeState + "\nUnitFileState=" + bootState + "\n", nil
 		default:
 			t.Fatalf("unexpected query: %s %v", name, args)
 			return "", nil
 		}
 	}
 	var calls [][]string
+	stopFailed := false
 	commandRun = func(name string, args ...string) error {
 		calls = append(calls, append([]string{name}, args...))
 		switch args[0] {
 		case "install":
 			installed = true
+			running = true
+		case "stop":
+			if !stopFailed {
+				stopFailed = true
+				return errors.New("模拟停止失败")
+			}
+			running = false
+		case "disable":
+			enabled = false
 		case "remove":
+			if running || enabled {
+				t.Fatal("must stop WireGuard and disable autostart before removing the package")
+			}
 			installed = false
 		}
 		return nil
 	}
-	err := RunWireGuard(newUIWithInput(t, "i\ny\n\nu\ny\n\nq\n"))
+	err := RunWireGuard(newUIWithInput(t, "i\ny\n\nu\ny\n\nu\ny\n\nq\n"))
 	if !errors.Is(err, shared.ErrReturnToMenu) || installed {
 		t.Fatalf("uninstall or navigation did not finish: installed=%v error=%v", installed, err)
 	}
 	want := [][]string{
 		{"apt-get", "update"},
 		{"apt-get", "install", "-y", "wireguard-tools"},
+		{"systemctl", "stop", "wg-quick@wg0.service"},
+		{"systemctl", "stop", "wg-quick@wg0.service"},
+		{"systemctl", "disable", "wg-quick@wg0.service"},
 		{"apt-get", "remove", "-y", "wireguard-tools"},
 	}
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("package operations: %v; want %v", calls, want)
+	}
+	if shared.ReadFileString(path) != profile {
+		t.Fatal("uninstall must preserve the interface profile")
 	}
 }
 

@@ -2,6 +2,7 @@ package packages
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -83,7 +84,7 @@ func RunWireGuard(view *ui.UI) error {
 			ui.MenuShortcutHint("i", "安装 WireGuard 工具", "使用系统软件源安装 wg 和 wg-quick")
 		}
 		if tools.wg || tools.quick {
-			ui.MenuShortcutHint("u", "卸载 WireGuard 工具", "保留 /etc/wireguard 配置")
+			ui.MenuShortcutHint("u", "卸载 WireGuard 工具", "停止接口并关闭自启，保留配置")
 		}
 		ui.MenuOption("r", "刷新状态")
 		ui.MenuExit("0/q", "返回主菜单")
@@ -173,15 +174,28 @@ func uninstallWireGuard(view *ui.UI) error {
 	if len(names) == 0 {
 		return fmt.Errorf("系统包管理器未登记 WireGuard 工具，请按原安装方式卸载")
 	}
+	targets, err := wireGuardUninstallTargets()
+	if err != nil {
+		return err
+	}
 	fields := []ui.CardField{
 		{Label: "软件包", Value: strings.Join(names, "、")},
 		{Label: "配置目录", Value: "保留 /etc/wireguard"},
 	}
-	if commandExists("wg") {
-		interfaces, err := commandOutput("wg", "show", "interfaces")
-		if active := strings.Fields(interfaces); err == nil && len(active) > 0 {
-			fields = append(fields, ui.CardField{Label: "当前接口", Value: strings.Join(active, "、"), Detail: "卸载软件包可能影响这些接口"})
+	var stopping, disabling []string
+	for _, target := range targets {
+		if target.active || target.unit.active {
+			stopping = append(stopping, target.name)
 		}
+		if target.unit.enabled {
+			disabling = append(disabling, target.name)
+		}
+	}
+	if len(stopping) > 0 {
+		fields = append(fields, ui.CardField{Label: "停止接口", Value: strings.Join(stopping, "、"), Detail: "通过这些接口建立的连接会断开"})
+	}
+	if len(disabling) > 0 {
+		fields = append(fields, ui.CardField{Label: "关闭开机自启", Value: strings.Join(disabling, "、")})
 	}
 	ui.PrintWarningCard("卸载 WireGuard 工具", fields...)
 	confirmed, err := view.Confirm("确认卸载？(y/N，0/q 返回)：")
@@ -190,6 +204,23 @@ func uninstallWireGuard(view *ui.UI) error {
 	}
 	if !confirmed {
 		return shared.ErrReturnToMenu
+	}
+	current, err := wireGuardUninstallTargets()
+	if err != nil {
+		return err
+	}
+	if !slices.Equal(current, targets) {
+		return fmt.Errorf("WireGuard 接口或自启状态已变化，请重新确认卸载")
+	}
+	for _, target := range targets {
+		if err := stopWireGuardForUninstall(target); err != nil {
+			return fmt.Errorf("%s 停止失败，软件包未卸载: %w", target.name, err)
+		}
+		if target.unit.enabled {
+			if err := setWireGuardAutostart(target.name, target.unit, "disable"); err != nil {
+				return fmt.Errorf("%s 关闭开机自启失败，软件包未卸载: %w", target.name, err)
+			}
+		}
 	}
 
 	args := []string{"remove", "-y"}
@@ -217,4 +248,63 @@ func uninstallWireGuard(view *ui.UI) error {
 	}
 	ui.PrintSuccessCard("WireGuard 软件包已卸载")
 	return nil
+}
+
+type wireGuardUninstallTarget struct {
+	wireGuardInterface
+	unit wireGuardUnit
+}
+
+func wireGuardUninstallTargets() ([]wireGuardUninstallTarget, error) {
+	var active map[string]bool
+	if commandExists("wg") {
+		var err error
+		active, err = wireGuardActiveNames()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		output, err := commandOutput("ip", "-o", "link", "show", "type", "wireguard")
+		if err != nil {
+			return nil, fmt.Errorf("无法确认 WireGuard 接口是否已停止: %w", err)
+		}
+		if strings.TrimSpace(output) != "" {
+			return nil, fmt.Errorf("有 WireGuard 接口存在且缺少 wg，请恢复工具或先停止接口")
+		}
+	}
+	profiles, err := wireGuardProfiles(active)
+	if err != nil {
+		return nil, err
+	}
+	targets := make([]wireGuardUninstallTarget, 0, len(profiles))
+	for _, profile := range profiles {
+		unit := inspectWireGuardUnit(profile.name)
+		if profile.active && !unit.active && (!profile.saved || !commandExists("wg-quick")) {
+			return nil, fmt.Errorf("无法自动停止 %s，请先使用启动该接口的方式停止再卸载", profile.name)
+		}
+		targets = append(targets, wireGuardUninstallTarget{wireGuardInterface: profile, unit: unit})
+	}
+	return targets, nil
+}
+
+func stopWireGuardForUninstall(target wireGuardUninstallTarget) error {
+	if !target.active && !target.unit.active {
+		return nil
+	}
+	if target.saved {
+		data, err := readWireGuardProfile(target.name)
+		if err != nil {
+			return err
+		}
+		config, err := parseWireGuardConfig(data)
+		if err != nil {
+			return err
+		}
+		if strings.EqualFold(wireGuardValue(config.device, "saveconfig"), "true") {
+			if err := backupWireGuardProfile(wireGuardProfilePath(target.name)); err != nil {
+				return err
+			}
+		}
+	}
+	return applyWireGuardRuntime(target.name, "stop", target.unit.active)
 }

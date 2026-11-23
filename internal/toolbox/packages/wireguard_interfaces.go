@@ -45,11 +45,16 @@ func wireGuardActiveNames() (map[string]bool, error) {
 }
 
 func wireGuardInterfaces() ([]wireGuardInterface, error, error) {
+	active, activeErr := wireGuardActiveNames()
+	profiles, readErr := wireGuardProfiles(active)
+	return profiles, activeErr, readErr
+}
+
+func wireGuardProfiles(active map[string]bool) ([]wireGuardInterface, error) {
 	saved, readErr := os.ReadDir(wireGuardConfigDir)
 	if os.IsNotExist(readErr) {
 		readErr = nil
 	}
-	active, activeErr := wireGuardActiveNames()
 	profiles := make(map[string]wireGuardInterface)
 	for name := range active {
 		profiles[name] = wireGuardInterface{name: name, active: true}
@@ -65,7 +70,7 @@ func wireGuardInterfaces() ([]wireGuardInterface, error, error) {
 		result = append(result, profile)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].name < result[j].name })
-	return result, activeErr, readErr
+	return result, readErr
 }
 
 func wireGuardInterfaceSummaries(profiles []wireGuardInterface) []ui.CardField {
@@ -565,6 +570,14 @@ func changeWireGuardAutostart(view *ui.UI, name string, before wireGuardUnit) er
 	if inspectWireGuardUnit(name) != before {
 		return fmt.Errorf("服务状态已变化，请返回后重试")
 	}
+	if err := setWireGuardAutostart(name, before, action); err != nil {
+		return err
+	}
+	ui.PrintSuccessCard("WireGuard 开机自启" + label)
+	return nil
+}
+
+func setWireGuardAutostart(name string, before wireGuardUnit, action string) error {
 	args := []string{action, wireGuardUnitName(name)}
 	if before.state == "enabled-runtime" {
 		args = append([]string{"--runtime"}, args...)
@@ -574,9 +587,8 @@ func changeWireGuardAutostart(view *ui.UI, name string, before wireGuardUnit) er
 	}
 	after := inspectWireGuardUnit(name)
 	if !after.available || after.enabled != (action == "enable") {
-		return fmt.Errorf("无法确认 WireGuard 开机自启已%s", strings.TrimPrefix(label, "已"))
+		return fmt.Errorf("无法确认 WireGuard 开机自启设置已更新")
 	}
-	ui.PrintSuccessCard("WireGuard 开机自启" + label)
 	return nil
 }
 
