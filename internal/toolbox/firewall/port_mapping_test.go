@@ -197,3 +197,91 @@ func TestPortMappingCancelReturnsToList(t *testing.T) {
 		t.Fatal("canceling the operation must preserve the saved mappings")
 	}
 }
+
+func TestPortMappingSNATSwitch(t *testing.T) {
+	setupTest(t)
+	ruleTestConfig(t, nil)
+	calls := acceptRuleCommands(t)
+	run := func(input string) {
+		t.Helper()
+		capturePortOutput(t, func() {
+			if err := runPortMappingManager(inputUI(t, input)); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	read := func() (portMapping, string) {
+		t.Helper()
+		content := shared.ReadFileString(configPath)
+		mappings, err := readPortMappings(content)
+		if err != nil || len(mappings) != 1 {
+			t.Fatalf("mappings: %v, error: %v", mappings, err)
+		}
+		return mappings[0], content
+	}
+
+	run("1\nudp *:8211 10.77.0.2:8211 eth0 192.0.2.0/24\ny\n")
+	run("5\n1\nwg0 10.77.0.1\ny\n")
+	mapping, content := read()
+	want := `oifname "wg0" ct direction original ct status dnat ip daddr 10.77.0.2 udp dport 8211 ct original ip saddr 192.0.2.0/24 ct original proto-dst 8211 snat ip to 10.77.0.1`
+	if !mapping.snatEnabled() || !strings.Contains(content, want) || !strings.Contains(content, "type nat hook postrouting priority 101") {
+		t.Fatalf("missing SNAT rule or settings")
+	}
+
+	run("5\n1\n1\ny\n")
+	mapping, content = read()
+	if !mapping.snat.disabled || strings.Contains(content, "hook postrouting") || !strings.Contains(content, "dnat ip to 10.77.0.2:8211") {
+		t.Fatal("turning off SNAT must retain its settings and the DNAT rule")
+	}
+
+	run("5\n1\n1\ny\n")
+	run("4\n1\ny\n")
+	mapping, content = read()
+	if mapping.snat.disabled || !mapping.disabled || !mapping.snat.address.IsValid() ||
+		strings.Contains(content, "hook postrouting") || strings.Contains(content, "dnat ip to") {
+		t.Fatal("disabling the mapping must suspend SNAT and preserve its switch")
+	}
+
+	run("4\n1\ny\n")
+	run("3\n1\nudp *:8211 10.77.0.3:8211 eth0 192.0.2.0/24\ny\n")
+	mapping, content = read()
+	if !mapping.snatEnabled() || !strings.Contains(content, "ip daddr 10.77.0.3 udp dport 8211") || strings.Contains(content, "10.77.0.2") {
+		t.Fatal("editing the target must update the associated SNAT")
+	}
+
+	run("2\n1\ny\n")
+	if content := shared.ReadFileString(configPath); strings.Contains(content, portMappingsBegin) || strings.Contains(content, "hook postrouting") {
+		t.Fatal("deleting the last mapping must also remove its SNAT")
+	}
+	if len(*calls) != 16 {
+		t.Fatalf("expected eight changes, each validated and loaded, got %v", *calls)
+	}
+}
+
+func TestPortMappingSNATRejectsAmbiguousIngress(t *testing.T) {
+	config := portMappingConfig{
+		Protocol: "tcp", From: "192.0.2.10:80", To: "192.168.1.20:80", Iface: "eth0",
+		SNAT: &portMappingSNATConfig{Iface: "wg0", Address: "192.168.1.1"},
+	}
+	first, err := config.parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.SNAT = nil
+	config.Iface = "eth1"
+	second, err := config.parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.overlaps(second) || validatePortMappingSNAT([]portMapping{first, second}) == nil {
+		t.Fatal("DNAT can distinguish interfaces at ingress, but the SNAT tuples are ambiguous")
+	}
+	config.From = "192.0.2.10:8080"
+	second, err = config.parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validatePortMappingSNAT([]portMapping{first, second}); err != nil {
+		t.Fatalf("distinct original destination ports should work: %v", err)
+	}
+}

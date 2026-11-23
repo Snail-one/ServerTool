@@ -41,21 +41,23 @@ type portMapping struct {
 	iface    string
 	source   netip.Prefix
 	disabled bool
+	snat     portMappingSNAT
 }
 
 type portMappingConfig struct {
-	Protocol string `json:"protocol"`
-	From     string `json:"from"`
-	To       string `json:"to"`
-	Iface    string `json:"interface,omitempty"`
-	Source   string `json:"source,omitempty"`
-	Disabled bool   `json:"disabled,omitempty"`
+	Protocol string                 `json:"protocol"`
+	From     string                 `json:"from"`
+	To       string                 `json:"to"`
+	Iface    string                 `json:"interface,omitempty"`
+	Source   string                 `json:"source,omitempty"`
+	Disabled bool                   `json:"disabled,omitempty"`
+	SNAT     *portMappingSNATConfig `json:"snat,omitempty"`
 }
 
 func (mapping portMapping) config() portMappingConfig {
 	value := portMappingConfig{
 		Protocol: mapping.protocol, From: mapping.from.String(), To: mapping.to.String(),
-		Iface: mapping.iface, Disabled: mapping.disabled,
+		Iface: mapping.iface, Disabled: mapping.disabled, SNAT: mapping.snat.config(),
 	}
 	if mapping.source.IsValid() {
 		value.Source = mapping.source.String()
@@ -112,7 +114,11 @@ func (value portMappingConfig) parse() (portMapping, error) {
 		}
 		source = source.Masked()
 	}
-	return portMapping{protocol: protocol, from: from, to: to, iface: iface, source: source, disabled: value.Disabled}, nil
+	snat, err := value.SNAT.parse(to.addr)
+	if err != nil {
+		return portMapping{}, err
+	}
+	return portMapping{protocol: protocol, from: from, to: to, iface: iface, source: source, disabled: value.Disabled, snat: snat}, nil
 }
 
 func parseMappingEndpoint(raw string, allowAny bool) (mappingEndpoint, error) {
@@ -123,7 +129,7 @@ func parseMappingEndpoint(raw string, allowAny bool) (mappingEndpoint, error) {
 	var addr netip.Addr
 	if host != "*" || !allowAny {
 		addr, err = netip.ParseAddr(host)
-		if err != nil || addr.Is4In6() || addr.Zone() != "" || !(addr.IsGlobalUnicast() || addr.IsLoopback() || addr.IsLinkLocalUnicast()) {
+		if err != nil || !validMappingAddress(addr) {
 			return mappingEndpoint{}, fmt.Errorf("请输入有效的单播 IP")
 		}
 	}
@@ -132,6 +138,10 @@ func parseMappingEndpoint(raw string, allowAny bool) (mappingEndpoint, error) {
 		return mappingEndpoint{}, err
 	}
 	return mappingEndpoint{addr: addr, ports: portInterval{first, last}}, nil
+}
+
+func validMappingAddress(addr netip.Addr) bool {
+	return !addr.Is4In6() && addr.Zone() == "" && (addr.IsGlobalUnicast() || addr.IsLoopback() || addr.IsLinkLocalUnicast())
 }
 
 func mappingPortText(ports portInterval) string {
@@ -160,6 +170,9 @@ func (mapping portMapping) description() string {
 	if mapping.disabled {
 		fields = append(fields, "已停用")
 	}
+	if mapping.snat.address.IsValid() {
+		fields = append(fields, "SNAT "+mapping.snatDescription())
+	}
 	return strings.Join(fields, " · ")
 }
 
@@ -172,6 +185,13 @@ func (mapping portMapping) overlaps(other portMapping) bool {
 		mapping.from.ports.first <= other.from.ports.last && other.from.ports.first <= mapping.from.ports.last
 }
 
+func (mapping portMapping) protocols() []string {
+	if mapping.protocol == "both" {
+		return []string{"tcp", "udp"}
+	}
+	return []string{mapping.protocol}
+}
+
 func (mapping portMapping) writeRules(block *strings.Builder) {
 	if mapping.disabled {
 		return
@@ -180,11 +200,7 @@ func (mapping portMapping) writeRules(block *strings.Builder) {
 	if mapping.to.addr.Is6() {
 		family, nfproto = "ip6", "ipv6"
 	}
-	protocols := []string{mapping.protocol}
-	if mapping.protocol == "both" {
-		protocols = []string{"tcp", "udp"}
-	}
-	for _, protocol := range protocols {
+	for _, protocol := range mapping.protocols() {
 		block.WriteString("        ")
 		if mapping.iface != "" {
 			fmt.Fprintf(block, "iifname %q ", mapping.iface)
@@ -222,7 +238,7 @@ func (mapping portMapping) writeRules(block *strings.Builder) {
 }
 
 func portMappingBlock(mappings []portMapping, metadata bool) string {
-	var block strings.Builder
+	var block, snatRules strings.Builder
 	block.WriteString(portMappingsBegin + "\n" + portMappingHeader)
 	for _, mapping := range mappings {
 		if metadata {
@@ -230,8 +246,15 @@ func portMappingBlock(mappings []portMapping, metadata bool) string {
 			block.WriteString(portMappingMetadata + string(value) + "\n")
 		}
 		mapping.writeRules(&block)
+		mapping.writeSNATRules(&snatRules)
 	}
-	block.WriteString("    }\n" + portMappingsEnd + "\n")
+	block.WriteString("    }\n")
+	if snatRules.Len() > 0 {
+		block.WriteString("    chain port_mapping_snat {\n        type nat hook postrouting priority 101; policy accept;\n")
+		block.WriteString(snatRules.String())
+		block.WriteString("    }\n")
+	}
+	block.WriteString(portMappingsEnd + "\n")
 	return block.String()
 }
 
@@ -328,6 +351,9 @@ func readLegacyPortMapping(line string) (portMapping, error) {
 }
 
 func withPortMappings(content string, mappings []portMapping) (string, error) {
+	if err := validatePortMappingSNAT(mappings); err != nil {
+		return "", err
+	}
 	if len(mappings) == 0 && !strings.Contains(content, portMappingsBegin) {
 		return content, nil
 	}
@@ -376,7 +402,8 @@ func runPortMappingManager(view *ui.UI) error {
 			ui.MenuOption("2", "删除端口映射")
 			ui.MenuOption("3", "编辑端口映射")
 			ui.MenuOption("4", "启用或停用端口映射")
-			options["2"], options["3"], options["4"] = "删除", "编辑", "切换"
+			ui.MenuOption("5", "SNAT 设置")
+			options["2"], options["3"], options["4"], options["5"] = "删除", "编辑", "切换", "SNAT"
 		}
 		ui.MenuExit("0/q", "返回防火墙管理")
 		action, err := askRuleChoice(view, "请选择", "", options)
@@ -416,7 +443,7 @@ func changePortMapping(view *ui.UI, version configVersion, mappings []portMappin
 		if action == "编辑" {
 			ui.PrintInfoCard("正在编辑", ui.CardField{Label: "当前配置", Value: current.description()})
 		}
-		updated, err := askPortMapping(view, current.disabled)
+		updated, err := askPortMapping(view, current)
 		if err != nil {
 			return err
 		}
@@ -424,6 +451,16 @@ func changePortMapping(view *ui.UI, version configVersion, mappings []portMappin
 		if action == "编辑" && mapping == current {
 			return shared.ErrReturnToMenu
 		}
+	case "SNAT":
+		updated, change, err := askPortMappingSNAT(view, current)
+		if err != nil {
+			return err
+		}
+		if updated == current.snat {
+			return shared.ErrReturnToMenu
+		}
+		mapping = current
+		mapping.snat, action = updated, change
 	case "切换":
 		mapping = current
 		mapping.disabled = !mapping.disabled
@@ -449,6 +486,11 @@ func changePortMapping(view *ui.UI, version configVersion, mappings []portMappin
 		}
 	}
 
+	updated, err := withPortMappings(string(version.content), mappings)
+	if err != nil {
+		return err
+	}
+
 	ui.PrintInfoCard("确认端口映射变更",
 		ui.CardField{Label: "操作", Value: action + " " + mapping.description()},
 		ui.CardField{Label: "转发条件", Value: "远程目标需要开启内核转发、放行转发后的目标端口，回包须经本机"},
@@ -461,10 +503,6 @@ func changePortMapping(view *ui.UI, version configVersion, mappings []portMappin
 	if !confirmed {
 		return shared.ErrReturnToMenu
 	}
-	updated, err := withPortMappings(string(version.content), mappings)
-	if err != nil {
-		return err
-	}
 	if err := writeConfig(updated, version); err != nil {
 		return err
 	}
@@ -475,7 +513,7 @@ func changePortMapping(view *ui.UI, version configVersion, mappings []portMappin
 	return nil
 }
 
-func askPortMapping(view *ui.UI, disabled bool) (portMapping, error) {
+func askPortMapping(view *ui.UI, current portMapping) (portMapping, error) {
 	ui.PrintSectionCard("输入格式",
 		ui.CardField{Label: "顺序", Value: "协议 本机IP:端口 目标IP:端口 [入站网卡] [来源IP/CIDR]", Detail: "用空格分开，方括号内的两个字段可省略"},
 		ui.CardField{Label: "协议", Value: "tcp、udp、both（TCP 和 UDP）"},
@@ -501,7 +539,7 @@ func askPortMapping(view *ui.UI, disabled bool) (portMapping, error) {
 	if len(fields) < 3 || len(fields) > 5 {
 		return portMapping{}, fmt.Errorf("请输入协议、本机端点、目标端点和可选的入站网卡、来源地址")
 	}
-	config := portMappingConfig{Protocol: fields[0], From: fields[1], To: fields[2], Disabled: disabled}
+	config := portMappingConfig{Protocol: fields[0], From: fields[1], To: fields[2], Disabled: current.disabled, SNAT: current.snat.config()}
 	if len(fields) >= 4 && fields[3] != "-" {
 		config.Iface = fields[3]
 	}
