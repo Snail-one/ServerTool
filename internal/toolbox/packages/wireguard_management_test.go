@@ -76,9 +76,15 @@ func TestWireGuardConfigAndPeers(t *testing.T) {
 		t.Fatal("configuration permissions must be 0600")
 	}
 
-	input := "3\ng\n" + peerKey + " 10.77.0.2/32 vpn.example.test:51820 25\ny\n\nq\nq\n"
-	if err := runWireGuardInterface(newUIWithInput(t, input), "wg0"); !errors.Is(err, shared.ErrReturnToMenu) {
-		t.Fatal(err)
+	input := "1\ng\n" + peerKey + " 10.77.0.2/32 vpn.example.test:51820 25\ny\n\nq\nq\n"
+	managerOutput := wireGuardTestOutput(t, func() {
+		if err := runWireGuardInterface(newUIWithInput(t, input), "wg0"); !errors.Is(err, shared.ErrReturnToMenu) {
+			t.Fatal(err)
+		}
+	})
+	if !strings.Contains(managerOutput, "已保存对端：0 个") || !strings.Contains(managerOutput, "已保存对端：1 个") ||
+		!strings.Contains(managerOutput, "已配置预共享密钥：1 个") {
+		t.Fatal("peer overview should show the updated counts after adding a peer")
 	}
 	data, err := readWireGuardProfile("wg0")
 	if err != nil {
@@ -193,7 +199,7 @@ func TestWireGuardRuntimeAndBootControls(t *testing.T) {
 	if strings.Contains(stoppedMenu, "3   添加对端") || strings.Contains(stoppedMenu, "g   快速配置") {
 		t.Fatal("quick configuration belongs in the peer management menu")
 	}
-	for _, item := range []string{"1   查看配置", "2   编辑配置", "3   管理对端", "4   启动接口", "a   开启开机自启", "k   更换密钥", "d   删除配置"} {
+	for _, item := range []string{"1   管理对端", "2   查看配置", "3   编辑配置", "r   启动接口", "a   开启开机自启", "k   更换密钥", "x   删除配置"} {
 		position := strings.Index(stoppedMenu, item)
 		if position <= offset {
 			t.Fatalf("menu item missing or out of order: %q", item)
@@ -202,7 +208,7 @@ func TestWireGuardRuntimeAndBootControls(t *testing.T) {
 	}
 
 	// The profile submenu should still be usable after each successful action.
-	input := "4\ny\n\nC\n\nA\ny\n\n5\ny\n\n4\ny\n\na\ny\n\nq\n"
+	input := "r\ny\n\nC\n\nA\ny\n\nd\ny\n\nr\ny\n\na\ny\n\nq\n"
 	var err error
 	output := wireGuardTestOutput(t, func() {
 		err = runWireGuardInterface(newUIWithInput(t, input), "wg0")
@@ -552,7 +558,7 @@ func TestWireGuardUsesWGQuickWithoutSystemd(t *testing.T) {
 	if !reflect.DeepEqual(operations, []string{"up", "down", "up", "down"}) || active {
 		t.Fatalf("unexpected operations or runtime state: %v, active: %t", operations, active)
 	}
-	if err := runWireGuardInterface(newUIWithInput(t, "d\ny\n\n"), "wg0"); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := runWireGuardInterface(newUIWithInput(t, "x\ny\n\n"), "wg0"); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(wireGuardProfilePath("wg0")); !os.IsNotExist(err) {

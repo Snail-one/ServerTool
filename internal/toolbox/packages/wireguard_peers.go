@@ -44,9 +44,17 @@ func manageWireGuardPeers(view *ui.UI, name string) error {
 		}
 		ui.ClearScreen()
 		ui.MenuTitle("WireGuard", name, "管理对端")
-		if len(config.peers) == 0 {
-			ui.PrintInfoCard("暂无对端")
+		withPSK := 0
+		for _, peer := range config.peers {
+			if wireGuardValue(peer, "presharedkey") != "" {
+				withPSK++
+			}
 		}
+		ui.PrintInfoCard("对端概况",
+			ui.CardField{Label: "已保存对端", Value: fmt.Sprintf("%d 个", len(config.peers))},
+			ui.CardField{Label: "已配置预共享密钥", Value: fmt.Sprintf("%d 个", withPSK)},
+		)
+		fmt.Println()
 		if notice != "" {
 			ui.PrintField("提示", notice)
 			notice = ""
@@ -54,7 +62,9 @@ func manageWireGuardPeers(view *ui.UI, name string) error {
 		for i, peer := range config.peers {
 			ui.MenuOptionHint(strconv.Itoa(i+1), fmt.Sprintf("对端 %d", i+1), wireGuardPeerValue(peer, "AllowedIPs"))
 		}
-		fmt.Println()
+		if len(config.peers) > 0 {
+			fmt.Println()
+		}
 		ui.MenuShortcutHint("g", "快速配置", "复制本机配置或粘贴对端配置")
 		ui.MenuExit("0/q", "返回接口菜单")
 		choice, err := view.Ask("请选择对端或操作：")

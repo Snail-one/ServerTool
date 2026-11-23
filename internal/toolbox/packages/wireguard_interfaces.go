@@ -233,19 +233,23 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 			actions[key] = action
 		}
 		if saved {
-			add("1", "查看配置", func() error { return showWireGuardProfile(name) })
-			add("2", "编辑配置", func() error { return editWireGuardProfile(view, name) })
-			add("3", "管理对端", func() error { return manageWireGuardPeers(view, name) })
+			add("1", "管理对端", func() error { return manageWireGuardPeers(view, name) })
+			add("2", "查看配置", func() error { return showWireGuardProfile(name) })
+			add("3", "编辑配置", func() error { return editWireGuardProfile(view, name) })
 		}
 
 		canChangeRuntime := saved && activeErr == nil && commandExists("wg-quick")
 		if canChangeRuntime {
 			fmt.Println()
+			label, action := "启动接口", "start"
 			if running {
-				add("4", "停止接口", func() error { return changeWireGuardRuntime(view, name, "stop") })
-				add("5", "重启接口", func() error { return changeWireGuardRuntime(view, name, "restart") })
-			} else {
-				add("4", "启动接口", func() error { return changeWireGuardRuntime(view, name, "start") })
+				label, action = "停止接口", "stop"
+			}
+			ui.MenuShortcutHint("r", label, "")
+			actions["r"] = func() error { return changeWireGuardRuntime(view, name, action) }
+			if running {
+				ui.MenuShortcutHint("d", "重启接口", "")
+				actions["d"] = func() error { return changeWireGuardRuntime(view, name, "restart") }
 			}
 		}
 
@@ -273,8 +277,8 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 				actions["k"] = func() error { return rotateWireGuardKeys(view, name) }
 			}
 			if canDelete {
-				ui.MenuShortcutHint("d", "删除配置", "")
-				actions["d"] = func() error { return deleteWireGuardProfile(view, name) }
+				ui.MenuShortcutHint("x", "删除配置", "")
+				actions["x"] = func() error { return deleteWireGuardProfile(view, name) }
 			}
 		}
 		ui.MenuExit("0/q", "返回 WireGuard")
