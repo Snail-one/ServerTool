@@ -36,8 +36,13 @@ func TestWireGuardConfigAndPeers(t *testing.T) {
 	preshared := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{3}, 32))
 	commandExists = func(name string) bool { return name == "vim" }
 	commandOutput = func(name string, args ...string) (string, error) {
-		if name == "wg" && reflect.DeepEqual(args, []string{"genkey"}) {
-			return privateKey + "\n", nil
+		if name == "wg" {
+			switch {
+			case reflect.DeepEqual(args, []string{"genkey"}):
+				return privateKey + "\n", nil
+			case reflect.DeepEqual(args, []string{"genpsk"}):
+				return preshared + "\n", nil
+			}
 		}
 		t.Fatalf("unexpected command: %s %v", name, args)
 		return "", nil
@@ -72,9 +77,8 @@ func TestWireGuardConfigAndPeers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content := append(data, []byte("PresharedKey = "+preshared+"\n")...)
-	if err := os.WriteFile(wireGuardProfilePath("wg0"), content, 0600); err != nil {
-		t.Fatal(err)
+	if !bytes.Contains(data, []byte("PresharedKey = "+preshared+"\n")) {
+		t.Fatal("adding a peer must save its generated PSK")
 	}
 	output := wireGuardTestOutput(t, func() {
 		if err := showWireGuardProfile("wg0"); err != nil {
@@ -84,7 +88,7 @@ func TestWireGuardConfigAndPeers(t *testing.T) {
 	if !strings.Contains(output, "WireGuard  ›  wg0  ›  查看配置") {
 		t.Fatal("configuration details must have their own page title")
 	}
-	if !strings.Contains(output, peerKey) || !strings.Contains(output, "本机公钥") ||
+	if !strings.Contains(output, peerKey) || !strings.Contains(output, "本机公钥") || !strings.Contains(output, "预共享密钥：已配置") ||
 		strings.Contains(output, privateKey) || strings.Contains(output, preshared) {
 		t.Fatal("profile display did not hide both secret keys or omitted public keys")
 	}
@@ -155,7 +159,7 @@ func TestWireGuardRuntimeAndBootControls(t *testing.T) {
 		}
 	})
 	offset := -1
-	for _, item := range []string{"1   查看配置", "2   编辑配置", "3   添加对端", "4   删除对端", "5   启动接口", "8   开启开机自启", "9   删除配置"} {
+	for _, item := range []string{"1   查看配置", "2   编辑配置", "3   添加对端", "4   删除对端", "5   启动接口", "8   开启开机自启", "9   删除配置", "k   更换密钥"} {
 		position := strings.Index(stoppedMenu, item)
 		if position <= offset {
 			t.Fatalf("menu item missing or out of order: %q", item)
@@ -169,6 +173,66 @@ func TestWireGuardRuntimeAndBootControls(t *testing.T) {
 	want := []string{"start", "enable", "restart", "stop", "disable"}
 	if !errors.Is(err, shared.ErrReturnToMenu) || !reflect.DeepEqual(actions, want) || up || enabled {
 		t.Fatalf("actions: %v, running: %v, autostart: %v, error: %v", actions, up, enabled, err)
+	}
+}
+
+func TestWireGuardRotateKeysFromInterfaceMenu(t *testing.T) {
+	setupWireGuardManagement(t)
+	key := func(value byte) string {
+		return base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{value}, 32))
+	}
+	if err := os.MkdirAll(wireGuardConfigDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := wireGuardProfilePath("wg0")
+	before := "[Interface]\nPrivateKey = " + key(1) + " # comment\nAddress = 10.77.0.1/24\n" +
+		"\n[Peer]\nPublicKey = " + key(2) + "\nPresharedKey = " + key(3) + "\nAllowedIPs = 10.77.0.2/32\n" +
+		"\n[Peer]\nPublicKey = " + key(4) + "\nPresharedKey = " + key(5) + "\nAllowedIPs = 10.77.0.4/32\n" +
+		"\n[Peer]\nPublicKey = " + key(6) + "\nAllowedIPs = 10.77.0.6/32\n"
+	if err := os.WriteFile(path, []byte(before), 0600); err != nil {
+		t.Fatal(err)
+	}
+	commandExists = func(name string) bool { return name == "wg" }
+	pskCalls := 0
+	commandOutput = func(name string, args ...string) (string, error) {
+		if name == "wg" {
+			switch strings.Join(args, " ") {
+			case "show interfaces":
+				return "wg0\n", nil
+			case "genkey":
+				return key(7) + "\n", nil
+			case "genpsk":
+				pskCalls++
+				return key(byte(7+pskCalls)) + "\n", nil
+			}
+		}
+		t.Fatalf("unexpected command: %s %v", name, args)
+		return "", nil
+	}
+	commandRun = func(name string, args ...string) error {
+		t.Fatalf("key rotation must only save the configuration: %s %v", name, args)
+		return nil
+	}
+	if err := rotateWireGuardKeys(newUIWithInput(t, "\n"), "wg0"); !errors.Is(err, shared.ErrReturnToMenu) {
+		t.Fatal(err)
+	}
+	if after := shared.ReadFileString(path); after != before {
+		t.Fatal("declining key rotation must keep the old configuration")
+	}
+	pskCalls = 0
+	output := wireGuardTestOutput(t, func() {
+		if err := runWireGuardInterface(newUIWithInput(t, "K\ny\n\nq\n"), "wg0"); !errors.Is(err, shared.ErrReturnToMenu) {
+			t.Fatal(err)
+		}
+	})
+	want := strings.NewReplacer(key(1), key(7), key(3), key(8), key(5), key(9)).Replace(before)
+	if after := shared.ReadFileString(path); after != want || pskCalls != 2 {
+		t.Fatal("rotation must change just the private key and generate a separate key for each configured PSK")
+	}
+	for _, value := range []byte{1, 3, 5, 7, 8, 9} {
+		if strings.Contains(output, key(value)) {
+			t.Fatal("rotation displayed a secret key")
+		}
 	}
 }
 
@@ -263,7 +327,7 @@ func TestWireGuardEnterUsesDefaults(t *testing.T) {
 		return nil
 	}
 	output := wireGuardTestOutput(t, func() {
-		if err := createWireGuardProfile(newUIWithInput(t, "\ny\n")); err != nil {
+		if err := createWireGuardProfile(newUIWithInput(t, "\n\ny\n")); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -285,5 +349,83 @@ func TestWireGuardEnterUsesDefaults(t *testing.T) {
 	}
 	if err := createWireGuardProfile(newUIWithInput(t, "\n")); err == nil || generated != 1 {
 		t.Fatal("default setup must reject an existing wg0 profile")
+	}
+}
+
+func TestWireGuardNewProfileWithFirstPeerPSK(t *testing.T) {
+	for _, tc := range []struct {
+		name, suffix string
+		generatePSK  bool
+	}{
+		{"generated", "", true},
+		{"skipped", " --no-psk", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setupWireGuardManagement(t)
+			privateKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
+			peerKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32))
+			psk := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{3}, 32))
+			commandOutput = func(name string, args ...string) (string, error) {
+				switch {
+				case name == "wg" && reflect.DeepEqual(args, []string{"genkey"}):
+					return privateKey + "\n", nil
+				case name == "wg" && reflect.DeepEqual(args, []string{"genpsk"}) && tc.generatePSK:
+					return psk + "\n", nil
+				default:
+					t.Fatalf("unexpected command: %s %v", name, args)
+					return "", nil
+				}
+			}
+			output := wireGuardTestOutput(t, func() {
+				view := newUIWithInput(t, "\n"+peerKey+" 10.77.0.2/32"+tc.suffix+"\ny\n")
+				if err := createWireGuardProfile(view); err != nil {
+					t.Fatal(err)
+				}
+			})
+			after, err := readWireGuardProfile("wg0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			config, err := parseWireGuardConfig(after)
+			if err != nil || len(config.peers) != 1 {
+				t.Fatalf("expected exactly one peer: %v", err)
+			}
+			want := ""
+			if tc.generatePSK {
+				want = psk
+			}
+			if wireGuardValue(config.peers[0], "presharedkey") != want || strings.Contains(output, psk) || strings.Contains(output, privateKey) {
+				t.Fatal("PSK was saved incorrectly or a secret was displayed")
+			}
+		})
+	}
+}
+
+func TestWireGuardEditedTemplatePreservesProvidedPSK(t *testing.T) {
+	setupWireGuardManagement(t)
+	peer1 := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32))
+	peer2 := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{3}, 32))
+	existing := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{4}, 32))
+	generated := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{5}, 32))
+	calls := 0
+	commandOutput = func(name string, args ...string) (string, error) {
+		if name != "wg" || !reflect.DeepEqual(args, []string{"genpsk"}) {
+			t.Fatalf("unexpected command: %s %v", name, args)
+		}
+		calls++
+		return generated + "\n", nil
+	}
+	before := "[Interface]\r\n[Peer]\r\nPublicKey = " + peer1 + "\r\nPresharedKey = " + existing +
+		"\r\n[Peer]\r\nPublicKey = " + peer2 + "\r\n"
+	after, err := withDefaultWireGuardPSKs([]byte(before))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := parseWireGuardConfig(after)
+	if err != nil || len(config.peers) != 2 || calls != 1 {
+		t.Fatalf("expected two peers and one generated key: calls=%d, err=%v", calls, err)
+	}
+	if wireGuardValue(config.peers[0], "presharedkey") != existing || wireGuardValue(config.peers[1], "presharedkey") != generated {
+		t.Fatal("must preserve the supplied PSK and generate one for the other peer")
 	}
 }

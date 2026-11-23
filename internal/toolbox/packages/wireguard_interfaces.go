@@ -174,6 +174,11 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 		if !saved && !running {
 			return shared.ErrReturnToMenu
 		}
+		if saved && commandExists("wg") {
+			fmt.Println()
+			ui.MenuShortcutHint("k", "更换密钥", "更换接口私钥和已配置的预共享密钥")
+			actions["k"] = func() error { return rotateWireGuardKeys(view, name) }
+		}
 		ui.MenuExit("0/q", "返回 WireGuard")
 		choice, err := view.Ask("请选择：")
 		if err != nil {
@@ -185,7 +190,7 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 		if choice == "" {
 			continue
 		}
-		if action := actions[choice]; action != nil {
+		if action := actions[strings.ToLower(choice)]; action != nil {
 			shared.RunAction(view, "WireGuard 操作失败，已返回接口菜单", action)
 		} else {
 			ui.InvalidChoice()

@@ -52,6 +52,7 @@ func wireGuardKey(raw string) ([]byte, bool) {
 
 type wireGuardSetting struct {
 	key, value string
+	line       int
 }
 
 type wireGuardConfig struct {
@@ -92,7 +93,7 @@ func parseWireGuardConfig(data []byte) (wireGuardConfig, error) {
 					return config, fmt.Errorf("第 %d 行：WireGuard 密钥格式无效", i+1)
 				}
 			}
-			setting := wireGuardSetting{key, value}
+			setting := wireGuardSetting{key: key, value: value, line: i}
 			if len(config.peers) == 0 {
 				config.device = append(config.device, setting)
 			} else {
@@ -147,10 +148,14 @@ func showWireGuardProfile(name string) error {
 	})...)
 	ui.PrintInfoCard("接口配置", fields...)
 	for i, peer := range config.peers {
-		ui.PrintSectionCard(fmt.Sprintf("对端 %d", i+1), wireGuardFields(peer, [][2]string{
+		fields := wireGuardFields(peer, [][2]string{
 			{"publickey", "公钥"}, {"endpoint", "端点"}, {"allowedips", "允许地址"},
 			{"persistentkeepalive", "保活间隔"},
-		})...)
+		})
+		if wireGuardValue(peer, "presharedkey") != "" {
+			fields = append(fields, ui.CardField{Label: "预共享密钥", Value: "已配置"})
+		}
+		ui.PrintSectionCard(fmt.Sprintf("对端 %d", i+1), fields...)
 	}
 	return nil
 }
@@ -192,16 +197,25 @@ func createWireGuardProfile(view *ui.UI) error {
 		return fmt.Errorf("配置 %s 已存在，请通过编辑入口修改", path)
 	}
 
-	key, err := commandOutput("wg", "genkey")
-	key = strings.TrimSpace(key)
-	if _, valid := wireGuardKey(key); err != nil || !valid {
-		return fmt.Errorf("生成 WireGuard 私钥失败")
+	key, err := generateWireGuardKey("genkey", "私钥")
+	if err != nil {
+		return err
 	}
 	port := 20000 + rand.IntN(60000-20000+1)
 	data := []byte(fmt.Sprintf("[Interface]\nPrivateKey = %s\nAddress = 10.77.0.1/24\nListenPort = %d\n", key, port))
-	if !useDefaults {
-		data = append(data, []byte("\n# [Peer]\n# PublicKey = 对端公钥\n# AllowedIPs = 10.77.0.2/32\n")...)
+	if useDefaults {
+		peer, err := askWireGuardPeerConfig(view, true)
+		if err != nil {
+			return err
+		}
+		data = append(data, peer...)
+	} else {
+		data = append(data, []byte("\n# [Peer]\n# PublicKey = 对端公钥\n# AllowedIPs = 10.77.0.2/32\n# 留空时保存前生成 PresharedKey\n")...)
 		data, err = editWireGuardCopy(data)
+		if err != nil {
+			return err
+		}
+		data, err = withDefaultWireGuardPSKs(data)
 		if err != nil {
 			return err
 		}
@@ -289,7 +303,7 @@ func confirmWireGuard(view *ui.UI, prompt string) error {
 	return err
 }
 
-func saveWireGuardProfile(view *ui.UI, name string, before, after []byte) error {
+func saveWireGuardProfile(view *ui.UI, name string, before, after []byte, details ...ui.CardField) error {
 	config, err := parseWireGuardConfig(after)
 	if err != nil {
 		return err
@@ -300,9 +314,16 @@ func saveWireGuardProfile(view *ui.UI, name string, before, after []byte) error 
 		{Label: "对端数量", Value: strconv.Itoa(len(config.peers))},
 		{Label: "生效方式", Value: "下次启动或重启接口时读取"},
 	}
+	fields = append(fields, details...)
 	fields = append(fields, wireGuardFields(config.device, [][2]string{
 		{"address", "隧道地址"}, {"listenport", "监听端口"},
 	})...)
+	for _, peer := range config.peers {
+		if wireGuardValue(peer, "presharedkey") != "" {
+			fields = append(fields, ui.CardField{Label: "预共享密钥", Value: "对应的两端必须填写相同值"})
+			break
+		}
+	}
 	if strings.EqualFold(wireGuardValue(config.device, "saveconfig"), "true") {
 		fields = append(fields, ui.CardField{Label: "SaveConfig", Value: "接口停止时写回运行状态，可能覆盖尚未应用的修改"})
 	}
@@ -358,43 +379,165 @@ func addWireGuardPeer(view *ui.UI, name string) error {
 	if err != nil {
 		return err
 	}
-	ui.PrintField("输入格式", "对端公钥 AllowedIPs [Endpoint] [保活秒数]")
-	ui.PrintField("说明", "AllowedIPs 用逗号分隔，Endpoint 可填主机名或 IP 加端口。用 - 跳过 Endpoint")
-	line, err := view.Ask("请输入对端配置（0/q 返回）：")
+	peer, err := askWireGuardPeerConfig(view, false)
 	if err != nil {
 		return err
 	}
+	after := append([]byte(nil), bytes.TrimRight(before, "\r\n")...)
+	return saveWireGuardProfile(view, name, before, append(after, peer...))
+}
+
+func generateWireGuardKey(command, label string) (string, error) {
+	key, err := commandOutput("wg", command)
+	key = strings.TrimSpace(key)
+	if _, valid := wireGuardKey(key); err != nil || !valid {
+		return "", fmt.Errorf("生成 WireGuard %s失败", label)
+	}
+	return key, nil
+}
+
+func withDefaultWireGuardPSKs(data []byte) ([]byte, error) {
+	config, err := parseWireGuardConfig(data)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(data), "\n")
+	for index, peer := range config.peers {
+		if wireGuardValue(peer, "presharedkey") != "" {
+			continue
+		}
+		key, err := generateWireGuardKey("genpsk", "预共享密钥")
+		if err != nil {
+			return nil, err
+		}
+		line := config.peerLines[index]
+		header, crlf := strings.CutSuffix(lines[line], "\r")
+		if crlf {
+			lines[line] = header + "\r\nPresharedKey = " + key + "\r"
+		} else {
+			lines[line] = header + "\nPresharedKey = " + key
+		}
+	}
+	return []byte(strings.Join(lines, "\n")), nil
+}
+
+func askWireGuardPeerConfig(view *ui.UI, optional bool) (string, error) {
+	ui.PrintField("输入格式", "对端公钥 AllowedIPs [Endpoint] [保活秒数]")
+	ui.PrintField("说明", "AllowedIPs 用逗号分隔，Endpoint 可填主机名或 IP 加端口。用 - 跳过 Endpoint")
+	ui.PrintField("预共享密钥", "默认生成，两端必须填相同值。末尾加 --no-psk 可跳过生成")
+	prompt := "请输入对端配置（0/q 返回）："
+	if optional {
+		prompt = "请输入首个对端配置（回车跳过，0/q 返回）："
+	}
+	line, err := view.Ask(prompt)
+	if err != nil {
+		return "", err
+	}
 	if shared.IsReturnChoice(line) {
-		return shared.ErrReturnToMenu
+		return "", shared.ErrReturnToMenu
+	}
+	if optional && line == "" {
+		return "", nil
 	}
 	fields := strings.Fields(line)
+	generatePSK := len(fields) == 0 || fields[len(fields)-1] != "--no-psk"
+	if !generatePSK {
+		fields = fields[:len(fields)-1]
+	}
 	if len(fields) < 2 || len(fields) > 4 {
-		return fmt.Errorf("请填写对端公钥和 AllowedIPs")
+		return "", fmt.Errorf("请填写对端公钥和 AllowedIPs")
 	}
 	if _, valid := wireGuardKey(fields[0]); !valid {
-		return fmt.Errorf("对端公钥格式无效")
+		return "", fmt.Errorf("对端公钥格式无效")
 	}
 	for _, prefix := range strings.Split(fields[1], ",") {
 		if _, err := netip.ParsePrefix(prefix); err != nil {
-			return fmt.Errorf("AllowedIPs 须使用 CIDR，多个网段用逗号分隔")
+			return "", fmt.Errorf("AllowedIPs 须使用 CIDR，多个网段用逗号分隔")
 		}
 	}
 	peer := fmt.Sprintf("\n\n[Peer]\nPublicKey = %s\nAllowedIPs = %s\n", fields[0], fields[1])
 	if len(fields) >= 3 && fields[2] != "-" {
 		endpoint := fields[2]
 		if !validWireGuardEndpoint(endpoint) {
-			return fmt.Errorf("Endpoint 须使用 主机:端口，IPv6 地址须加方括号")
+			return "", fmt.Errorf("Endpoint 须使用 主机:端口，IPv6 地址须加方括号")
 		}
 		peer += "Endpoint = " + endpoint + "\n"
 	}
 	if len(fields) == 4 {
 		seconds, err := strconv.ParseUint(fields[3], 10, 16)
 		if err != nil {
-			return fmt.Errorf("保活秒数须在 0–65535 之间")
+			return "", fmt.Errorf("保活秒数须在 0–65535 之间")
 		}
 		peer += fmt.Sprintf("PersistentKeepalive = %d\n", seconds)
 	}
-	return saveWireGuardProfile(view, name, before, append(bytes.TrimRight(append([]byte{}, before...), "\r\n"), []byte(peer)...))
+	if generatePSK {
+		key, err := generateWireGuardKey("genpsk", "预共享密钥")
+		if err != nil {
+			return "", err
+		}
+		peer += "PresharedKey = " + key + "\n"
+	}
+	return peer, nil
+}
+
+func rotateWireGuardKeys(view *ui.UI, name string) error {
+	if !isRoot() {
+		return fmt.Errorf("更换 WireGuard 密钥需要 root 权限")
+	}
+	ui.ClearScreen()
+	ui.MenuTitle("WireGuard", name, "更换密钥")
+	before, err := readWireGuardProfile(name)
+	if err != nil {
+		return err
+	}
+	config, err := parseWireGuardConfig(before)
+	if err != nil {
+		return err
+	}
+	if wireGuardValue(config.device, "privatekey") == "" {
+		return fmt.Errorf("当前配置缺少接口私钥")
+	}
+	if strings.EqualFold(wireGuardValue(config.device, "saveconfig"), "true") {
+		active, err := wireGuardActiveNames()
+		if err != nil {
+			return err
+		}
+		if active[name] {
+			return fmt.Errorf("接口启用了 SaveConfig，停止时会写回旧密钥。请先停止接口，再更换密钥")
+		}
+	}
+
+	lines := strings.Split(string(before), "\n")
+	privateKey, err := generateWireGuardKey("genkey", "私钥")
+	if err != nil {
+		return err
+	}
+	for _, setting := range config.device {
+		if setting.key == "privatekey" {
+			lines[setting.line] = strings.Replace(lines[setting.line], setting.value, privateKey, 1)
+		}
+	}
+	pskCount := 0
+	for _, peer := range config.peers {
+		if wireGuardValue(peer, "presharedkey") == "" {
+			continue
+		}
+		key, err := generateWireGuardKey("genpsk", "预共享密钥")
+		if err != nil {
+			return err
+		}
+		for _, setting := range peer {
+			if setting.key == "presharedkey" {
+				lines[setting.line] = strings.Replace(lines[setting.line], setting.value, key, 1)
+			}
+		}
+		pskCount++
+	}
+
+	return saveWireGuardProfile(view, name, before, []byte(strings.Join(lines, "\n")),
+		ui.CardField{Label: "更换范围", Value: fmt.Sprintf("本机私钥和 %d 个对端的预共享密钥", pskCount)},
+		ui.CardField{Label: "对端同步", Value: "各对端需更新本机公钥，已使用预共享密钥的对端还需更新对应密钥"},
+	)
 }
 
 func validWireGuardEndpoint(endpoint string) bool {
