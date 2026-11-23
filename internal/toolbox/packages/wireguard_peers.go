@@ -149,7 +149,7 @@ func editWireGuardPeer(view *ui.UI, name string, before []byte, config wireGuard
 			}
 			switch {
 			case field[0] == "PersistentKeepalive" && value == "":
-				value = "默认 0（关闭）"
+				value = "未设置（默认关闭）"
 			case field[0] == "PersistentKeepalive" && (value == "0" || strings.EqualFold(value, "off")):
 				value = "0（关闭）"
 			case value == "":
@@ -197,11 +197,7 @@ func editWireGuardPeer(view *ui.UI, name string, before []byte, config wireGuard
 			continue
 		}
 		field := wireGuardPeerOptions[number-1]
-		current, changed := changes[field[0]]
-		if !changed {
-			current = wireGuardPeerValue(peer, field[0])
-		}
-		value, err := askWireGuardPeerField(view, field[0], field[1], current)
+		value, err := askWireGuardPeerField(view, field[0], field[1])
 		if errors.Is(err, shared.ErrReturnToMenu) {
 			continue
 		}
@@ -221,7 +217,7 @@ func editWireGuardPeer(view *ui.UI, name string, before []byte, config wireGuard
 	}
 }
 
-func askWireGuardPeerField(view *ui.UI, key, label, current string) (string, error) {
+func askWireGuardPeerField(view *ui.UI, key, label string) (string, error) {
 	hint := "回车保留，- 清除，0/q 返回"
 	switch key {
 	case "PublicKey":
@@ -230,21 +226,13 @@ func askWireGuardPeerField(view *ui.UI, key, label, current string) (string, err
 		hint = "回车保留，g 生成，- 清除，0/q 返回"
 	case "PersistentKeepalive":
 		hint = "回车保留，0 关闭，- 清除，q 返回"
-		if current == "" {
-			hint = "回车默认 0（关闭），- 清除，q 返回"
-		}
 	}
 	value, err := view.Ask("请输入" + label + "（" + hint + "）：")
 	if err != nil {
 		return "", err
 	}
-	if key == "PersistentKeepalive" {
-		switch {
-		case value == "" && current == "":
-			return defaultWireGuardKeepalive, nil
-		case value == defaultWireGuardKeepalive || strings.EqualFold(value, "off"):
-			return defaultWireGuardKeepalive, nil
-		}
+	if key == "PersistentKeepalive" && (value == defaultWireGuardKeepalive || strings.EqualFold(value, "off")) {
+		return defaultWireGuardKeepalive, nil
 	}
 	if value == "" || shared.IsReturnChoice(value) {
 		return "", shared.ErrReturnToMenu

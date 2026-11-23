@@ -210,18 +210,16 @@ func TestWireGuardRuntimeAndBootControls(t *testing.T) {
 	}
 }
 
-func TestWireGuardPeerKeepaliveDefault(t *testing.T) {
-	value, err := askWireGuardPeerField(newUIWithInput(t, "\n"), "PersistentKeepalive", "保活间隔（秒）", "")
-	if err != nil || value != "0" {
-		t.Fatalf("unset keepalive should default to off: %q, %v", value, err)
-	}
-	_, err = askWireGuardPeerField(newUIWithInput(t, "\n"), "PersistentKeepalive", "保活间隔（秒）", "25")
+func TestWireGuardPeerKeepaliveRequiresExplicitInput(t *testing.T) {
+	_, err := askWireGuardPeerField(newUIWithInput(t, "\n"), "PersistentKeepalive", "保活间隔（秒）")
 	if !errors.Is(err, shared.ErrReturnToMenu) {
-		t.Fatalf("Enter should keep an existing keepalive interval: %v", err)
+		t.Fatalf("Enter should leave the field as it was: %v", err)
 	}
-	value, err = askWireGuardPeerField(newUIWithInput(t, "0\n"), "PersistentKeepalive", "保活间隔（秒）", "25")
-	if err != nil || value != "0" {
-		t.Fatalf("explicit zero should disable keepalive: %q, %v", value, err)
+	for _, tc := range []struct{ input, want string }{{"0\n", "0"}, {"25\n", "25"}, {"-\n", ""}} {
+		value, err := askWireGuardPeerField(newUIWithInput(t, tc.input), "PersistentKeepalive", "保活间隔（秒）")
+		if err != nil || value != tc.want {
+			t.Fatalf("explicit input should set %q, got %q: %v", tc.want, value, err)
+		}
 	}
 }
 
