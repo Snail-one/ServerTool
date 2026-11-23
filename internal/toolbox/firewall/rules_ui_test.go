@@ -38,7 +38,7 @@ func TestRuleManagerAddsSourceExceptionForBothProtocols(t *testing.T) {
 	ruleTestConfig(t, nil)
 	calls := acceptRuleCommands(t)
 	// Unified draft -> source exceptions -> add -> both IP versions and protocols.
-	if err := runAccessRuleManager(inputUI(t, "5\n1\n\n3\n192.168.1.0/24\nfd12::/48\n\n\n\n\n8000-8100\n3\n\nq\ns\n")); err != nil {
+	if err := runAccessRuleManager(inputUI(t, "5\nn\n\n3\n192.168.1.0/24\nfd12::/48\n\n\n\n\n8000-8100\n3\n\nq\ns\n")); err != nil {
 		t.Fatal(err)
 	}
 	rules, err := managedRules(shared.ReadFileString(configPath))
@@ -70,7 +70,7 @@ func TestRuleManagerEditsByDisplayedNumberAndKeepsOtherRules(t *testing.T) {
 	ruleTestConfig(t, rules)
 	calls := acceptRuleCommands(t)
 	// Edit row 2, keep its type/source, and change its ports/protocol.
-	if err := runAccessRuleManager(inputUI(t, "5\n2\n2\n\n\n\n\n\n\n\n8443\n3\n\nq\ns\n")); err != nil {
+	if err := runAccessRuleManager(inputUI(t, "5\n2\n1\n\n\n\n\n\n\n\n8443\n3\n\nq\nq\ns\n")); err != nil {
 		t.Fatal(err)
 	}
 	want := append([]allowRule(nil), rules...)
@@ -113,7 +113,7 @@ func TestDeleteByNumberUsesTheDisplayedFilteredList(t *testing.T) {
 	}
 	version := ruleTestConfig(t, rules)
 	// The second matching row is rule C, which was third in the full list.
-	got, err := deleteAllowRuleDraft(inputUI(t, "2\n443\n2\n"), rules)
+	got, err := deleteRuleByPortDraft(inputUI(t, "443\n2\n"), rules)
 	if shared.ReadFileString(configPath) != string(version.content) {
 		t.Fatal("deleting from a draft wrote the configuration")
 	}
@@ -168,7 +168,7 @@ func TestQueryPortAndDeleteOnlyChosenIDPreservingOtherSources(t *testing.T) {
 		t.Fatalf("port inside range not matched: %v %v", rangeMatches, err)
 	}
 	// dddddddd is not in the query result, so it must not be selected/deleted.
-	got, err := deleteAllowRuleDraft(inputUI(t, "2\n443\ndddddddd\nbbbbbbbb\n"), rules)
+	got, err := deleteRuleByPortDraft(inputUI(t, "443\ndddddddd\nbbbbbbbb\n"), rules)
 	if shared.ReadFileString(configPath) != string(version.content) {
 		t.Fatal("deleting from a draft wrote the configuration")
 	}
@@ -197,7 +197,7 @@ func TestDeleteByIDStaysInDraftUntilSaved(t *testing.T) {
 	setupTest(t)
 	rules := []allowRule{{ID: "aaaaaaaa", Kind: "port", Ports: "443", Protocol: "tcp"}}
 	version := ruleTestConfig(t, rules)
-	if err := runAccessRuleManager(inputUI(t, "5\n3\n1\naaaaaaaa\n\nq\nq\ny\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := runAccessRuleManager(inputUI(t, "5\naaaaaaaa\n2\n\nq\nq\ny\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if shared.ReadFileString(configPath) != string(version.content) {

@@ -23,16 +23,23 @@ func chooseRuleID(view *ui.UI, rules []allowRule) (string, error) {
 		if shared.IsReturnChoice(id) {
 			return "", shared.ErrReturnToMenu
 		}
-		for _, rule := range rules {
-			if strings.EqualFold(id, rule.ID) {
-				return rule.ID, nil
-			}
-		}
-		if number, err := input.Number(id, 1, len(rules)); err == nil && number >= 1 && number <= len(rules) {
-			return rules[number-1].ID, nil
+		if index := findRuleIndex(rules, id); index >= 0 {
+			return rules[index].ID, nil
 		}
 		fmt.Println("未找到该序号或规则 ID，请从当前列表选择")
 	}
+}
+
+func findRuleIndex(rules []allowRule, choice string) int {
+	for index, rule := range rules {
+		if strings.EqualFold(choice, rule.ID) {
+			return index
+		}
+	}
+	if number, err := input.Number(choice, 1, len(rules)); err == nil && number >= 1 && number <= len(rules) {
+		return number - 1
+	}
+	return -1
 }
 
 func askRuleChoice(view *ui.UI, prompt, fallback string, choices map[string]string) (string, error) {
@@ -518,7 +525,7 @@ func changeAllowRuleDraft(view *ui.UI, rules []allowRule, id string) ([]allowRul
 
 func queryRulesByPort(view *ui.UI, rules []allowRule) ([]allowRule, error) {
 	sourceRulePage("按端口查询", allowRule{})
-	ui.MenuExit("0/q", "返回删除方式选择")
+	ui.MenuExit("0/q", "返回规则配置")
 	ports, err := askRulePorts(view, "")
 	if err != nil {
 		return nil, err
@@ -540,29 +547,17 @@ func queryRulesByPort(view *ui.UI, rules []allowRule) ([]allowRule, error) {
 	return matches, nil
 }
 
-func deleteAllowRuleDraft(view *ui.UI, rules []allowRule) ([]allowRule, error) {
-	mode, id := "", ""
-	candidates := rules
+func deleteRuleByPortDraft(view *ui.UI, rules []allowRule) ([]allowRule, error) {
+	var candidates []allowRule
+	var id string
 	err := ui.RunPromptSteps(
 		ui.PromptStep{Run: func() error {
-			sourceRulePage("删除放行规则", allowRule{})
-			ruleChoiceOption("1", "按序号 / 规则 ID 删除", "", "1")
-			ui.MenuOption("2", "按端口查询后选择规则删除")
-			ui.MenuExit("0/q", "返回规则配置")
-			var err error
-			mode, err = askRuleChoice(view, "请选择删除方式（回车默认 1）：", "1", map[string]string{"1": "id", "2": "port"})
-			candidates = rules
-			return err
-		}},
-		ui.PromptStep{Enabled: func() bool { return mode == "port" }, Run: func() error {
 			var err error
 			candidates, err = queryRulesByPort(view, rules)
 			return err
 		}},
 		ui.PromptStep{Run: func() error {
-			sourceRulePage("选择删除放行规则", allowRule{})
-			printRuleOrder(candidates, "")
-			ui.MenuExit("0/q", "返回上一步")
+			ui.MenuExit("0/q", "返回端口查询")
 			var err error
 			id, err = chooseRuleID(view, candidates)
 			return err
@@ -571,28 +566,26 @@ func deleteAllowRuleDraft(view *ui.UI, rules []allowRule) ([]allowRule, error) {
 	if err != nil {
 		return nil, err
 	}
-	var target allowRule
-	var updated []allowRule
-	for _, rule := range rules {
-		if rule.ID == id {
-			target = rule
-		} else {
-			updated = append(updated, rule)
-		}
-	}
+	return deleteAllowRuleDraft(rules, findRuleIndex(rules, id)), nil
+}
+
+func deleteAllowRuleDraft(rules []allowRule, index int) []allowRule {
+	target := rules[index]
+	updated := append([]allowRule(nil), rules[:index]...)
+	updated = append(updated, rules[index+1:]...)
 	sourceRulePage("检查删除范围", allowRule{})
-	ui.PrintWarningCard("即将删除一条放行规则",
+	ui.PrintWarningCard("从草稿移除规则",
 		ui.CardField{Label: "规则 ID", Value: target.ID},
 		ui.CardField{Label: "IP 版本", Value: target.familyLabel()},
-		ui.CardField{Label: "放行内容", Value: target.description()},
+		ui.CardField{Label: "规则内容", Value: target.description()},
 		ui.CardField{Label: "实际来源范围", Value: target.sourceRange()},
-		ui.CardField{Label: "删除范围", Value: "仅删除此 ID；其他放行规则及基础端口保持，仍可能允许相同流量"},
+		ui.CardField{Label: "删除范围", Value: "仅删除此 ID，相同流量仍可能命中其他规则"},
 	)
 	for _, rule := range updated {
 		if target.overlaps(rule) {
 			ui.PrintField("仍保留的重叠规则 "+rule.ID, rule.description())
 		}
 	}
-	ui.PrintSuccessCard("删除操作已加入草稿", ui.CardField{Label: "规则 ID", Value: id})
-	return updated, nil
+	ui.PrintSuccessCard("删除操作已加入草稿", ui.CardField{Label: "规则 ID", Value: target.ID})
+	return updated
 }

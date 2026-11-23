@@ -41,7 +41,7 @@ func TestReorderRulesPersistsMatchingOrderAndKeepsLogicalRulesIntact(t *testing.
 				t.Fatal(err)
 			}
 			calls := acceptRuleCommands(t)
-			if err := runAccessRuleManager(inputUI(t, "5\n4\n"+scenario.input+"\nq\ns\n")); err != nil {
+			if err := runAccessRuleManager(inputUI(t, "5\no\n"+scenario.input+"\nq\ns\n")); err != nil {
 				t.Fatal(err)
 			}
 			var want []allowRule
@@ -118,7 +118,7 @@ func TestReorderRejectsConcurrentConfigChanges(t *testing.T) {
 		}
 		return query(name, args...)
 	}
-	if err := runAccessRuleManager(inputUI(t, "5\n4\n2\nu\ns\n\nq\ns\n")); err == nil || errors.Is(err, shared.ErrReturnToMenu) {
+	if err := runAccessRuleManager(inputUI(t, "5\no\n2\nu\ns\n\nq\ns\n")); err == nil || errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatalf("concurrent edit should prevent saving: %v", err)
 	}
 	if shared.ReadFileString(configPath) != changed || !reflect.DeepEqual(*calls, []string{"check"}) {
@@ -134,7 +134,7 @@ func TestRuleManagerOpensOrderEditorAndSelectsNumericRuleID(t *testing.T) {
 	acceptRuleCommands(t)
 	// Enter sorting, select the numeric ID at position 3, put it first, save,
 	// read the result once, and return from the rule manager.
-	if err := runAccessRuleManager(inputUI(t, "5\n4\n00000001\nt\ns\n\nq\ns\n")); err != nil {
+	if err := runAccessRuleManager(inputUI(t, "5\no\n00000001\nt\ns\n\nq\ns\n")); err != nil {
 		t.Fatal(err)
 	}
 	got, err := managedRules(shared.ReadFileString(configPath))

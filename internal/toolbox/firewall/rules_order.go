@@ -14,7 +14,7 @@ import (
 func printRuleOrder(rules []allowRule, selected string) {
 	fmt.Println()
 	if len(rules) == 0 {
-		fmt.Println("没有附加放行规则")
+		fmt.Println("暂无附加规则")
 		fmt.Println()
 		return
 	}
@@ -64,11 +64,11 @@ func reorderAllowRulesDraft(view *ui.UI, rules []allowRule) ([]allowRule, error)
 		)
 		printRuleOrder(draft, selected)
 		ui.PrintField("选择规则", "输入列表序号或完整规则 ID")
-		ui.MenuOption("u", "上移")
-		ui.MenuOption("d", "下移")
-		ui.MenuOption("t", "置顶")
-		ui.MenuOption("b", "置底")
-		ui.MenuOption("r", "还原草稿")
+		ui.MenuShortcutHint("u", "上移", "")
+		ui.MenuShortcutHint("d", "下移", "")
+		ui.MenuShortcutHint("t", "置顶", "")
+		ui.MenuShortcutHint("b", "置底", "")
+		ui.MenuShortcutHint("r", "还原草稿", "")
 		ui.MenuShortcutHint("s", "采用顺序并返回", "加入"+sessionDraftName()+"，最后统一保存")
 		ui.MenuExit("0/q", "放弃草稿并返回")
 		if notice != "" {

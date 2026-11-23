@@ -53,7 +53,7 @@ func TestAccessManagerSharesOneDraftAndOneSaveAcrossPortsAndSources(t *testing.T
 		}
 		return query(name, args...)
 	}
-	input := "3\n3\n1\n1\n1\n8443\n5\n1\n\n1\n192.168.1.10\n\n\n\n\n3306\n1\n\nq\ns\n\nq\n"
+	input := "3\n3\n1\n1\n1\n8443\n5\nn\n\n1\n192.168.1.10\n\n\n\n\n3306\n1\n\nq\ns\n\nq\n"
 	output := capturePortOutput(t, func() {
 		if err := Run(inputUI(t, input)); !errors.Is(err, shared.ErrReturnToMenu) {
 			t.Fatal(err)
@@ -76,7 +76,7 @@ func TestAccessDraftDiscardAndRestoreIncludeSourceChanges(t *testing.T) {
 		t.Run(ending, func(t *testing.T) {
 			setupTest(t)
 			version := ruleTestConfig(t, nil)
-			input := "3\n\n\n1\n8443\n5\n1\n\n1\n192.168.1.10\n\n\n\n\n3306\n1\n\nq\n" + ending
+			input := "3\n\n\n1\n8443\n5\nn\n\n1\n192.168.1.10\n\n\n\n\n3306\n1\n\nq\n" + ending
 			if err := runAccessRuleManager(inputUI(t, input)); !errors.Is(err, shared.ErrReturnToMenu) {
 				t.Fatal(err)
 			}
@@ -160,7 +160,7 @@ func TestMigrationIsVisibleAndOnlySavedWithTheParentDraft(t *testing.T) {
 	version := ruleTestConfig(t, rules)
 	calls := acceptRuleCommands(t)
 	output := capturePortOutput(t, func() {
-		if err := runAccessRuleManager(inputUI(t, "5\n5\n1\n\nq\np\n\ns\n")); err != nil {
+		if err := runAccessRuleManager(inputUI(t, "5\n1\n3\n\nq\np\n\ns\n")); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -181,7 +181,7 @@ func TestSourceEditingStillWorksWithCustomBusinessPortExpressions(t *testing.T) 
 		t.Fatal(err)
 	}
 	acceptRuleCommands(t)
-	if err := runAccessRuleManager(inputUI(t, "5\n1\n\n1\n192.168.1.10\n\n\n\n\n3306\n1\n\nq\ns\n")); err != nil {
+	if err := runAccessRuleManager(inputUI(t, "5\nn\n\n1\n192.168.1.10\n\n\n\n\n3306\n1\n\nq\ns\n")); err != nil {
 		t.Fatal(err)
 	}
 	updated := shared.ReadFileString(configPath)

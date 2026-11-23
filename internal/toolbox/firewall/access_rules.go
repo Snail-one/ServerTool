@@ -179,116 +179,118 @@ func editSourceRulesDraft(view *ui.UI, original string) (string, error) {
 			return "", err
 		}
 		sourceRulePage("", allowRule{})
-		sourceObject := "访问本机的来源 IP / 网段（客户端地址）"
-		sourceExample := "例如：允许 192.168.1.10 访问 TCP 3306"
-		if activeSession != nil && activeSession.forward {
-			sourceObject = "经本机转发的来源 IP / 网段"
-			sourceExample = "例如：允许 192.168.1.10 转发 TCP 443"
-		}
 		ui.PrintInfoCard("规则配置草稿",
-			ui.CardField{Label: "配置对象", Value: sourceObject, Detail: sourceExample},
-			ui.CardField{Label: "匹配条件", Value: "来源、目标、网卡、来源端口和目标端口都可以留空，至少填一项"},
-			ui.CardField{Label: "默认动作", Value: "放行。拒绝会插到名单最前，并先于基础端口匹配"},
-			ui.CardField{Label: "保存方式", Value: "本页只改草稿，返回" + sessionTitle() + "后统一保存"},
+			ui.CardField{Label: "匹配顺序", Value: "从上到下，先命中的规则生效"},
+			ui.CardField{Label: "保存方式", Value: "返回" + sessionTitle() + "后统一保存"},
 		)
 		printRuleOrder(rules, "")
-		legacy := false
-		for _, rule := range rules {
-			if rule.Kind == "port" {
-				legacy = true
-				break
-			}
+		ui.MenuShortcutHint("n", "新建规则", "默认放行，拒绝会插到最前面")
+		if len(rules) > 1 {
+			ui.MenuShortcutHint("o", "调整规则顺序", "")
 		}
-		ui.MenuOptionHint("1", "添加规则", "默认放行；拒绝会排到最前面")
-		ui.MenuOption("2", "编辑规则")
-		ui.MenuOption("3", "删除规则")
-		ui.MenuOption("4", "调整规则顺序")
-		allowLegacy := legacy && (activeSession == nil || !activeSession.forward)
-		if allowLegacy {
-			ui.MenuOptionHint("5", "旧规则转入基础端口", "将所选规则的端口加入公网和内网列表，再移除此规则")
+		if len(rules) > 0 {
+			ui.MenuShortcutHint("f", "按端口查找并删除规则", "")
 		}
 		ui.MenuExit("0/q", "返回"+sessionDraftName())
-		choice, err := view.Ask("请选择：")
+		prompt := "请选择："
+		if len(rules) > 0 {
+			prompt = "请输入规则序号、完整 ID 或操作："
+		}
+		choice, err := view.Ask(prompt)
 		if err != nil {
 			return "", err
 		}
 		if shared.IsReturnChoice(choice) {
 			return draft, nil
 		}
-		if choice != "1" && choice != "2" && choice != "3" && choice != "4" && (choice != "5" || !allowLegacy) {
+		if index := findRuleIndex(rules, choice); index >= 0 {
+			draft, err = editSourceRuleDetails(view, draft, index)
+			if err != nil {
+				return "", err
+			}
+			continue
+		}
+		choice = strings.ToLower(choice)
+		if choice != "n" && (choice != "o" || len(rules) < 2) && (choice != "f" || len(rules) == 0) {
 			ui.InvalidChoice()
 			continue
 		}
-		shared.RunAction(view, "修改规则配置失败，已返回规则草稿", func() error {
-			updated, err := changeSourceRulesDraft(view, draft, rules, choice)
-			if err == nil {
-				draft = updated
+		shared.RunAction(view, "修改规则配置失败，已返回规则配置", func() error {
+			var updated []allowRule
+			var err error
+			switch choice {
+			case "n":
+				updated, err = changeAllowRuleDraft(view, rules, "")
+			case "o":
+				updated, err = reorderAllowRulesDraft(view, rules)
+			case "f":
+				updated, err = deleteRuleByPortDraft(view, rules)
+			}
+			if err == nil && !reflect.DeepEqual(rules, updated) {
+				var next string
+				next, err = replaceManagedRules(draft, updated)
+				if err == nil {
+					draft = next
+				}
 			}
 			return err
 		})
 	}
 }
 
-// Every source-rule action returns a new draft. The access manager owns the
-// only save/load boundary, so subpages cannot apply an incomplete edit.
-func changeSourceRulesDraft(view *ui.UI, content string, rules []allowRule, choice string) (string, error) {
-	var updated []allowRule
-	var err error
-	switch choice {
-	case "1", "2":
-		id := ""
-		if choice == "1" {
-			updated, err = changeAllowRuleDraft(view, rules, id)
-		} else {
-			for {
-				sourceRulePage("选择编辑放行规则", allowRule{})
-				printRuleOrder(rules, "")
-				ui.MenuExit("0/q", "返回规则配置")
-				id, err = chooseRuleID(view, rules)
-				if err != nil {
-					return "", err
-				}
-				updated, err = changeAllowRuleDraft(view, rules, id)
-				if errors.Is(err, shared.ErrReturnToMenu) {
-					continue
-				}
-				break
-			}
-		}
-	case "3":
-		updated, err = deleteAllowRuleDraft(view, rules)
-	case "4":
-		updated, err = reorderAllowRulesDraft(view, rules)
-	case "5":
-		var candidates []allowRule
-		for _, rule := range rules {
-			if rule.Kind == "port" {
-				candidates = append(candidates, rule)
-			}
-		}
-		sourceRulePage("旧规则转入基础端口", allowRule{})
-		ui.PrintInfoCard("选择转换规则", ui.CardField{Label: "转换范围", Value: "将所选端口加入公网和内网基础列表，再从草稿移除此规则"})
-		printRuleOrder(candidates, "")
-		ui.MenuExit("0/q", "取消转换，返回规则配置")
-		id, err := chooseRuleID(view, candidates)
+func editSourceRuleDetails(view *ui.UI, draft string, index int) (string, error) {
+	for {
+		rules, err := managedRules(draft)
 		if err != nil {
 			return "", err
 		}
-		converted, err := migrateGlobalPortRule(content, id)
-		if err == nil {
-			ui.PrintInfoCard("转换已加入草稿", ui.CardField{Label: "生效方式", Value: "统一保存后按基础端口及来源分流匹配，仍受其他手写规则约束"})
+		rule := rules[index]
+		sourceRulePage(fmt.Sprintf("规则 %d", index+1), rule)
+		ui.MenuOption("1", "编辑规则")
+		ui.MenuOption("2", "删除规则")
+		options := map[string]string{"1": "edit", "2": "delete"}
+		if rule.Kind == "port" && (activeSession == nil || !activeSession.forward) {
+			ui.MenuOptionHint("3", "旧规则转入基础端口", "将端口加入公网和内网列表，再移除此规则")
+			options["3"] = "migrate"
 		}
-		return converted, err
-	default:
-		return "", fmt.Errorf("无效的规则配置操作")
+		ui.MenuExit("0/q", "返回规则配置")
+		action, err := askRuleChoice(view, "请选择", "", options)
+		if errors.Is(err, shared.ErrReturnToMenu) {
+			return draft, nil
+		}
+		if err != nil {
+			return "", err
+		}
+
+		var updated string
+		shared.RunAction(view, "修改规则配置失败", func() error {
+			var err error
+			switch action {
+			case "migrate":
+				converted, err := migrateGlobalPortRule(draft, rule.ID)
+				if err != nil {
+					return err
+				}
+				updated = converted
+				ui.PrintInfoCard("转换已加入草稿", ui.CardField{Label: "生效方式", Value: "统一保存后按基础端口及来源分流匹配，仍受其他手写规则约束"})
+			case "delete":
+				updated, err = replaceManagedRules(draft, deleteAllowRuleDraft(rules, index))
+			case "edit":
+				var next []allowRule
+				next, err = changeAllowRuleDraft(view, rules, rule.ID)
+				if err == nil && !reflect.DeepEqual(rules, next) {
+					updated, err = replaceManagedRules(draft, next)
+				}
+			}
+			return err
+		})
+		if updated != "" {
+			draft = updated
+			if action != "edit" {
+				return draft, nil
+			}
+		}
 	}
-	if err != nil {
-		return "", err
-	}
-	if reflect.DeepEqual(rules, updated) {
-		return content, nil
-	}
-	return replaceManagedRules(content, updated)
 }
 
 func migrateGlobalPortRule(content, id string) (string, error) {

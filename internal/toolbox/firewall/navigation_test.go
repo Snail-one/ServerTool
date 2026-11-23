@@ -15,11 +15,11 @@ func TestAccessRulePagesReturnOneLevelAtATime(t *testing.T) {
 	}{
 		{"port-value", "2\n1\n1\n1\n", 5},
 		{"range-entry", "l\n1\n5\n1\n", 5},
-		{"source-ports", "5\n1\n\n1\n192.0.2.1\n\n\n\n\n443\n", 11},
-		{"dual-stack-all-ports", "5\n1\n\n3\n192.0.2.1\n2001:db8::1\n\n\n\n\n\n", 12},
-		{"edit-rule", "5\n2\n2\n", 4},
-		{"delete-by-id", "5\n3\n1\n", 4},
-		{"delete-by-port", "5\n3\n2\n443\n", 5},
+		{"source-ports", "5\nn\n\n1\n192.0.2.1\n\n\n\n\n443\n", 11},
+		{"dual-stack-all-ports", "5\nn\n\n3\n192.0.2.1\n2001:db8::1\n\n\n\n\n\n", 12},
+		{"edit-rule", "5\n2\n1\n", 4},
+		{"rule-details-by-id", "5\naaaaaaaa\n", 3},
+		{"delete-by-port", "5\nf\n443\n", 4},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			setupTest(t)
