@@ -138,18 +138,17 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 		if saved {
 			add("1", "查看配置", func() error { return showWireGuardProfile(name) })
 			add("2", "编辑配置", func() error { return editWireGuardProfile(view, name) })
-			add("3", "添加对端", func() error { return addWireGuardPeer(view, name) })
-			add("4", "删除对端", func() error { return removeWireGuardPeer(view, name) })
+			add("3", "管理对端", func() error { return manageWireGuardPeers(view, name) })
 		}
 
 		canChangeRuntime := saved && activeErr == nil && commandExists("wg-quick")
 		if canChangeRuntime {
 			fmt.Println()
 			if running {
-				add("5", "停止接口", func() error { return changeWireGuardRuntime(view, name, "stop") })
-				add("6", "重启接口", func() error { return changeWireGuardRuntime(view, name, "restart") })
+				add("4", "停止接口", func() error { return changeWireGuardRuntime(view, name, "stop") })
+				add("5", "重启接口", func() error { return changeWireGuardRuntime(view, name, "restart") })
 			} else {
-				add("5", "启动接口", func() error { return changeWireGuardRuntime(view, name, "start") })
+				add("4", "启动接口", func() error { return changeWireGuardRuntime(view, name, "start") })
 			}
 		}
 
@@ -172,15 +171,13 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 			actions["c"] = func() error { return showWireGuardRuntime(name) }
 		}
 		if saved {
-			if canDelete {
-				ui.MenuShortcutHint("d", "删除配置", "")
-				actions["d"] = func() error { return deleteWireGuardProfile(view, name) }
-			}
-			ui.MenuShortcutHint("g", "快速配置", "复制本机配置或粘贴对端配置")
-			actions["g"] = func() error { return quickWireGuardConfig(view, name) }
 			if canRotate {
 				ui.MenuShortcutHint("k", "更换密钥", "更换接口私钥和已配置的预共享密钥")
 				actions["k"] = func() error { return rotateWireGuardKeys(view, name) }
+			}
+			if canDelete {
+				ui.MenuShortcutHint("d", "删除配置", "")
+				actions["d"] = func() error { return deleteWireGuardProfile(view, name) }
 			}
 		}
 		ui.MenuExit("0/q", "返回 WireGuard")

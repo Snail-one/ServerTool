@@ -70,7 +70,8 @@ func TestWireGuardConfigAndPeers(t *testing.T) {
 		t.Fatal("configuration permissions must be 0600")
 	}
 
-	if err := addWireGuardPeer(newUIWithInput(t, peerKey+" 10.77.0.2/32 vpn.example.test:51820 25\ny\n"), "wg0"); err != nil {
+	input := "3\ng\n" + peerKey + " 10.77.0.2/32 vpn.example.test:51820 25\ny\n\nq\nq\n"
+	if err := runWireGuardInterface(newUIWithInput(t, input), "wg0"); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	data, err := readWireGuardProfile("wg0")
@@ -92,14 +93,26 @@ func TestWireGuardConfigAndPeers(t *testing.T) {
 		strings.Contains(output, privateKey) || strings.Contains(output, preshared) {
 		t.Fatal("profile display did not hide both secret keys or omitted public keys")
 	}
-	if err := removeWireGuardPeer(newUIWithInput(t, "1\ny\n"), "wg0"); err != nil {
+	if err := manageWireGuardPeers(newUIWithInput(t, "1\n1\n2\n10.77.0.3/32\n3\n-\ns\ny\n\nq\n"), "wg0"); !errors.Is(err, shared.ErrReturnToMenu) {
+		t.Fatal(err)
+	}
+	editedConfig, err := parseWireGuardConfig([]byte(shared.ReadFileString(wireGuardProfilePath("wg0"))))
+	if err != nil || len(editedConfig.peers) != 1 {
+		t.Fatalf("expected one edited peer: %v", err)
+	}
+	peer := editedConfig.peers[0]
+	if wireGuardValue(peer, "allowedips") != "10.77.0.3/32" || wireGuardValue(peer, "endpoint") != "" ||
+		wireGuardValue(peer, "presharedkey") != preshared || wireGuardValue(peer, "persistentkeepalive") != "25" {
+		t.Fatal("editing the peer should change only the selected fields")
+	}
+	if err := manageWireGuardPeers(newUIWithInput(t, "1\n2\ny\n\nq\n"), "wg0"); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if edited := shared.ReadFileString(wireGuardProfilePath("wg0")); strings.Contains(edited, "[Peer]") && strings.Contains(edited, peerKey) {
 		t.Fatal("selected peer was not removed")
 	}
 	history, err := (shared.BackupStore{Root: wireGuardDataDir, Module: "wireguard"}).List()
-	if err != nil || len(history) != 2 {
+	if err != nil || len(history) != 3 {
 		t.Fatalf("expected a backup for each peer change: %v %v", history, err)
 	}
 }
@@ -168,7 +181,10 @@ func TestWireGuardRuntimeAndBootControls(t *testing.T) {
 		t.Fatal("a stopped interface should show the saved peer count")
 	}
 	offset := -1
-	for _, item := range []string{"1   查看配置", "2   编辑配置", "3   添加对端", "4   删除对端", "5   启动接口", "a   开启开机自启", "d   删除配置", "g   快速配置", "k   更换密钥"} {
+	if strings.Contains(stoppedMenu, "3   添加对端") || strings.Contains(stoppedMenu, "g   快速配置") {
+		t.Fatal("quick configuration belongs in the peer management menu")
+	}
+	for _, item := range []string{"1   查看配置", "2   编辑配置", "3   管理对端", "4   启动接口", "a   开启开机自启", "k   更换密钥", "d   删除配置"} {
 		position := strings.Index(stoppedMenu, item)
 		if position <= offset {
 			t.Fatalf("menu item missing or out of order: %q", item)
@@ -177,7 +193,7 @@ func TestWireGuardRuntimeAndBootControls(t *testing.T) {
 	}
 
 	// The profile submenu should still be usable after each successful action.
-	input := "5\ny\n\nC\n\nA\ny\n\n6\ny\n\n5\ny\n\na\ny\n\nq\n"
+	input := "4\ny\n\nC\n\nA\ny\n\n5\ny\n\n4\ny\n\na\ny\n\nq\n"
 	var err error
 	output := wireGuardTestOutput(t, func() {
 		err = runWireGuardInterface(newUIWithInput(t, input), "wg0")
@@ -210,7 +226,7 @@ func TestWireGuardQuickConfigRoundTrip(t *testing.T) {
 	local := "[Interface]\nPrivateKey = " + key(1) + "\nAddress = 10.77.0.1/24,fd77::1/64\n" +
 		"ListenPort = 51820\n[Peer]\nPublicKey = " + wireGuardPublicKey(remoteConfig.device) +
 		"\nAllowedIPs = 10.77.0.2/32\nPresharedKey = " + key(3) + "\n"
-	for name, content := range map[string]string{"wg0": local, "wg1": remote, "wg2": remote} {
+	for name, content := range map[string]string{"wg0": local, "wg1": remote} {
 		if err := os.WriteFile(wireGuardProfilePath(name), []byte(content), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -240,20 +256,15 @@ func TestWireGuardQuickConfigRoundTrip(t *testing.T) {
 	if err := quickWireGuardConfig(newUIWithInput(t, input), "wg1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := addWireGuardPeer(newUIWithInput(t, input), "wg2"); err != nil {
-		t.Fatal(err)
+	config, err := parseWireGuardConfig([]byte(shared.ReadFileString(wireGuardProfilePath("wg1"))))
+	if err != nil || len(config.peers) != 1 {
+		t.Fatalf("missing imported peer: %v", err)
 	}
-	for _, name := range []string{"wg1", "wg2"} {
-		config, err := parseWireGuardConfig([]byte(shared.ReadFileString(wireGuardProfilePath(name))))
-		if err != nil || len(config.peers) != 1 {
-			t.Fatalf("missing imported peer: %v", err)
-		}
-		peer := config.peers[0]
-		if wireGuardValue(peer, "presharedkey") != key(3) ||
-			wireGuardValue(peer, "allowedips") != "10.77.0.1/32,fd77::1/128" ||
-			wireGuardValue(peer, "endpoint") != "vpn.example.test:51820" {
-			t.Fatal("import did not preserve the exported settings")
-		}
+	peer := config.peers[0]
+	if wireGuardValue(peer, "presharedkey") != key(3) ||
+		wireGuardValue(peer, "allowedips") != "10.77.0.1/32,fd77::1/128" ||
+		wireGuardValue(peer, "endpoint") != "vpn.example.test:51820" {
+		t.Fatal("import did not preserve the exported settings")
 	}
 }
 
@@ -370,7 +381,11 @@ func TestWireGuardRemovingPeerRestartsRunningInterface(t *testing.T) {
 					return nil
 				}
 			}
-			err := removeWireGuardPeer(newUIWithInput(t, "1\ny\n"), "wg0")
+			config, err := parseWireGuardConfig([]byte(before))
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = removeWireGuardPeer(newUIWithInput(t, "y\n"), "wg0", []byte(before), config, 0)
 			if fails {
 				if err == nil || !strings.Contains(err.Error(), "已恢复并启动旧配置") ||
 					shared.ReadFileString(path) != before || !reflect.DeepEqual(operations, []string{"down", "up", "up"}) {

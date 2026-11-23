@@ -164,14 +164,7 @@ func showWireGuardProfile(name string) error {
 	})...)
 	ui.PrintInfoCard("接口配置", fields...)
 	for i, peer := range config.peers {
-		fields := wireGuardFields(peer, [][2]string{
-			{"publickey", "公钥"}, {"endpoint", "端点"}, {"allowedips", "允许地址"},
-			{"persistentkeepalive", "保活间隔"},
-		})
-		if wireGuardValue(peer, "presharedkey") != "" {
-			fields = append(fields, ui.CardField{Label: "预共享密钥", Value: "已配置"})
-		}
-		ui.PrintSectionCard(fmt.Sprintf("对端 %d", i+1), fields...)
+		ui.PrintSectionCard(fmt.Sprintf("对端 %d", i+1), wireGuardPeerFields(peer)...)
 	}
 	return nil
 }
@@ -227,7 +220,7 @@ func createWireGuardProfile(view *ui.UI) error {
 	port := 20000 + rand.IntN(60000-20000+1)
 	data := []byte(fmt.Sprintf("[Interface]\nPrivateKey = %s\nAddress = %s\nListenPort = %d\n", key, address, port))
 	if useDefaults {
-		peer, err := askWireGuardPeerConfig(view, true)
+		peer, err := askFirstWireGuardPeer(view)
 		if err != nil {
 			return err
 		}
@@ -529,21 +522,6 @@ func backupWireGuardProfile(path string) error {
 	return err
 }
 
-func addWireGuardPeer(view *ui.UI, name string) error {
-	if !isRoot() {
-		return fmt.Errorf("写入 WireGuard 配置需要 root 权限")
-	}
-	before, err := readWireGuardProfile(name)
-	if err != nil {
-		return err
-	}
-	peer, err := askWireGuardPeerConfig(view, false)
-	if err != nil {
-		return err
-	}
-	return saveWireGuardPeer(view, name, before, peer)
-}
-
 func saveWireGuardPeer(view *ui.UI, name string, before []byte, peer string) error {
 	after := append([]byte(nil), bytes.TrimRight(before, "\r\n")...)
 	return saveWireGuardProfile(view, name, before, append(after, peer...))
@@ -583,22 +561,22 @@ func withDefaultWireGuardPSKs(data []byte) ([]byte, error) {
 	return []byte(strings.Join(lines, "\n")), nil
 }
 
-func askWireGuardPeerConfig(view *ui.UI, optional bool) (string, error) {
+func printWireGuardPeerInputFormat() {
 	ui.PrintField("输入格式", "对端公钥 AllowedIPs [Endpoint] [保活秒数]")
 	ui.PrintField("说明", "AllowedIPs 用逗号分隔，Endpoint 可填主机名或 IP 加端口。用 - 跳过 Endpoint")
 	ui.PrintField("预共享密钥", "默认生成。可粘贴快速配置里的 --psk=密钥，或在末尾加 --no-psk 跳过")
-	prompt := "请输入对端配置（0/q 返回）："
-	if optional {
-		prompt = "请输入首个对端配置（回车跳过，0/q 返回）："
-	}
-	line, err := view.Ask(prompt)
+}
+
+func askFirstWireGuardPeer(view *ui.UI) (string, error) {
+	printWireGuardPeerInputFormat()
+	line, err := view.Ask("请输入首个对端配置（回车跳过，0/q 返回）：")
 	if err != nil {
 		return "", err
 	}
 	if shared.IsReturnChoice(line) {
 		return "", shared.ErrReturnToMenu
 	}
-	if optional && line == "" {
+	if line == "" {
 		return "", nil
 	}
 	return wireGuardPeerFromInput(line)
@@ -626,10 +604,8 @@ func wireGuardPeerFromInput(line string) (string, error) {
 	if _, valid := wireGuardKey(fields[0]); !valid {
 		return "", fmt.Errorf("对端公钥格式无效")
 	}
-	for _, prefix := range strings.Split(fields[1], ",") {
-		if _, err := netip.ParsePrefix(prefix); err != nil {
-			return "", fmt.Errorf("AllowedIPs 须使用 CIDR，多个网段用逗号分隔")
-		}
+	if err := validateWireGuardAllowedIPs(fields[1]); err != nil {
+		return "", err
 	}
 	peer := fmt.Sprintf("\n\n[Peer]\nPublicKey = %s\nAllowedIPs = %s\n", fields[0], fields[1])
 	if len(fields) >= 3 && fields[2] != "-" {
@@ -712,55 +688,18 @@ func rotateWireGuardKeys(view *ui.UI, name string) error {
 
 func validWireGuardEndpoint(endpoint string) bool {
 	host, port, err := net.SplitHostPort(endpoint)
-	if err != nil || host == "" || strings.ContainsAny(host, "#=/") {
+	if err != nil || host == "" || strings.ContainsAny(host, "#=/ \t\r\n") {
 		return false
 	}
 	value, err := strconv.ParseUint(port, 10, 16)
 	return err == nil && value > 0
 }
 
-func removeWireGuardPeer(view *ui.UI, name string) error {
-	if !isRoot() {
-		return fmt.Errorf("写入 WireGuard 配置需要 root 权限")
-	}
-	before, err := readWireGuardProfile(name)
-	if err != nil {
-		return err
-	}
-	config, err := parseWireGuardConfig(before)
-	if err != nil {
-		return err
-	}
-	if len(config.peers) == 0 {
-		ui.PrintInfoCard("当前配置没有对端")
-		return nil
-	}
-	for i, peer := range config.peers {
-		ui.MenuOptionHint(strconv.Itoa(i+1), wireGuardValue(peer, "publickey"), wireGuardValue(peer, "allowedips"))
-	}
-	choice, err := view.Ask("选择要删除的对端（0/q 返回）：")
-	if err != nil {
-		return err
-	}
-	if shared.IsReturnChoice(choice) {
-		return shared.ErrReturnToMenu
-	}
-	index, err := strconv.Atoi(choice)
-	if err != nil || index < 1 || index > len(config.peers) {
-		return fmt.Errorf("对端编号无效")
-	}
-	lines := bytes.Split(before, []byte("\n"))
-	start, end := config.peerLines[index-1], len(lines)
-	if index < len(config.peerLines) {
-		end = config.peerLines[index]
-	}
-	newLines := append([][]byte(nil), lines[:start]...)
-	for _, line := range lines[start+1 : end] {
-		trimmed := bytes.TrimSpace(line)
-		if len(trimmed) == 0 || trimmed[0] == '#' {
-			newLines = append(newLines, line)
+func validateWireGuardAllowedIPs(value string) error {
+	for _, prefix := range strings.Split(value, ",") {
+		if _, err := netip.ParsePrefix(strings.TrimSpace(prefix)); err != nil {
+			return fmt.Errorf("AllowedIPs 须使用 CIDR，多个网段用逗号分隔")
 		}
 	}
-	newLines = append(newLines, lines[end:]...)
-	return saveWireGuardProfile(view, name, before, bytes.Join(newLines, []byte("\n")))
+	return nil
 }

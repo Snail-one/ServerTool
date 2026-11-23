@@ -32,7 +32,7 @@ func quickWireGuardConfig(view *ui.UI, name string) error {
 	selected := -1
 	for {
 		ui.ClearScreen()
-		ui.MenuTitle("WireGuard", name, "快速配置")
+		ui.MenuTitle("WireGuard", name, "管理对端", "快速配置")
 		ui.PrintInfoCard("本机配置",
 			ui.CardField{Label: "隧道地址", Value: addresses},
 			ui.CardField{Label: "监听端口", Value: wireGuardValue(config.device, "listenport")},
@@ -41,7 +41,7 @@ func quickWireGuardConfig(view *ui.UI, name string) error {
 		if endpoint != "" {
 			line += " " + endpoint
 		}
-		copyHint := "复制到另一端的「快速配置」或「3 添加对端」"
+		copyHint := "复制到另一端的「快速配置」"
 		if selected >= 0 {
 			if key := wireGuardValue(config.peers[selected], "presharedkey"); key != "" {
 				line += " --psk=" + key
@@ -57,6 +57,8 @@ func quickWireGuardConfig(view *ui.UI, name string) error {
 		fmt.Println(copyHint)
 		fmt.Println(line)
 		fmt.Println()
+		printWireGuardPeerInputFormat()
+		fmt.Println()
 		if notice != "" {
 			ui.PrintField("提示", notice)
 			notice = ""
@@ -66,7 +68,7 @@ func quickWireGuardConfig(view *ui.UI, name string) error {
 			ui.MenuOptionHint(strconv.Itoa(i+1), fmt.Sprintf("生成对端 %d 的复制行", i+1), addresses)
 		}
 		ui.MenuShortcutHint("e", "填写本机端点", "可选，使用另一端能访问的主机名或 IP 和端口")
-		ui.MenuExit("0/q", "返回接口菜单")
+		ui.MenuExit("0/q", "返回对端列表")
 		choice, err := view.Ask("粘贴对端配置，或选择上述操作：")
 		if err != nil {
 			return err
