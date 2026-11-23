@@ -2,10 +2,12 @@ package packages
 
 import (
 	"fmt"
+	"math"
 	"net/netip"
 	"strconv"
 	"strings"
 
+	"snail_tool/internal/input"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/ui"
 )
@@ -90,8 +92,8 @@ func quickWireGuardConfig(view *ui.UI, name string) error {
 			}
 			continue
 		}
-		if number, err := strconv.Atoi(choice); err == nil {
-			if number >= 1 && number <= len(config.peers) {
+		if number, err := input.Number(choice, 1, math.MaxInt); err == nil {
+			if number <= len(config.peers) {
 				selected = number - 1
 			} else {
 				notice = "请输入已显示的对端序号"

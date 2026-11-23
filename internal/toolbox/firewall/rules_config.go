@@ -332,16 +332,16 @@ func replaceManagedRulesIn(content string, rules []allowRule, section ruleBlock)
 	return content[:start] + "\n        " + block + "\n" + content[start:], nil
 }
 
-func saveAccessRules(version configVersion, updated string) error {
+func saveAccessRules(version configVersion, updated string) (bool, error) {
 	if err := writeConfig(updated, version); err != nil {
-		return err
+		return false, err
 	}
 	if err := applyConfig([]byte(updated)); err != nil {
 		label := "访问规则"
 		if activeSession != nil && activeSession.forward {
 			label = "转发规则"
 		}
-		return fmt.Errorf("%s已保存，但未成功加载；原配置已备份，可输入 r 校验加载配置重试: %w", label, err)
+		return true, fmt.Errorf("%s已保存，但未成功加载；原配置已备份，可输入 r 校验加载配置重试: %w", label, err)
 	}
-	return nil
+	return true, nil
 }

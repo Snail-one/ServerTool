@@ -37,19 +37,26 @@ func (a *App) Run() error {
 	ui.ClearScreen()
 	ui.MenuTitle("状态检测")
 	menuStatus := currentStatus(a.startup)
-	for {
+	invalidChoice := false
+	for !a.ui.InputEnded() {
 		ui.ClearScreen()
 		showMenu(menuStatus)
+		if invalidChoice {
+			ui.InvalidChoice()
+			invalidChoice = false
+		}
 
 		choice, err := a.ui.Ask("请选择：")
+		if a.ui.InputEnded() {
+			break
+		}
 		if err != nil {
 			return err
 		}
 		fmt.Println()
 
 		if shared.IsReturnChoice(choice) {
-			fmt.Println("已退出")
-			return nil
+			break
 		}
 
 		switch strings.ToLower(choice) {
@@ -82,10 +89,14 @@ func (a *App) Run() error {
 				return cleanup.Run(a.ui)
 			})
 		default:
-			ui.InvalidChoice()
-			a.ui.Pause()
+			invalidChoice = true
 		}
 	}
+	if a.ui.InputEnded() {
+		fmt.Println()
+	}
+	fmt.Println("已退出")
+	return nil
 }
 
 func currentStatus(report *startup.Report) status.Status {

@@ -218,8 +218,8 @@ type fakePrompt struct {
 	ok     bool
 }
 
-func (p fakePrompt) Ask(string) (string, error)   { return p.answer, nil }
-func (p fakePrompt) Confirm(string) (bool, error) { return p.ok, nil }
+func (p fakePrompt) AskSecret(string) (string, error) { return p.answer, nil }
+func (p fakePrompt) Confirm(string) (bool, error)     { return p.ok, nil }
 
 func TestConfigureReturnAndOverwriteCancellationLeaveConfigUntouched(t *testing.T) {
 	account, path := setup(t)
@@ -241,8 +241,8 @@ func TestConfigureRejectsCorruptedAddressBeforeWriting(t *testing.T) {
 			account, path := setup(t)
 			original := `{"auths":{"registry":{"auth":"keep"}},"proxies":{"default":{"httpProxy":"http://keep:8080"}}}`
 			putFile(t, path, original)
-			err := configure(fakePrompt{answer: answer, ok: true}, account)
-			if err == nil || shared.ReadFileString(path) != original {
+			err := configure(navigationUI(t, answer+"\nq\n"), account)
+			if !errors.Is(err, shared.ErrReturnToMenu) || shared.ReadFileString(path) != original {
 				t.Fatalf("corrupted input was not rejected without changes: %v", err)
 			}
 			entries, err := managedStore.List()

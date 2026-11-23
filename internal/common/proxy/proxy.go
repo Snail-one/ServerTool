@@ -89,14 +89,8 @@ func ConfigureProxy(view *ui.UI) error {
 		ui.PromptStep{Run: func() error {
 			log.Info("支持 IP/主机名:端口或 [IPv6]:端口，可带 http:// 或 https://")
 			log.Info("认证格式：用户名:密码@地址；密码中的 @、#、% 等字符请使用 URL 编码")
-			raw, err := view.Ask("请输入代理地址（q 返回上一步）：")
-			if err != nil {
-				return err
-			}
-			if shared.IsReturnChoice(raw) {
-				return shared.ErrReturnToMenu
-			}
-			proxyURL, err = normalizeProxy(raw)
+			var err error
+			proxyURL, err = PromptURL(view.AskSecret, "请输入代理地址（输入不显示，0/q 返回上一步）：")
 			return err
 		}},
 	)
@@ -152,6 +146,24 @@ func IsProxyConfigured(account *system.Account) bool {
 
 func NormalizeProxy(raw string) (string, error) {
 	return normalizeProxy(raw)
+}
+
+// PromptURL reads credentials without terminal echo and retries invalid addresses.
+func PromptURL(askSecret func(string) (string, error), prompt string) (string, error) {
+	for {
+		raw, err := askSecret(prompt)
+		if err != nil {
+			return "", err
+		}
+		if shared.IsReturnChoice(raw) {
+			return "", shared.ErrReturnToMenu
+		}
+		value, err := normalizeProxy(raw)
+		if err == nil {
+			return value, nil
+		}
+		log.Warn(err)
+	}
 }
 
 func MaskProxyURL(proxyURL string) string {

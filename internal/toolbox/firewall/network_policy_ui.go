@@ -67,11 +67,10 @@ func runPolicyRuleManager(view *ui.UI, label string) error {
 		if err != nil {
 			return err
 		}
-		updated, err := editAccessRulesDraft(view, string(version.content), false)
+		_, err = editPolicyDraft(view, string(version.content), false, func(draft string) (bool, error) {
+			return saveAccessRules(version, draft)
+		})
 		if err != nil {
-			return err
-		}
-		if err := saveAccessRules(version, updated); err != nil {
 			return err
 		}
 		ui.PrintSuccessCard(label + "已保存并加载")
@@ -79,9 +78,13 @@ func runPolicyRuleManager(view *ui.UI, label string) error {
 	}
 }
 
-// The same draft editor is used for existing configurations and during initial
-// generation. It never writes files or changes the running firewall itself.
 func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string, error) {
+	return editPolicyDraft(view, original, generating, nil)
+}
+
+// save reports whether the draft was written, even if loading it failed.
+// When unset, the editor returns the draft to the caller for further review.
+func editPolicyDraft(view *ui.UI, original string, generating bool, save func(string) (bool, error)) (string, error) {
 	if activeSession != nil && activeSession.forward {
 		if err := validateForwardConfig(original); err != nil {
 			return "", err
@@ -183,6 +186,16 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 				continue
 			}
 			if !generating {
+				if save != nil {
+					saved, err := save(draft)
+					if err != nil && !saved {
+						notice = "保存失败，草稿已保留：" + err.Error()
+						continue
+					}
+					if err != nil {
+						return "", err
+					}
+				}
 				return draft, nil
 			}
 			ui.ClearScreen()

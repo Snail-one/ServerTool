@@ -17,6 +17,7 @@ type Runtime struct {
 }
 
 func Ensure(view *ui.UI) error {
+	invalidChoice := false
 	for {
 		runtimes := DetectAll()
 		if len(runtimes) > 0 {
@@ -38,6 +39,10 @@ func Ensure(view *ui.UI) error {
 		ui.MenuOptionHint("3", "安装 Podman", "apt 软件包")
 		ui.MenuExit("0/q", "返回")
 
+		if invalidChoice {
+			ui.InvalidChoice()
+			invalidChoice = false
+		}
 		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return err
@@ -63,12 +68,14 @@ func Ensure(view *ui.UI) error {
 				return err
 			}
 		case "3":
-			if err := installPodmanRuntime(); err != nil {
+			if err := installPodmanRuntime(view); err != nil {
+				if errors.Is(err, shared.ErrReturnToMenu) {
+					continue
+				}
 				return err
 			}
 		default:
-			ui.InvalidChoice()
-			continue
+			invalidChoice = true
 		}
 	}
 }
@@ -125,29 +132,36 @@ func installDockerScriptRuntime(view *ui.UI) error {
 	return newDockerScriptInstaller(view).install()
 }
 
-func installPodmanRuntime() error {
-	if err := ensureContainerRuntimeAbsent(system.CommandExists, system.Output); err != nil {
-		return err
-	}
+func installPodmanRuntime(view *ui.UI) error {
 	if !system.IsRoot() {
 		return fmt.Errorf("安装 Podman 需要 root 权限，请使用 sudo 运行本工具")
 	}
 
-	log.Info("安装 Podman...")
+	var manager string
 	switch {
 	case system.CommandExists("apt"):
-		if err := system.Run("apt", "update"); err != nil {
-			return fmt.Errorf("apt update 失败: %w", err)
-		}
-		return system.Run("apt", "install", "-y", "podman")
+		manager = "apt"
 	case system.CommandExists("apt-get"):
-		if err := system.Run("apt-get", "update"); err != nil {
-			return fmt.Errorf("apt-get update 失败: %w", err)
-		}
-		return system.Run("apt-get", "install", "-y", "podman")
+		manager = "apt-get"
 	default:
 		return fmt.Errorf("未找到 apt 或 apt-get，无法自动安装 Podman")
 	}
+	confirmed, err := view.Confirm(fmt.Sprintf("使用 %s 更新软件包索引并安装 Podman？(y/N，0/q 返回)：", manager))
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		return shared.ErrReturnToMenu
+	}
+	if err := ensureContainerRuntimeAbsent(system.CommandExists, system.Output); err != nil {
+		return err
+	}
+
+	log.Info("安装 Podman...")
+	if err := system.Run(manager, "update"); err != nil {
+		return fmt.Errorf("%s update 失败: %w", manager, err)
+	}
+	return system.Run(manager, "install", "-y", "podman")
 }
 
 func ensureContainerRuntimeAbsent(commandExists func(string) bool, output func(string, ...string) (string, error)) error {

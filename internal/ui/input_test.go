@@ -41,6 +41,9 @@ func TestReadLineAllowsMaximumLengthAndDoesNotActOnEOF(t *testing.T) {
 	if got, err := view.ReadLine(); got != "" || !errors.Is(err, io.EOF) {
 		t.Fatalf("unterminated response must not execute an action: %q, %v", got, err)
 	}
+	if !view.InputEnded() {
+		t.Fatal("EOF must be recorded so nested menus can exit")
+	}
 }
 
 func TestAskRetriesCorruptionWithoutEchoingInput(t *testing.T) {

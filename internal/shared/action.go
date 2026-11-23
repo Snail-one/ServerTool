@@ -15,7 +15,7 @@ func IsReturnChoice(choice string) bool {
 
 func RunAction(view *ui.UI, failureMessage string, action func() error) {
 	if err := action(); err != nil {
-		if errors.Is(err, ErrReturnToMenu) {
+		if view.InputEnded() || errors.Is(err, ErrReturnToMenu) {
 			return
 		}
 		log.Error(err)

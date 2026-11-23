@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"snail_tool/internal/input"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/ui"
 )
@@ -80,8 +81,8 @@ func manageWireGuardPeers(view *ui.UI, name string) error {
 			})
 			continue
 		}
-		number, err := strconv.Atoi(choice)
-		if err != nil || number < 1 || number > len(config.peers) {
+		number, err := input.Number(choice, 1, len(config.peers))
+		if err != nil {
 			notice = "请输入对端序号或快捷键"
 			continue
 		}
@@ -201,8 +202,8 @@ func editWireGuardPeer(view *ui.UI, name string, before []byte, config wireGuard
 			}
 			return err
 		}
-		number, err := strconv.Atoi(choice)
-		if err != nil || number < 1 || number > len(wireGuardPeerOptions) {
+		number, err := input.Number(choice, 1, len(wireGuardPeerOptions))
+		if err != nil {
 			notice = "请选择列表中的操作"
 			continue
 		}

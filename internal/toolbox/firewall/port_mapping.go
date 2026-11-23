@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"snail_tool/internal/input"
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/ui"
@@ -388,6 +389,7 @@ func withPortMappings(content string, mappings []portMapping) (string, error) {
 }
 
 func runPortMappingManager(view *ui.UI) error {
+	invalidChoice := false
 	for {
 		version, err := readConfigVersion()
 		if err != nil {
@@ -410,6 +412,10 @@ func runPortMappingManager(view *ui.UI) error {
 		if len(mappings) > 0 {
 			prompt = "请输入映射序号或操作："
 		}
+		if invalidChoice {
+			ui.InvalidChoice()
+			invalidChoice = false
+		}
 		choice, err := view.Ask(prompt)
 		if err != nil {
 			return err
@@ -417,17 +423,16 @@ func runPortMappingManager(view *ui.UI) error {
 		if shared.IsReturnChoice(choice) {
 			return shared.ErrReturnToMenu
 		}
-		number, numberErr := strconv.Atoi(choice)
+		number, numberErr := input.Number(choice, 1, len(mappings))
 		switch {
 		case strings.EqualFold(choice, "n"):
 			runPortMappingChange(view, version, mappings, len(mappings), "新建")
-		case numberErr == nil && number >= 1 && number <= len(mappings):
+		case numberErr == nil:
 			shared.RunAction(view, "打开端口映射失败，已返回映射列表", func() error {
 				return runPortMappingDetails(view, version, mappings, number-1)
 			})
 		default:
-			ui.InvalidChoice()
-			view.Pause()
+			invalidChoice = true
 		}
 	}
 }

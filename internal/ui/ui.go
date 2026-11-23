@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -23,7 +24,9 @@ const (
 )
 
 type UI struct {
-	reader *bufio.Reader
+	reader     *bufio.Reader
+	stdin      *os.File
+	inputEnded bool
 }
 
 // CardField is one labeled value in a terminal information card. Detail is
@@ -35,14 +38,38 @@ type CardField struct {
 }
 
 func New() *UI {
-	return &UI{reader: bufio.NewReader(os.Stdin)}
+	return &UI{reader: bufio.NewReader(os.Stdin), stdin: os.Stdin}
 }
 
+// InputEnded reports whether standard input reached EOF.
+func (u *UI) InputEnded() bool { return u.inputEnded }
+
 func (u *UI) Ask(prompt string) (string, error) {
+	return ask(prompt, u.ReadLine)
+}
+
+// AskSecret reads and validates a response with terminal echo disabled.
+func (u *UI) AskSecret(prompt string) (string, error) {
+	restore, err := hideInputEcho(u.stdin)
+	if err != nil {
+		return "", fmt.Errorf("无法隐藏终端输入: %w", err)
+	}
+	if restore == nil {
+		return u.Ask(prompt)
+	}
+	defer restore()
+	return ask(prompt, func() (string, error) {
+		value, err := u.ReadLine()
+		fmt.Println()
+		return value, err
+	})
+}
+
+func ask(prompt string, readLine func() (string, error)) (string, error) {
 	prompt = normalizePrompt(prompt)
 	for {
 		fmt.Print(paint(bold+orange, "❯ ") + paint(bold, prompt) + " ")
-		value, err := u.ReadLine()
+		value, err := readLine()
 		if !errors.Is(err, input.ErrInvalid) {
 			return value, err
 		}
@@ -68,6 +95,9 @@ func (u *UI) ReadLine() (string, error) {
 			continue
 		}
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				u.inputEnded = true
+			}
 			return "", err
 		}
 		break
@@ -107,6 +137,9 @@ func (u *UI) Pause() {
 }
 
 func (u *UI) PauseWithPrompt(prompt string) {
+	if u.InputEnded() {
+		return
+	}
 	prompt = strings.TrimSpace(prompt)
 	if strings.HasSuffix(prompt, "...") {
 		prompt = strings.TrimSuffix(prompt, "...") + "…"

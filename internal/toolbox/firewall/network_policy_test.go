@@ -227,7 +227,7 @@ func TestPolicyEditorRetriesInvalidInputsWithoutChangingOtherLists(t *testing.T)
 	}
 }
 
-func TestPolicyManagerStopsOnValidationConflictOrLoadFailure(t *testing.T) {
+func TestPolicyManagerPreservesDraftOrSavedConfigOnFailure(t *testing.T) {
 	for _, failure := range []string{"validation", "conflict", "load"} {
 		t.Run(failure, func(t *testing.T) {
 			setupTest(t)
@@ -253,22 +253,58 @@ func TestPolicyManagerStopsOnValidationConflictOrLoadFailure(t *testing.T) {
 				t.Fatalf("unexpected args: %v", args)
 				return "", nil
 			}
-			err := runAccessRuleManager(inputUI(t, "3\n1\n1\n1\n8443\ns\n"))
-			if err == nil {
-				t.Fatal("expected failure")
-			}
+			view := inputUI(t, "3\n1\n1\n1\n8443\ns\nq\ny\n")
+			var err error
+			output := capturePortOutput(t, func() {
+				err = runAccessRuleManager(view)
+			})
 			want := string(version.content)
 			if failure == "conflict" {
 				want = "# concurrent change\n"
 			}
 			if failure == "load" {
-				if loads != 1 || !strings.Contains(err.Error(), "已保存") || !strings.Contains(shared.ReadFileString(configPath), "8443") {
+				if loads != 1 || err == nil || !strings.Contains(err.Error(), "已保存") || !strings.Contains(shared.ReadFileString(configPath), "8443") {
 					t.Fatalf("load failure must retain saved file and explain partial result: %v", err)
 				}
-			} else if loads != 0 || shared.ReadFileString(configPath) != want {
-				t.Fatal("validation/conflict failure overwrote config or loaded rules")
+			} else {
+				_, retained, shown := strings.Cut(output, "保存失败，草稿已保留")
+				if !errors.Is(err, shared.ErrReturnToMenu) || !shown || !strings.Contains(retained, "是否放弃修改") {
+					t.Fatalf("failed save must return to the draft before discarding: %v\n%s", err, output)
+				}
+				if strings.Count(output, "内网 IPv4 TCP：2222, 8443") != 2 {
+					t.Fatalf("draft changes must appear before and after failed save:\n%s", output)
+				}
+				if loads != 0 || shared.ReadFileString(configPath) != want {
+					t.Fatal("validation/conflict failure overwrote config or loaded rules")
+				}
 			}
 		})
+	}
+}
+
+func TestPolicyManagerCanRetryRetainedDraft(t *testing.T) {
+	setupTest(t)
+	version := ruleTestConfig(t, nil)
+	calls := acceptRuleCommands(t)
+	query := commandOutput
+	commandOutput = func(name string, args ...string) (string, error) {
+		output, err := query(name, args...)
+		if reflect.DeepEqual(*calls, []string{"check"}) {
+			return "invalid", errors.New("temporary validation failure")
+		}
+		return output, err
+	}
+
+	view := inputUI(t, "3\n1\n1\n1\n8443\ns\ns\n\nq\n")
+	if err := runAccessRuleManager(view); !errors.Is(err, shared.ErrReturnToMenu) {
+		t.Fatalf("retry did not save and return to the editor: %v", err)
+	}
+	want, err := withPolicyValue(string(version.content), policyLists[4], "2222, 8443")
+	if err != nil || shared.ReadFileString(configPath) != want {
+		t.Fatalf("retry did not save the retained draft: %v", err)
+	}
+	if !reflect.DeepEqual(*calls, []string{"check", "check", "load"}) {
+		t.Fatalf("expected two validations and one load, got %v", *calls)
 	}
 }
 

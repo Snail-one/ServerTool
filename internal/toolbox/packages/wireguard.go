@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"snail_tool/internal/input"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/ui"
 )
@@ -36,6 +37,7 @@ func (tools wireGuardTools) badge() string {
 func WireGuardBadge() string { return detectWireGuardTools().badge() }
 
 func RunWireGuard(view *ui.UI) error {
+	invalidChoice := false
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("WireGuard")
@@ -89,6 +91,10 @@ func RunWireGuard(view *ui.UI) error {
 		ui.MenuOption("r", "刷新状态")
 		ui.MenuExit("0/q", "返回主菜单")
 
+		if invalidChoice {
+			ui.InvalidChoice()
+			invalidChoice = false
+		}
 		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return err
@@ -97,7 +103,7 @@ func RunWireGuard(view *ui.UI) error {
 			return shared.ErrReturnToMenu
 		}
 		choice = strings.ToLower(choice)
-		number, numberErr := strconv.Atoi(choice)
+		number, numberErr := input.Number(choice, 1, len(profiles))
 		switch {
 		case choice == "" || choice == "r":
 			continue
@@ -113,13 +119,12 @@ func RunWireGuard(view *ui.UI) error {
 			shared.RunAction(view, "卸载 WireGuard 失败，已返回管理菜单", func() error {
 				return uninstallWireGuard(view)
 			})
-		case numberErr == nil && number >= 1 && number <= len(profiles):
+		case numberErr == nil:
 			shared.RunAction(view, "接口管理失败，已返回 WireGuard", func() error {
 				return runWireGuardInterface(view, profiles[number-1].name)
 			})
 		default:
-			ui.InvalidChoice()
-			view.Pause()
+			invalidChoice = true
 		}
 	}
 }
