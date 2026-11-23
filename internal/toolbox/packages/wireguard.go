@@ -2,6 +2,7 @@ package packages
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"snail_tool/internal/shared"
@@ -45,27 +46,43 @@ func RunWireGuard(view *ui.UI) error {
 				version = "读取失败"
 			}
 			fields = append(fields, ui.CardField{Label: "版本", Value: strings.TrimSpace(version)})
-			interfaces, err := commandOutput("wg", "show", "interfaces")
-			value := "无"
-			if names := strings.Fields(interfaces); len(names) > 0 {
-				value = strings.Join(names, "、")
-			}
-			if err != nil {
-				value = "读取失败"
-			}
-			fields = append(fields, ui.CardField{Label: "当前接口", Value: value})
+		}
+		profiles, activeErr, readErr := wireGuardInterfaces()
+		if tools.wg && activeErr != nil {
+			fields = append(fields, ui.CardField{Label: "运行状态", Value: "读取失败", Detail: activeErr.Error()})
+		}
+		if readErr != nil {
+			fields = append(fields, ui.CardField{Label: "配置目录", Value: "读取失败", Detail: readErr.Error()})
+		}
+		if len(profiles) == 0 && readErr == nil && (!tools.wg || activeErr == nil) {
+			fields = append(fields, ui.CardField{Label: "接口", Value: "暂无接口或配置"})
 		}
 		ui.PrintInfoCard("WireGuard", fields...)
-		ui.MenuOption("1", "接口与配置")
-		if tools.wg {
-			ui.MenuOption("2", "新建配置")
+		for i, profile := range profiles {
+			state := "已停止"
+			switch {
+			case activeErr != nil:
+				state = "状态未知"
+			case profile.active:
+				state = "运行中"
+			}
+			detail := "已有配置"
+			if !profile.saved {
+				detail = "仅运行时接口"
+			}
+			ui.MenuOptionStatusHint(strconv.Itoa(i+1), profile.name, ui.SoftwareBadge(state, profile.active), detail)
 		}
-		fmt.Println()
+		if len(profiles) > 0 {
+			fmt.Println()
+		}
+		if tools.wg {
+			ui.MenuShortcutHint("n", "新建配置", "接口名处回车使用默认配置")
+		}
 		if !tools.ready() {
-			ui.MenuOptionHint("8", "安装 WireGuard 工具", "使用系统软件源安装 wg 和 wg-quick")
+			ui.MenuShortcutHint("i", "安装 WireGuard 工具", "使用系统软件源安装 wg 和 wg-quick")
 		}
 		if tools.wg || tools.quick {
-			ui.MenuOptionHint("9", "卸载 WireGuard 工具", "保留 /etc/wireguard 配置")
+			ui.MenuShortcutHint("u", "卸载 WireGuard 工具", "保留 /etc/wireguard 配置")
 		}
 		ui.MenuOption("r", "刷新状态")
 		ui.MenuExit("0/q", "返回主菜单")
@@ -77,24 +94,26 @@ func RunWireGuard(view *ui.UI) error {
 		if shared.IsReturnChoice(choice) {
 			return shared.ErrReturnToMenu
 		}
+		choice = strings.ToLower(choice)
+		number, numberErr := strconv.Atoi(choice)
 		switch {
-		case choice == "" || strings.EqualFold(choice, "r"):
+		case choice == "" || choice == "r":
 			continue
-		case choice == "1":
-			shared.RunAction(view, "读取 WireGuard 接口失败，已返回管理菜单", func() error {
-				return runWireGuardInterfaces(view)
-			})
-		case choice == "2" && tools.wg:
+		case choice == "n" && tools.wg:
 			shared.RunAction(view, "新建 WireGuard 配置失败，已返回管理菜单", func() error {
 				return createWireGuardProfile(view)
 			})
-		case choice == "8" && !tools.ready():
+		case choice == "i" && !tools.ready():
 			shared.RunAction(view, "安装 WireGuard 失败，已返回管理菜单", func() error {
 				return installWireGuard(view)
 			})
-		case choice == "9" && (tools.wg || tools.quick):
+		case choice == "u" && (tools.wg || tools.quick):
 			shared.RunAction(view, "卸载 WireGuard 失败，已返回管理菜单", func() error {
 				return uninstallWireGuard(view)
+			})
+		case numberErr == nil && number >= 1 && number <= len(profiles):
+			shared.RunAction(view, "接口管理失败，已返回 WireGuard", func() error {
+				return runWireGuardInterface(view, profiles[number-1].name)
 			})
 		default:
 			ui.InvalidChoice()

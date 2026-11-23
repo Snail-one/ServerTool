@@ -40,9 +40,9 @@ func wireGuardActiveNames() (map[string]bool, error) {
 }
 
 func wireGuardInterfaces() ([]wireGuardInterface, error, error) {
-	saved, err := os.ReadDir(wireGuardConfigDir)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, nil, err
+	saved, readErr := os.ReadDir(wireGuardConfigDir)
+	if os.IsNotExist(readErr) {
+		readErr = nil
 	}
 	active, activeErr := wireGuardActiveNames()
 	profiles := make(map[string]wireGuardInterface)
@@ -60,56 +60,7 @@ func wireGuardInterfaces() ([]wireGuardInterface, error, error) {
 		result = append(result, profile)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].name < result[j].name })
-	return result, activeErr, nil
-}
-
-func runWireGuardInterfaces(view *ui.UI) error {
-	for {
-		profiles, activeErr, err := wireGuardInterfaces()
-		if err != nil {
-			return err
-		}
-		ui.ClearScreen()
-		ui.MenuTitle("WireGuard", "接口与配置")
-		if activeErr != nil {
-			ui.PrintField("运行状态", activeErr.Error())
-		}
-		if len(profiles) == 0 {
-			ui.PrintInfoCard("没有可管理的 WireGuard 接口或配置")
-			return nil
-		}
-		for i, profile := range profiles {
-			state := "已停止"
-			switch {
-			case activeErr != nil:
-				state = "状态未知"
-			case profile.active:
-				state = "运行中"
-			}
-			detail := "已有配置"
-			if !profile.saved {
-				detail = "仅运行时接口"
-			}
-			ui.MenuOptionStatusHint(strconv.Itoa(i+1), profile.name, ui.SoftwareBadge(state, profile.active), detail)
-		}
-		ui.MenuExit("0/q", "返回 WireGuard")
-		choice, err := view.Ask("请选择接口：")
-		if err != nil {
-			return err
-		}
-		if shared.IsReturnChoice(choice) {
-			return shared.ErrReturnToMenu
-		}
-		number, err := strconv.Atoi(choice)
-		if err != nil || number < 1 || number > len(profiles) {
-			ui.InvalidChoice()
-			view.Pause()
-			continue
-		}
-		shared.RunAction(view, "接口管理失败，已返回列表", func() error {
-			return runWireGuardInterface(view, profiles[number-1].name)
-		})
-	}
+	return result, activeErr, readErr
 }
 
 type wireGuardUnit struct {
@@ -154,7 +105,7 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 		running := active[name]
 		unit := inspectWireGuardUnit(name)
 		ui.ClearScreen()
-		ui.MenuTitle("WireGuard", "接口与配置", name)
+		ui.MenuTitle("WireGuard", name)
 		state := "已停止"
 		if activeErr != nil {
 			state = "检测失败"
@@ -223,7 +174,7 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 		if !saved && !running {
 			return shared.ErrReturnToMenu
 		}
-		ui.MenuExit("0/q", "返回接口列表")
+		ui.MenuExit("0/q", "返回 WireGuard")
 		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return err
@@ -244,6 +195,8 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 }
 
 func showWireGuardRuntime(name string) error {
+	ui.ClearScreen()
+	ui.MenuTitle("WireGuard", name, "查看运行状态")
 	fields := []ui.CardField{{Label: "接口", Value: name}}
 	if commandExists("ip") {
 		if output, err := commandOutput("ip", "-brief", "address", "show", "dev", name); err == nil {

@@ -125,6 +125,8 @@ func wireGuardValue(settings []wireGuardSetting, key string) string {
 }
 
 func showWireGuardProfile(name string) error {
+	ui.ClearScreen()
+	ui.MenuTitle("WireGuard", name, "查看配置")
 	data, err := readWireGuardProfile(name)
 	if err != nil {
 		return err

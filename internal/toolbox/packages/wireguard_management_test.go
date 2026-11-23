@@ -81,6 +81,9 @@ func TestWireGuardConfigAndPeers(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+	if !strings.Contains(output, "WireGuard  ›  wg0  ›  查看配置") {
+		t.Fatal("configuration details must have their own page title")
+	}
 	if !strings.Contains(output, peerKey) || !strings.Contains(output, "本机公钥") ||
 		strings.Contains(output, privateKey) || strings.Contains(output, preshared) {
 		t.Fatal("profile display did not hide both secret keys or omitted public keys")
