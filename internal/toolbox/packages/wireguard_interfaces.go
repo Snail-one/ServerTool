@@ -166,7 +166,13 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 			fields = append(fields, ui.CardField{Label: "配置文件", Value: wireGuardProfilePath(name)})
 		}
 		if unit.available && saved {
-			fields = append(fields, ui.CardField{Label: "开机自启", Value: ui.ConfiguredBadge(unit.enabled)})
+			bootState := "已关闭"
+			if unit.state == "enabled-runtime" {
+				bootState = "已开启（临时）"
+			} else if unit.enabled {
+				bootState = "已开启"
+			}
+			fields = append(fields, ui.CardField{Label: "开机自启", Value: ui.SoftwareBadge(bootState, unit.enabled)})
 		}
 		ui.PrintInfoCard("WireGuard 接口", fields...)
 
@@ -175,32 +181,44 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 			ui.MenuOption(key, label)
 			actions[key] = action
 		}
-		if running {
-			add("1", "查看运行状态", func() error { return showWireGuardRuntime(name) })
-		}
 		if saved {
-			add("2", "查看配置", func() error { return showWireGuardProfile(name) })
-			add("3", "编辑配置", func() error { return editWireGuardProfile(view, name) })
-			if activeErr == nil && commandExists("wg-quick") {
+			add("1", "查看配置", func() error { return showWireGuardProfile(name) })
+			add("2", "编辑配置", func() error { return editWireGuardProfile(view, name) })
+			add("3", "添加对端", func() error { return addWireGuardPeer(view, name) })
+			add("4", "删除对端", func() error { return removeWireGuardPeer(view, name) })
+		}
+
+		canChangeRuntime := saved && activeErr == nil && commandExists("wg-quick")
+		if canChangeRuntime || running {
+			if saved {
+				fmt.Println()
+			}
+			if canChangeRuntime {
 				if running {
-					add("4", "停止接口", func() error { return changeWireGuardRuntime(view, name, "stop") })
-					add("5", "重启接口", func() error { return changeWireGuardRuntime(view, name, "restart") })
+					add("5", "停止接口", func() error { return changeWireGuardRuntime(view, name, "stop") })
+					add("6", "重启接口", func() error { return changeWireGuardRuntime(view, name, "restart") })
 				} else {
-					add("4", "启动接口", func() error { return changeWireGuardRuntime(view, name, "start") })
+					add("5", "启动接口", func() error { return changeWireGuardRuntime(view, name, "start") })
 				}
 			}
+			if running {
+				add("7", "查看运行状态", func() error { return showWireGuardRuntime(name) })
+			}
+		}
+
+		canDelete := activeErr == nil && !running && !unit.active && !unit.enabled
+		if saved && (unit.available || canDelete) {
+			fmt.Println()
 			if unit.available {
 				label := "开启开机自启"
 				if unit.enabled {
 					label = "关闭开机自启"
 				}
-				add("6", label, func() error { return changeWireGuardAutostart(view, name, unit) })
+				add("8", label, func() error { return changeWireGuardAutostart(view, name, unit) })
 			}
-			if activeErr == nil && !running && !unit.active && !unit.enabled {
-				add("7", "删除配置", func() error { return deleteWireGuardProfile(view, name) })
+			if canDelete {
+				add("9", "删除配置", func() error { return deleteWireGuardProfile(view, name) })
 			}
-			add("8", "添加对端", func() error { return addWireGuardPeer(view, name) })
-			add("9", "删除对端", func() error { return removeWireGuardPeer(view, name) })
 		}
 		if !saved && !running {
 			return shared.ErrReturnToMenu

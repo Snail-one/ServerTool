@@ -146,8 +146,22 @@ func TestWireGuardRuntimeAndBootControls(t *testing.T) {
 		}
 		return nil
 	}
+	stoppedMenu := wireGuardTestOutput(t, func() {
+		if err := runWireGuardInterface(newUIWithInput(t, "q\n"), "wg0"); !errors.Is(err, shared.ErrReturnToMenu) {
+			t.Fatal(err)
+		}
+	})
+	offset := -1
+	for _, item := range []string{"1   查看配置", "2   编辑配置", "3   添加对端", "4   删除对端", "5   启动接口", "8   开启开机自启", "9   删除配置"} {
+		position := strings.Index(stoppedMenu, item)
+		if position <= offset {
+			t.Fatalf("menu item missing or out of order: %q", item)
+		}
+		offset = position
+	}
+
 	// The profile submenu should still be usable after each successful action.
-	input := "4\ny\n\n6\ny\n\n5\ny\n\n4\ny\n\n6\ny\n\nq\n"
+	input := "5\ny\n\n8\ny\n\n6\ny\n\n5\ny\n\n8\ny\n\nq\n"
 	err := runWireGuardInterface(newUIWithInput(t, input), "wg0")
 	want := []string{"start", "enable", "restart", "stop", "disable"}
 	if !errors.Is(err, shared.ErrReturnToMenu) || !reflect.DeepEqual(actions, want) || up || enabled {
