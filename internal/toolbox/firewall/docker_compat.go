@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -53,37 +54,27 @@ func withDockerForwardMark(content string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	marked := map[string]bool{
-		"forward": true, "forward_public_ports": true,
-		"forward_private_ports": true, "forward_source_allow": true,
-	}
 	var positions []int
-	for i := 0; i+2 < len(tokens); i++ {
-		if tokens[i].text != "chain" || tokens[i+2].text != "{" || !marked[tokens[i+1].text] {
+	for i := 0; i+3 < len(tokens); i++ {
+		if tokens[i].text != "table" || tokens[i+1].text != "inet" || tokens[i+2].text != "snail" || tokens[i+3].text != "{" {
 			continue
 		}
-		close, err := closingBrace(tokens, i+2)
+		close, err := closingBrace(tokens, i+3)
 		if err != nil {
 			return "", false, err
 		}
-		for j := i + 3; j < close; j++ {
-			if tokens[j].text != "counter" {
+		for j := i + 4; j+2 < close; j++ {
+			if tokens[j].text != "chain" || tokens[j+2].text != "{" {
 				continue
 			}
-			end, err := counterStatementEnd(tokens, j)
+			end, err := closingBrace(tokens, j+2)
 			if err != nil {
 				return "", false, err
 			}
-			if end+1 >= len(tokens) || tokens[end+1].text != "accept" {
-				j = end
-				continue
+			switch tokens[j+1].text {
+			case "forward", "forward_public_ports", "forward_private_ports", "forward_source_allow":
+				positions = append(positions, dockerForwardMarkPositions(content, tokens[j+3:end])...)
 			}
-			lineStart := strings.LastIndex(content[:tokens[j].start], "\n") + 1
-			if strings.Contains(content[lineStart:tokens[j].start], dockerForwardMarkExpr) {
-				j = end
-				continue
-			}
-			positions = append(positions, tokens[j].start)
 			j = end
 		}
 		i = close
@@ -98,6 +89,61 @@ func withDockerForwardMark(content string) (string, bool, error) {
 		updated = updated[:at] + expr + updated[at:]
 	}
 	return updated, true, nil
+}
+
+// Insert before each rule's accept verdict, keeping a trailing anonymous
+// counter after the mark when present. Ignore policies and nested expressions.
+func dockerForwardMarkPositions(content string, tokens []nftToken) []int {
+	var positions []int
+	ruleStart, depth := 0, 0
+	for i, token := range tokens {
+		if depth == 0 && i > 0 {
+			prior := tokens[i-1]
+			if prior.text == ";" || prior.text != "\\" && strings.Contains(content[prior.end:token.start], "\n") {
+				ruleStart = i
+			}
+		}
+		switch token.text {
+		case "{":
+			depth++
+		case "}":
+			depth--
+		case "accept":
+			if depth != 0 {
+				continue
+			}
+			prior := i - 1
+			for prior >= ruleStart && tokens[prior].text == "\\" {
+				prior--
+			}
+			if (prior >= ruleStart && tokens[prior].text == "policy") || hasDockerForwardMark(tokens[ruleStart:i]) {
+				continue
+			}
+			at := i
+			for at-2 >= ruleStart && (tokens[at-2].text == "packets" || tokens[at-2].text == "bytes") {
+				at -= 2
+			}
+			if at > ruleStart && tokens[at-1].text == "counter" {
+				at--
+			} else {
+				at = i
+			}
+			positions = append(positions, tokens[at].start)
+		}
+	}
+	return positions
+}
+
+func hasDockerForwardMark(tokens []nftToken) bool {
+	mark := strings.Fields(dockerForwardMarkExpr)
+	for i := 0; i+len(mark) <= len(tokens); i++ {
+		if slices.EqualFunc(tokens[i:i+len(mark)], mark, func(token nftToken, word string) bool {
+			return token.text == word
+		}) {
+			return true
+		}
+	}
+	return false
 }
 
 func dockerForwardRuleArgs() []string {

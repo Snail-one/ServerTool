@@ -37,6 +37,34 @@ func TestDockerForwardMarkStaysOnForwardAccepts(t *testing.T) {
 	}
 }
 
+func TestDockerForwardMarkOnlyEditsForwardAcceptVerdicts(t *testing.T) {
+	content := `table inet other {
+	chain forward { tcp dport 80 counter accept; }
+}
+table inet snail {
+	chain forward {
+		type filter hook forward priority -10; policy accept;
+		# accept this comment unchanged
+		meta l4proto vmap { tcp : accept, udp : drop }
+		tcp dport 80 ` + dockerForwardMarkExpr + ` accept; tcp dport 443 accept comment "accept"
+		tcp dport 53 counter packets 9 bytes 108 accept
+		tcp dport 22 drop
+	}
+	chain forward_docker { oifname "docker0" accept; }
+}
+`
+	expected := strings.Replace(content, `tcp dport 443 accept comment`, "tcp dport 443 "+dockerForwardMarkExpr+" accept comment", 1)
+	expected = strings.Replace(expected, "tcp dport 53 counter", "tcp dport 53 "+dockerForwardMarkExpr+" counter", 1)
+	updated, changed, err := withDockerForwardMark(content)
+	if err != nil || !changed || updated != expected {
+		t.Fatalf("marked config differs: changed=%v err=%v\n%s", changed, err, updated)
+	}
+	again, changed, err := withDockerForwardMark(updated)
+	if err != nil || changed || again != updated {
+		t.Fatalf("second pass changed the rules: changed=%v err=%v\n%s", changed, err, again)
+	}
+}
+
 func TestSyncDockerForwardInsertsMissingRuleOnly(t *testing.T) {
 	setupTest(t)
 	dockerForwardAttempts = 1
@@ -65,13 +93,16 @@ func TestSyncDockerForwardInsertsMissingRuleOnly(t *testing.T) {
 	}
 }
 
-func TestEnableDockerCompatWritesUnitAndMark(t *testing.T) {
+func TestEnableDockerCompatWritesUnitAndMarkWithCountersOff(t *testing.T) {
 	setupTest(t)
 	content, err := buildConfig([]int{22}, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	content = strings.ReplaceAll(content, "ct mark set ct mark or 0x00800000 ", "")
+	content, err = withPacketCounters(content, false)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -112,8 +143,20 @@ func TestEnableDockerCompatWritesUnitAndMark(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(saved), "meta nfproto ipv4 tcp dport @snail_forward_public_ipv4_tcp_ports ct mark set ct mark or 0x00800000 counter accept") {
+	if !strings.Contains(string(saved), "meta nfproto ipv4 tcp dport @snail_forward_public_ipv4_tcp_ports "+dockerForwardMarkExpr+" accept") {
 		t.Fatal("public forward accept was not marked")
+	}
+	if enabled, err := packetCountersEnabled(string(saved)); err != nil || enabled {
+		t.Fatalf("enabling Docker compatibility changed packet statistics: enabled=%v err=%v", enabled, err)
+	}
+	rule := allowRule{ID: "aaaaaaaa", Kind: "source_port", Family: "ipv4", Source: "192.168.1.10", Ports: "443", Protocol: "tcp"}
+	rule, err = normalizeAllowRule(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := replaceManagedRulesIn(string(saved), []allowRule{rule}, forwardRuleBlock)
+	if err != nil || !strings.Contains(updated, dockerForwardMarkExpr+" accept comment") {
+		t.Fatalf("saving a new forward rule with statistics off lost the mark: %v", err)
 	}
 	if strings.Contains(string(saved), "iifname \"lo\" ct mark") {
 		t.Fatal("input accept was marked")
