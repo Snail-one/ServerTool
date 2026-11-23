@@ -181,8 +181,18 @@ check_release_download() {
 print_download_progress() {
 	awk -v bytes="$1" -v total="$2" -v done="$3" -v width="$DOWNLOAD_WIDTH" \
 		-v accent="$ORANGE" -v muted="$DIM" -v reset="$RESET" '
+		function size(n) {
+			if (n >= 1099511627776) return sprintf("%.1f TiB", n / 1099511627776)
+			if (n >= 1073741824) return sprintf("%.1f GiB", n / 1073741824)
+			if (n >= 1048576) return sprintf("%.1f MiB", n / 1048576)
+			if (n >= 1024) return sprintf("%.1f KiB", n / 1024)
+			return sprintf("%d B", n)
+		}
 		BEGIN {
-			if (!done && total <= 0) exit
+			if (!done && total <= 0) {
+				printf "\r已下载 %s\033[K", size(bytes)
+				exit
+			}
 			percent = done ? 100 : int(bytes * 100 / total)
 			if (!done && percent > 99) percent = 99
 			filled = int(width * percent / 100)
@@ -190,7 +200,7 @@ print_download_progress() {
 			for (i = 0; i < filled; i++) printf "■"
 			printf "%s%s", reset, muted
 			for (i = filled; i < width; i++) printf "･"
-			printf "%s %3d%%", reset, percent
+			printf "%s%s%3d%%  %s / %s\033[K", reset, (width > 0 ? " " : ""), percent, size(bytes), size(total)
 		}
 	' >&2
 }
@@ -210,7 +220,7 @@ download_with_progress() {
 		DOWNLOAD_COLUMNS="${DOWNLOAD_TERMINAL_SIZE##* }"
 		case "$DOWNLOAD_COLUMNS" in
 			""|0|*[!0-9]*) ;;
-			*) DOWNLOAD_WIDTH="$((DOWNLOAD_COLUMNS > 56 ? 50 : DOWNLOAD_COLUMNS > 6 ? DOWNLOAD_COLUMNS - 6 : 0))" ;;
+			*) DOWNLOAD_WIDTH="$((DOWNLOAD_COLUMNS > 80 ? 50 : DOWNLOAD_COLUMNS > 30 ? DOWNLOAD_COLUMNS - 30 : 0))" ;;
 		esac
 	fi
 

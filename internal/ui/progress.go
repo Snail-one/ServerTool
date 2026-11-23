@@ -128,16 +128,24 @@ func (progress *downloadProgress) renderBar(complete bool) {
 		return
 	}
 
+	total := progress.total
+	if complete {
+		total = progress.written
+	} else if total <= 0 {
+		fmt.Fprintf(progress.output, "\r已下载 %s\033[K", formatBytes(progress.written))
+		return
+	}
+
 	percent := 100
 	if !complete {
-		if progress.total <= 0 {
-			return
-		}
-		percent = min(99, int(float64(progress.written)*100/float64(progress.total)))
+		percent = min(99, int(float64(progress.written)*100/float64(total)))
 	}
 	filled := progress.width * percent / 100
 	bar := paint(orange, strings.Repeat("■", filled)) + paint(dim, strings.Repeat("･", progress.width-filled))
-	fmt.Fprintf(progress.output, "\r%s %3d%%", bar, percent)
+	if progress.width > 0 {
+		bar += " "
+	}
+	fmt.Fprintf(progress.output, "\r%s%3d%%  %s / %s\033[K", bar, percent, formatBytes(progress.written), formatBytes(total))
 	if complete {
 		fmt.Fprintln(progress.output)
 	}
@@ -152,7 +160,7 @@ func installerProgressWidth(terminal *os.File) int {
 		fields := strings.Fields(string(size))
 		if len(fields) == 2 {
 			if columns, err := strconv.Atoi(fields[1]); err == nil && columns > 0 {
-				return min(width, max(0, columns-6))
+				return min(width, max(0, columns-30))
 			}
 		}
 	}

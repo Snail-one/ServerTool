@@ -65,7 +65,7 @@ func TestInstallerProgressBar(t *testing.T) {
 	var output bytes.Buffer
 	progress := downloadProgress{output: &output, interactive: true, width: 50, written: 5, total: 10}
 	progress.renderBar(false)
-	want := "\r" + strings.Repeat("■", 25) + strings.Repeat("･", 25) + "  50%"
+	want := "\r" + strings.Repeat("■", 25) + strings.Repeat("･", 25) + "  50%  5 B / 10 B\033[K"
 	if output.String() != want {
 		t.Fatalf("progress = %q, want %q", output.String(), want)
 	}
@@ -74,7 +74,7 @@ func TestInstallerProgressBar(t *testing.T) {
 	progress.total = -1
 	progress.renderBar(false)
 	progress.renderBar(true)
-	want = "\r" + strings.Repeat("■", 50) + " 100%\n"
+	want = "\r已下载 5 B\033[K\r" + strings.Repeat("■", 50) + " 100%  5 B / 5 B\033[K\n"
 	if output.String() != want {
 		t.Fatalf("unknown-size progress = %q, want %q", output.String(), want)
 	}
