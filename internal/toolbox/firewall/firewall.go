@@ -84,7 +84,7 @@ func Run(view *ui.UI) error {
 			shared.RunAction(view, "加载防火墙配置失败，已返回防火墙管理", func() error {
 				return loadConfig(view)
 			})
-		case "8":
+		case "d":
 			shared.RunAction(view, "生成防火墙配置失败，已返回防火墙管理", func() error {
 				return configure(view)
 			})
@@ -108,7 +108,7 @@ func showConfigFile() error {
 	ui.MenuTitle("防火墙管理", "配置文件")
 	data, err := os.ReadFile(configPath)
 	if os.IsNotExist(err) {
-		ui.PrintInfoCard("尚未生成防火墙配置", ui.CardField{Label: "下一步", Value: "选择 8 生成默认配置"})
+		ui.PrintInfoCard("尚未生成防火墙配置", ui.CardField{Label: "下一步", Value: "选择 d 生成默认配置"})
 		return nil
 	}
 	if err != nil {

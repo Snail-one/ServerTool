@@ -375,7 +375,7 @@ func TestRunConfirmsInstallAndWritesThenApplies(t *testing.T) {
 		t.Fatalf("unexpected command: %s %v", name, args)
 		return "", nil
 	}
-	if err := Run(inputUI(t, "y\n8\n\n\ny\n\n1\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := Run(inputUI(t, "y\nd\n\n\ny\n\n1\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if want := []string{"apt-get update", "apt-get install -y nftables"}; !reflect.DeepEqual(commands, want) {

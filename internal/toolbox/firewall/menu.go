@@ -18,20 +18,20 @@ func showMenu() {
 	ui.MenuOptionHint("6", "查看配置文件", configPath)
 	ui.MenuOptionHint("7", "编辑配置文件", "保存退出后自动校验并加载")
 	fmt.Println()
-	version, err := readConfigVersion()
-	switch {
-	case err != nil:
-		ui.MenuOptionHint("8", "生成基础配置", "配置状态未知，选择查看原因")
-	case hasManagedConfig(string(version.content)):
-		ui.MenuOptionHint("8", "重建基础配置", "重新设置端口策略，未转换的旧规则不保留")
-	case version.exists:
-		ui.MenuOptionHint("8", "生成默认配置", "备份现有配置后替换，首次配置开启自启")
-	default:
-		ui.MenuOptionHint("8", "生成默认配置", "检测 SSH 端口，首次配置开启自启")
-	}
 	ui.MenuOptionHint("9", "常用功能设置", "自启、访问和转发等开关")
 	ui.MenuOptionHint("10", "实时查看规则", "每秒刷新，支持切换规则表")
 	fmt.Println()
+	version, err := readConfigVersion()
+	switch {
+	case err != nil:
+		ui.MenuShortcutHint("d", "生成基础配置", "配置状态未知，选择查看原因")
+	case hasManagedConfig(string(version.content)):
+		ui.MenuShortcutHint("d", "重建基础配置", "重新设置端口策略，未转换的旧规则不保留")
+	case version.exists:
+		ui.MenuShortcutHint("d", "生成默认配置", "备份现有配置后替换，首次配置开启自启")
+	default:
+		ui.MenuShortcutHint("d", "生成默认配置", "检测 SSH 端口，首次配置开启自启")
+	}
 	ui.MenuShortcutHint("r", "校验加载配置", "使当前配置文件立即生效")
 	ui.MenuExit("0/q", "返回主菜单")
 	fmt.Println()

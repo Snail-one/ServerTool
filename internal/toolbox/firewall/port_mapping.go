@@ -379,7 +379,7 @@ func runPortMappingManager(view *ui.UI) error {
 		}
 		content := string(version.content)
 		if !hasManagedConfig(content) {
-			return fmt.Errorf("请先选择 8 生成本工具防火墙配置")
+			return fmt.Errorf("请先选择 d 生成本工具防火墙配置")
 		}
 		mappings, err := readPortMappings(content)
 		if err != nil {

@@ -79,11 +79,11 @@ func ensureForwardDockerChain(content string) (string, error) {
 	}
 	hook := strings.Index(content, "type filter hook forward")
 	if hook < 0 {
-		return "", fmt.Errorf("请先返回防火墙管理，选择 8 生成本工具防火墙配置，再设置 Docker 流量放行")
+		return "", fmt.Errorf("请先返回防火墙管理，选择 d 生成本工具防火墙配置，再设置 Docker 流量放行")
 	}
 	chain := strings.LastIndex(content[:hook], "chain forward {")
 	if chain < 0 {
-		return "", fmt.Errorf("请先返回防火墙管理，选择 8 生成本工具防火墙配置，再设置 Docker 流量放行")
+		return "", fmt.Errorf("请先返回防火墙管理，选择 d 生成本工具防火墙配置，再设置 Docker 流量放行")
 	}
 	line := strings.LastIndex(content[:chain], "\n") + 1
 	return content[:line] + forwardDockerChain + "\n" + content[line:], nil
@@ -114,7 +114,7 @@ func withDockerBridge(content string, enabled bool) (string, bool, error) {
 	route := "ip saddr $snail_forward_private_ipv4 goto forward_private_ports"
 	at := strings.Index(content, route)
 	if at < 0 {
-		return "", false, fmt.Errorf("请先返回防火墙管理，选择 8 生成本工具防火墙配置，再设置 Docker 流量放行")
+		return "", false, fmt.Errorf("请先返回防火墙管理，选择 d 生成本工具防火墙配置，再设置 Docker 流量放行")
 	}
 	lineStart := strings.LastIndex(content[:at], "\n") + 1
 	return content[:lineStart] + "        " + block + "\n" + content[lineStart:], true, nil
@@ -152,7 +152,7 @@ func configureDockerBridge(view *ui.UI) error {
 			return err
 		}
 		if !version.exists || !hasManagedConfig(string(version.content)) || !strings.Contains(string(version.content), "hook forward") {
-			return fmt.Errorf("请先返回防火墙管理，选择 8 生成本工具防火墙配置，再设置 Docker 流量放行")
+			return fmt.Errorf("请先返回防火墙管理，选择 d 生成本工具防火墙配置，再设置 Docker 流量放行")
 		}
 		enabled, _, err := readDockerBridge(string(version.content))
 		if err != nil {

@@ -314,7 +314,7 @@ func prepareDockerForwardConfig() error {
 		return err
 	}
 	if !version.exists || !hasManagedConfig(string(version.content)) || !strings.Contains(string(version.content), "hook forward") {
-		return fmt.Errorf("请先在防火墙管理中选择 8 生成本工具防火墙配置，再开启 Docker 放行标记")
+		return fmt.Errorf("请先在防火墙管理中选择 d 生成本工具防火墙配置，再开启 Docker 放行标记")
 	}
 	updated, changed, err := withDockerForwardMark(string(version.content))
 	if err != nil {

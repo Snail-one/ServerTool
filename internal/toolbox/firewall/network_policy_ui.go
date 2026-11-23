@@ -94,7 +94,7 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 		}
 	} else {
 		if !hasManagedConfig(original) {
-			return "", fmt.Errorf("请先选择 8 生成本工具防火墙配置")
+			return "", fmt.Errorf("请先选择 d 生成本工具防火墙配置")
 		}
 		if _, _, _, err := inputChainBounds(original); err != nil {
 			return "", err

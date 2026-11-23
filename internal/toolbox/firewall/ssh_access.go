@@ -177,7 +177,7 @@ func configureSSHAccess(view *ui.UI) error {
 			return err
 		}
 		if !version.exists || !hasManagedConfig(string(version.content)) {
-			return fmt.Errorf("请先返回防火墙管理，选择 8 生成本工具防火墙配置，再设置 SSH 访问")
+			return fmt.Errorf("请先返回防火墙管理，选择 d 生成本工具防火墙配置，再设置 SSH 访问")
 		}
 		content := string(version.content)
 		ports, err := readSSHPorts(content)
