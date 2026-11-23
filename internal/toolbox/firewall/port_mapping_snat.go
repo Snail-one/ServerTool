@@ -119,7 +119,7 @@ func askPortMappingSNAT(view *ui.UI, mapping portMapping) (portMappingSNAT, stri
 		}
 		ui.MenuOption("1", toggle+" SNAT")
 		ui.MenuOption("2", "修改 SNAT 参数")
-		ui.MenuExit("0/q", "返回端口映射列表")
+		ui.MenuExit("0/q", "返回映射详情")
 		action, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "toggle", "2": "edit"})
 		if err != nil {
 			return current, "", err

@@ -402,23 +402,34 @@ func runPortMappingManager(view *ui.UI) error {
 		portMappingPage("")
 		printPortMappingStatus(mappings)
 		printPortMappings(mappings)
-		ui.MenuOption("1", "添加端口映射")
-		options := map[string]string{"1": "添加"}
-		if len(mappings) > 0 {
-			ui.MenuOption("2", "编辑端口映射")
-			ui.MenuOption("3", "删除端口映射")
-			ui.MenuOption("4", "启用或停用端口映射")
-			ui.MenuOption("5", "SNAT 设置")
-			options["2"], options["3"], options["4"], options["5"] = "编辑", "删除", "切换", "SNAT"
-		}
+		ui.MenuShortcutHint("n", "新建端口映射", "")
 		ui.MenuExit("0/q", "返回防火墙管理")
-		action, err := askRuleChoice(view, "请选择", "", options)
+		prompt := "请选择："
+		if len(mappings) > 0 {
+			prompt = "请输入映射序号或操作："
+		}
+		choice, err := view.Ask(prompt)
 		if err != nil {
 			return err
 		}
-		shared.RunAction(view, "修改端口映射失败，已返回端口映射管理", func() error {
-			return changePortMapping(view, version, mappings, action)
-		})
+		if shared.IsReturnChoice(choice) {
+			return shared.ErrReturnToMenu
+		}
+		number, numberErr := strconv.Atoi(choice)
+		switch {
+		case strings.EqualFold(choice, "n"):
+			shared.RunAction(view, "新建端口映射失败，已返回映射列表", func() error {
+				_, err := changePortMapping(view, version, mappings, len(mappings), "新建")
+				return err
+			})
+		case numberErr == nil && number >= 1 && number <= len(mappings):
+			shared.RunAction(view, "打开端口映射失败，已返回映射列表", func() error {
+				return runPortMappingDetails(view, version, mappings, number-1)
+			})
+		default:
+			ui.InvalidChoice()
+			view.Pause()
+		}
 	}
 }
 
@@ -454,16 +465,12 @@ func printPortMappings(mappings []portMapping) {
 	fmt.Println(ui.InfoText("   " + ui.TableCell("序号", 6) + ui.TableCell("IP 版本", 9) +
 		ui.TableCell("协议", 10) + ui.TableCell("状态", 9) + "本机端点 → 目标端点"))
 	for i, mapping := range mappings {
-		status := "已启用"
-		if mapping.disabled {
-			status = "已停用"
-		}
 		endpoints := mapping.endpointsLabel()
 		if mapping.snat.address.IsValid() {
 			endpoints += " · SNAT " + mapping.snatDescription()
 		}
 		fmt.Println("   " + ui.TableCell(strconv.Itoa(i+1), 6) + ui.TableCell(mapping.familyLabel(), 9) +
-			ui.TableCell(protocolLabel(mapping.protocol), 10) + ui.TableCell(status, 9) + endpoints)
+			ui.TableCell(protocolLabel(mapping.protocol), 10) + ui.TableCell(mapping.statusLabel(), 9) + endpoints)
 		if matches := mapping.matchLabels(); len(matches) > 0 {
 			fmt.Println("         " + strings.Join(matches, " · "))
 		}
@@ -471,86 +478,114 @@ func printPortMappings(mappings []portMapping) {
 	fmt.Println()
 }
 
-func choosePortMapping(view *ui.UI, mappings []portMapping, stage string) (int, error) {
-	portMappingPage(stage)
-	printPortMappings(mappings)
-	ui.MenuExit("0/q", "返回端口映射管理")
-	for {
-		line, err := view.Ask("请输入列表序号（0/q 返回）：")
-		if err != nil {
-			return 0, err
-		}
-		if shared.IsReturnChoice(line) {
-			return 0, shared.ErrReturnToMenu
-		}
-		if number, err := strconv.Atoi(line); err == nil && number >= 1 && number <= len(mappings) {
-			return number - 1, nil
-		}
-		fmt.Println("未找到该序号，请从当前列表选择")
+func (mapping portMapping) statusLabel() string {
+	if mapping.disabled {
+		return "已停用"
 	}
+	return "已启用"
 }
 
-func changePortMapping(view *ui.UI, version configVersion, mappings []portMapping, action string) error {
-	index := len(mappings)
-	var current portMapping
-	if action != "添加" {
-		stage := "选择要" + action + "的端口映射"
-		switch action {
-		case "切换":
-			stage = "选择要启用或停用的端口映射"
-		case "SNAT":
-			stage = "选择要设置 SNAT 的端口映射"
+func runPortMappingDetails(view *ui.UI, version configVersion, mappings []portMapping, index int) error {
+	for {
+		mapping := mappings[index]
+		portMappingPage(fmt.Sprintf("映射 %d", index+1))
+		iface, source := mapping.iface, "不限"
+		if iface == "" {
+			iface = "不限"
 		}
-		selected, err := choosePortMapping(view, mappings, stage)
+		if mapping.source.IsValid() {
+			source = mapping.source.String()
+		}
+		snat := ui.CardField{Label: "SNAT", Value: mapping.snatDescription()}
+		if mapping.snat.address.IsValid() && !mapping.snatEnabled() {
+			snat.Detail = fmt.Sprintf("出站网卡 %s · 源 IP %s", mapping.snat.iface, mapping.snat.address)
+		}
+		ui.PrintInfoCard("端口映射配置",
+			ui.CardField{Label: "状态", Value: mapping.statusLabel()},
+			ui.CardField{Label: "协议", Value: mapping.familyLabel() + " " + protocolLabel(mapping.protocol)},
+			ui.CardField{Label: "本机端点", Value: mapping.from.String()},
+			ui.CardField{Label: "目标端点", Value: mapping.to.String()},
+			ui.CardField{Label: "入站网卡", Value: iface},
+			ui.CardField{Label: "来源", Value: source},
+			snat,
+		)
+		fmt.Println()
+		toggle := "停用"
+		if mapping.disabled {
+			toggle = "启用"
+		}
+		ui.MenuOption("1", "编辑映射")
+		ui.MenuOption("2", toggle+"映射")
+		ui.MenuOption("3", "SNAT 设置")
+		ui.MenuOption("4", "删除映射")
+		ui.MenuExit("0/q", "返回映射列表")
+		action, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "编辑", "2": toggle, "3": "SNAT", "4": "删除"})
 		if err != nil {
 			return err
 		}
-		index = selected
+		var updated string
+		shared.RunAction(view, "修改端口映射失败", func() error {
+			var err error
+			updated, err = changePortMapping(view, version, mappings, index, action)
+			return err
+		})
+		if updated == "" {
+			continue
+		}
+		if action == "删除" {
+			return shared.ErrReturnToMenu
+		}
+		version.content = []byte(updated)
+		mappings, err = readPortMappings(updated)
+		if err != nil {
+			return err
+		}
+	}
+}
+
+// Return the written configuration even if loading fails so navigation and
+// subsequent changes use the saved rules.
+func changePortMapping(view *ui.UI, version configVersion, mappings []portMapping, index int, action string) (string, error) {
+	var current portMapping
+	if index < len(mappings) {
 		current = mappings[index]
 	}
 
-	var mapping portMapping
+	mapping := current
 	switch action {
-	case "添加", "编辑":
+	case "新建", "编辑":
 		portMappingPage(action + "端口映射")
 		if action == "编辑" {
 			ui.PrintInfoCard("当前选择", ui.CardField{Label: "端口映射", Value: current.description()})
 		}
 		updated, err := askPortMapping(view, current)
 		if err != nil {
-			return err
+			return "", err
 		}
 		mapping = updated
 		if action == "编辑" && mapping == current {
-			return shared.ErrReturnToMenu
+			return "", shared.ErrReturnToMenu
 		}
 	case "SNAT":
 		portMappingPage("SNAT 设置")
 		updated, change, err := askPortMappingSNAT(view, current)
 		if err != nil {
-			return err
+			return "", err
 		}
 		if updated == current.snat {
-			return shared.ErrReturnToMenu
+			return "", shared.ErrReturnToMenu
 		}
-		mapping = current
 		mapping.snat, action = updated, change
-	case "切换":
-		mapping = current
-		mapping.disabled = !mapping.disabled
-		action = "停用"
-		if !mapping.disabled {
-			action = "启用"
-		}
-	case "删除":
-		mapping = current
+	case "启用", "停用":
+		mapping.disabled = action == "停用"
 	}
+	mappings = slices.Clone(mappings)
 	if action == "删除" {
 		mappings = slices.Delete(mappings, index, index+1)
 	} else {
 		for i, existing := range mappings {
 			if i != index && mapping.overlaps(existing) {
-				return fmt.Errorf("与第 %d 条映射的匹配条件重叠：%s", i+1, existing.description())
+				return "", fmt.Errorf("与第 %d 条映射的匹配条件重叠：%s", i+1, existing.description())
 			}
 		}
 		if index == len(mappings) {
@@ -562,7 +597,7 @@ func changePortMapping(view *ui.UI, version configVersion, mappings []portMappin
 
 	updated, err := withPortMappings(string(version.content), mappings)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	portMappingPage("确认端口映射变更")
@@ -573,19 +608,19 @@ func changePortMapping(view *ui.UI, version configVersion, mappings []portMappin
 	)
 	confirmed, err := view.Confirm("确认保存并加载？(y/N，0/q 返回)：")
 	if err != nil {
-		return err
+		return "", err
 	}
 	if !confirmed {
-		return shared.ErrReturnToMenu
+		return "", shared.ErrReturnToMenu
 	}
 	if err := writeConfig(updated, version); err != nil {
-		return err
+		return "", err
 	}
 	if err := applyConfig([]byte(updated)); err != nil {
-		return fmt.Errorf("端口映射已保存，但未成功加载，可输入 r 重试: %w", err)
+		return updated, fmt.Errorf("端口映射已保存，但未成功加载，可返回防火墙管理输入 r 重试: %w", err)
 	}
 	ui.PrintSuccessCard("端口映射已保存并加载")
-	return nil
+	return updated, nil
 }
 
 func askPortMapping(view *ui.UI, current portMapping) (portMapping, error) {
