@@ -31,6 +31,15 @@ func run(client *http.Client, scriptURL string, stdin io.Reader, stdout, stderr 
 	}
 	defer release()
 
+	updating := len(arguments) == 0
+	copyDownload := ui.CopyWithProgress
+	label := "下载 ServerTool 更新脚本"
+	if updating {
+		fmt.Fprintln(stderr, ui.PrimaryText("下载")+" ServerTool 更新脚本")
+		copyDownload = ui.CopyWithProgressBar
+		label = "ServerTool 更新脚本"
+	}
+
 	response, err := client.Get(scriptURL)
 	if err != nil {
 		return fmt.Errorf("下载程序管理脚本失败: %w", err)
@@ -41,11 +50,11 @@ func run(client *http.Client, scriptURL string, stdin io.Reader, stdout, stderr 
 	}
 
 	var downloaded bytes.Buffer
-	_, err = ui.CopyWithProgress(
+	_, err = copyDownload(
 		&downloaded,
 		io.LimitReader(response.Body, maxScriptSize+1),
 		stderr,
-		"下载 ServerTool 更新脚本",
+		label,
 		response.ContentLength,
 	)
 	if err != nil {
@@ -81,6 +90,10 @@ func run(client *http.Client, scriptURL string, stdin io.Reader, stdout, stderr 
 	command.Stdin = stdin
 	command.Stdout = stdout
 	command.Stderr = stderr
+	if updating {
+		fmt.Fprintln(stderr, ui.SuccessText("✓")+" 运行脚本")
+		fmt.Fprintln(stderr)
+	}
 	if err := command.Run(); err != nil {
 		return fmt.Errorf("程序管理脚本执行失败: %w", err)
 	}

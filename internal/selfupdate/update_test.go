@@ -19,7 +19,7 @@ func TestRunDownloadsAndExecutesScript(t *testing.T) {
 	if output.String() != "update-called\n" {
 		t.Fatalf("意外的脚本输出：%q", output.String())
 	}
-	if !strings.Contains(progress.String(), "下载 ServerTool 更新脚本") || !strings.Contains(progress.String(), "100%") {
+	if !strings.HasPrefix(progress.String(), "下载 ServerTool 更新脚本\n✓ 下载完成 · ServerTool 更新脚本 · ") || !strings.HasSuffix(progress.String(), " 字节\n✓ 运行脚本\n\n") {
 		t.Fatalf("更新脚本下载进度异常：%q", progress.String())
 	}
 }

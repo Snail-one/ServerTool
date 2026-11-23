@@ -59,3 +59,23 @@ func TestFormatBytes(t *testing.T) {
 		}
 	}
 }
+
+func TestInstallerProgressBar(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	var output bytes.Buffer
+	progress := downloadProgress{output: &output, interactive: true, width: 50, written: 5, total: 10}
+	progress.renderBar(false)
+	want := "\r" + strings.Repeat("■", 25) + strings.Repeat("･", 25) + "  50%"
+	if output.String() != want {
+		t.Fatalf("progress = %q, want %q", output.String(), want)
+	}
+
+	output.Reset()
+	progress.total = -1
+	progress.renderBar(false)
+	progress.renderBar(true)
+	want = "\r" + strings.Repeat("■", 50) + " 100%\n"
+	if output.String() != want {
+		t.Fatalf("unknown-size progress = %q, want %q", output.String(), want)
+	}
+}

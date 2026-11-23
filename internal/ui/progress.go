@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -17,7 +19,20 @@ const (
 // Known-size responses get a progress bar and percentage; chunked or otherwise
 // unknown-size responses show the received byte count and transfer rate.
 func CopyWithProgress(destination io.Writer, source io.Reader, output io.Writer, label string, total int64) (int64, error) {
+	return copyWithDownloadProgress(destination, source, newDownloadProgress(output, label, total))
+}
+
+// CopyWithProgressBar uses the installer-style progress bar and a static log summary.
+func CopyWithProgressBar(destination io.Writer, source io.Reader, output io.Writer, label string, total int64) (int64, error) {
 	progress := newDownloadProgress(output, label, total)
+	progress.barOnly = true
+	if progress.interactive {
+		progress.width = installerProgressWidth(output.(*os.File))
+	}
+	return copyWithDownloadProgress(destination, source, progress)
+}
+
+func copyWithDownloadProgress(destination io.Writer, source io.Reader, progress *downloadProgress) (int64, error) {
 	progress.start()
 
 	written, err := io.Copy(&progressWriter{destination: destination, progress: progress}, source)
@@ -44,6 +59,8 @@ type downloadProgress struct {
 	startedAt   time.Time
 	lastUpdate  time.Time
 	interactive bool
+	barOnly     bool
+	width       int
 }
 
 func newDownloadProgress(output io.Writer, label string, total int64) *downloadProgress {
@@ -88,6 +105,10 @@ func (progress *downloadProgress) finish(success bool) {
 }
 
 func (progress *downloadProgress) render(success, carriageReturn bool) {
+	if progress.barOnly {
+		progress.renderBar(success)
+		return
+	}
 	line := progressLine(progress.label, progress.written, progress.total, time.Since(progress.startedAt), success)
 	if carriageReturn {
 		fmt.Fprintf(progress.output, "\r\033[2K%s", line)
@@ -97,6 +118,45 @@ func (progress *downloadProgress) render(success, carriageReturn bool) {
 	if success || !carriageReturn {
 		fmt.Fprintln(progress.output)
 	}
+}
+
+func (progress *downloadProgress) renderBar(complete bool) {
+	if !progress.interactive {
+		if complete {
+			fmt.Fprintf(progress.output, "✓ 下载完成 · %s · %d 字节\n", progress.label, progress.written)
+		}
+		return
+	}
+
+	percent := 100
+	if !complete {
+		if progress.total <= 0 {
+			return
+		}
+		percent = min(99, int(float64(progress.written)*100/float64(progress.total)))
+	}
+	filled := progress.width * percent / 100
+	bar := paint(orange, strings.Repeat("■", filled)) + paint(dim, strings.Repeat("･", progress.width-filled))
+	fmt.Fprintf(progress.output, "\r%s %3d%%", bar, percent)
+	if complete {
+		fmt.Fprintln(progress.output)
+	}
+}
+
+func installerProgressWidth(terminal *os.File) int {
+	const width = 50
+	command := exec.Command("stty", "size")
+	command.Stdin = terminal
+	size, err := command.Output()
+	if err == nil {
+		fields := strings.Fields(string(size))
+		if len(fields) == 2 {
+			if columns, err := strconv.Atoi(fields[1]); err == nil && columns > 0 {
+				return min(width, max(0, columns-6))
+			}
+		}
+	}
+	return width
 }
 
 func progressLine(label string, written, total int64, elapsed time.Duration, complete bool) string {

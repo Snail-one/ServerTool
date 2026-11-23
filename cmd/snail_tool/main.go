@@ -64,8 +64,6 @@ func handleArgs(args []string) bool {
 			log.Error("更新需要 root 权限，请使用 sudo snail update")
 			os.Exit(1)
 		}
-		log.Info("正在从仓库获取安装更新脚本...")
-		log.Info("更新脚本地址：", selfupdate.InstallScriptURL)
 		if err := selfupdate.Run(); err != nil {
 			log.Error(err)
 			os.Exit(1)
