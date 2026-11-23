@@ -10,6 +10,8 @@ MODE="install"
 TEMP_DIR=""
 STAGED_FILE=""
 DOWNLOAD_PID=""
+RELEASE_SPINNER_PID=""
+DOWNLOAD_ROUTE=""
 
 RESET=""
 BOLD=""
@@ -98,28 +100,97 @@ fail() {
 	exit 1
 }
 
+stop_release_spinner() {
+	if [ -n "$RELEASE_SPINNER_PID" ]; then
+		kill "$RELEASE_SPINNER_PID" 2>/dev/null || :
+		wait "$RELEASE_SPINNER_PID" 2>/dev/null || :
+		RELEASE_SPINNER_PID=""
+		if [ "${1:-}" = "keep" ]; then
+			printf '\n' >&2
+		else
+			printf '\r\033[K' >&2
+		fi
+	fi
+}
+
+detect_download_route() {
+	DOWNLOAD_ROUTE_NEXT="直连"
+	if [ "$1" != "download_api_direct" ]; then
+		DOWNLOAD_HOST="${2#https://}"
+		DOWNLOAD_HOST="${DOWNLOAD_HOST%%/*}"
+		case "$DOWNLOAD_CLIENT" in
+			curl)
+				DOWNLOAD_PROXY="${https_proxy:-${HTTPS_PROXY:-${all_proxy:-${ALL_PROXY:-}}}}"
+				DOWNLOAD_NO_PROXY="${no_proxy:-${NO_PROXY:-}}"
+				;;
+			wget)
+				DOWNLOAD_PROXY="${https_proxy:-}"
+				DOWNLOAD_NO_PROXY="${no_proxy:-}"
+				;;
+		esac
+		if [ -n "$DOWNLOAD_PROXY" ] && ! printf '%s\n' "$DOWNLOAD_NO_PROXY" | awk -v host="$DOWNLOAD_HOST" '
+			BEGIN { FS = "[,[:space:]]+"; host = tolower(host) }
+			{
+				for (i = 1; i <= NF; i++) {
+					domain = tolower($i)
+					sub(/^\./, "", domain)
+					suffix = "." domain
+					start = length(host) - length(suffix) + 1
+					if (domain == "*" || domain == host || (start > 0 && substr(host, start) == suffix))
+						bypass = 1
+				}
+			}
+			END { exit !bypass }
+		'; then
+			DOWNLOAD_ROUTE_NEXT="代理访问"
+		fi
+	fi
+}
+
+print_download_route() {
+	if [ "$DOWNLOAD_ROUTE_NEXT" != "$DOWNLOAD_ROUTE" ]; then
+		DOWNLOAD_ROUTE="$DOWNLOAD_ROUTE_NEXT"
+		printf '访问方式：%s\n' "$DOWNLOAD_ROUTE"
+	fi
+}
+
+check_release_download() {
+	detect_download_route "$1" "$2"
+	if [ ! -t 2 ] || [ "${TERM:-}" = dumb ]; then
+		print_download_route
+		"$@"
+		return $?
+	fi
+
+	(
+		while :; do
+			for RELEASE_FRAME in '⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏'; do
+				printf '\r%s%s%s %s-访问方式：%s' "$ORANGE" "$RELEASE_FRAME" "$RESET" "$RELEASE_CHECK_ACTION" "$DOWNLOAD_ROUTE_NEXT" >&2
+				sleep 0.1
+			done
+		done
+	) &
+	RELEASE_SPINNER_PID=$!
+	RELEASE_DOWNLOAD_STATUS=0
+	"$@" 2>"$TEMP_DIR/release-download.err" || RELEASE_DOWNLOAD_STATUS=$?
+	stop_release_spinner
+	cat "$TEMP_DIR/release-download.err" >&2
+	return "$RELEASE_DOWNLOAD_STATUS"
+}
+
 print_download_progress() {
-	awk -v bytes="$1" -v total="$2" -v done="$3" -v accent="$ORANGE" -v muted="$DIM" -v reset="$RESET" '
-		function size(n) {
-			if (n >= 1048576) return sprintf("%.1f MiB", n / 1048576)
-			if (n >= 1024) return sprintf("%.1f KiB", n / 1024)
-			return sprintf("%d B", n)
-		}
+	awk -v bytes="$1" -v total="$2" -v done="$3" -v width="$DOWNLOAD_WIDTH" \
+		-v accent="$ORANGE" -v muted="$DIM" -v reset="$RESET" '
 		BEGIN {
-			width = 24
-			percent = done ? 100 : (total > 0 ? int(bytes * 100 / total) : 0)
+			if (!done && total <= 0) exit
+			percent = done ? 100 : int(bytes * 100 / total)
 			if (!done && percent > 99) percent = 99
 			filled = int(width * percent / 100)
-			printf "\r  %s", accent
+			printf "\r%s", accent
 			for (i = 0; i < filled; i++) printf "■"
 			printf "%s%s", reset, muted
-			for (i = filled; i < width; i++) printf "·"
-			printf "%s", reset
-			if (done || total > 0) printf " %3d%%", percent
-			else printf "  --%%"
-			amount = size(bytes)
-			if (total > 0) amount = amount " / " size(total)
-			printf "  %-25s", amount
+			for (i = filled; i < width; i++) printf "･"
+			printf "%s %3d%%", reset, percent
 		}
 	' >&2
 }
@@ -130,8 +201,17 @@ download_with_progress() {
 	if [ ! -t 2 ] || [ "${TERM:-}" = dumb ]; then
 		"$@" || fail "发布文件下载失败（退出码 $?）：$ASSET"
 		DOWNLOAD_BYTES="$(stat -c %s "$DOWNLOAD_FILE")"
-		success "下载完成 · $DOWNLOAD_BYTES 字节"
+		success "下载完成 · $ASSET · $DOWNLOAD_BYTES 字节"
 		return 0
+	fi
+
+	DOWNLOAD_WIDTH=50
+	if DOWNLOAD_TERMINAL_SIZE="$(stty size <&2 2>/dev/null)"; then
+		DOWNLOAD_COLUMNS="${DOWNLOAD_TERMINAL_SIZE##* }"
+		case "$DOWNLOAD_COLUMNS" in
+			""|0|*[!0-9]*) ;;
+			*) DOWNLOAD_WIDTH="$((DOWNLOAD_COLUMNS > 56 ? 50 : DOWNLOAD_COLUMNS > 6 ? DOWNLOAD_COLUMNS - 6 : 0))" ;;
+		esac
 	fi
 
 	"$@" &
@@ -163,11 +243,8 @@ download_with_progress() {
 }
 
 print_release_info() {
-	printf '\n%sServerTool%s  %s ' "$BOLD$ORANGE" "$RESET" "$3"
-	if [ "$1" != "未安装" ] && [ "$1" != "$2" ]; then
-		printf '%s → ' "$1"
-	fi
-	printf '%s · Linux/%s\n' "$2" "$ARCH"
+	printf '\n%s%s%s %sServerTool%s %s版本%s %s\n' \
+		"$DIM" "$1" "$RESET" "$BOLD" "$RESET" "$DIM" "$RESET" "$RELEASE_VERSION"
 }
 
 usage() {
@@ -187,6 +264,7 @@ EOF
 }
 
 cleanup() {
+	stop_release_spinner keep
 	if [ -n "$DOWNLOAD_PID" ]; then
 		kill "$DOWNLOAD_PID" 2>/dev/null || :
 		wait "$DOWNLOAD_PID" 2>/dev/null || :
@@ -341,6 +419,7 @@ case "$(uname -m)" in
 esac
 
 if command -v curl >/dev/null 2>&1; then
+	DOWNLOAD_CLIENT=curl
 	download() {
 		curl --fail --location --silent --show-error --retry 3 --connect-timeout 15 --output "$2" "$1"
 	}
@@ -354,6 +433,7 @@ if command -v curl >/dev/null 2>&1; then
 		curl --fail --location --silent --show-error --retry 3 --connect-timeout 15 --noproxy '*' --output "$2" "$1"
 	}
 elif command -v wget >/dev/null 2>&1; then
+	DOWNLOAD_CLIENT=wget
 	download() {
 		wget --quiet --tries=3 --timeout=15 --output-document="$2" "$1"
 	}
@@ -371,12 +451,12 @@ else
 fi
 
 download_with_direct_fallback() {
-	if download "$1" "$2"; then
+	if check_release_download download "$1" "$2"; then
 		return 0
 	fi
 	proxy_configured || return 1
-	warn "通过代理访问 GitHub 失败，正在尝试直连"
-	download_api_direct "$1" "$2"
+	warn "GitHub 请求失败，正在尝试强制直连"
+	check_release_download download_api_direct "$1" "$2"
 }
 
 release_version_from_checksums() {
@@ -416,7 +496,10 @@ fi
 
 lock_temporary_files
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/servertool-install.XXXXXX")"
-step "检查发布版本"
+RELEASE_CHECK_ACTION="安装"
+if [ -e "$TARGET" ]; then
+	RELEASE_CHECK_ACTION="更新"
+fi
 if [ "$RELEASE" = "latest" ]; then
 	RELEASE_METADATA="${TEMP_DIR}/release.json"
 	RELEASE_VERSION=""
@@ -450,12 +533,12 @@ CHECKSUM_FILE="${TEMP_DIR}/${CHECKSUM_NAME}"
 
 # 先取得体积很小的校验文件，用它同时验证现有程序和待下载程序。
 # API 失败时可能已经通过 latest 下载过该文件，此处直接复用。
-if [ ! -s "$CHECKSUM_FILE" ] && ! download_optional "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"; then
+if [ ! -s "$CHECKSUM_FILE" ] && ! check_release_download download_optional "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"; then
 	# 兼容曾经使用版本化校验文件名的 Release。
 	CHECKSUM_NAME="checksums_${RELEASE_VERSION}.txt"
 	CHECKSUM_FILE="${TEMP_DIR}/${CHECKSUM_NAME}"
 	info "该版本使用旧版校验文件名，正在兼容处理"
-	download "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"
+	check_release_download download "${DOWNLOAD_BASE}/${CHECKSUM_NAME}" "$CHECKSUM_FILE"
 fi
 EXPECTED_SHA256="$(awk -v asset="$ASSET" '$2 == asset || $2 == "*" asset { print $1; exit }' "$CHECKSUM_FILE")"
 # 兼容早期未在二进制文件名末尾添加版本号的 Release。
@@ -470,7 +553,9 @@ if [ -z "$EXPECTED_SHA256" ]; then
 fi
 [ -n "$EXPECTED_SHA256" ] || fail "${CHECKSUM_NAME} 中没有 ${ASSET} 的校验值"
 
-CURRENT_DISPLAY="未安装"
+# Leave one static route after all release and checksum requests finish.
+print_download_route
+
 if [ -e "$TARGET" ]; then
 	CURRENT_VERSION=""
 	CURRENT_RELEASE=""
@@ -478,39 +563,32 @@ if [ -e "$TARGET" ]; then
 		CURRENT_VERSION="$("$TARGET" --version 2>/dev/null | sed -n '1p' || true)"
 		CURRENT_RELEASE="$(printf '%s\n' "$CURRENT_VERSION" | awk '$1 == "snailtool" { print $2; exit }')"
 	fi
-	CURRENT_DISPLAY="${CURRENT_RELEASE:-未知}"
 	if [ "$CURRENT_RELEASE" = "$RELEASE_VERSION" ]; then
 		CURRENT_SHA256="$(file_sha256 "$TARGET")"
 		if [ "$CURRENT_SHA256" = "$EXPECTED_SHA256" ]; then
-			print_release_info "$CURRENT_DISPLAY" "$RELEASE_VERSION" "无需更新"
 			if [ "$LATEST_RELEASE" = true ]; then
-				print_result_card "当前已是最新正式版本，无需更新。"
+				success "当前已是最新正式版本 $RELEASE_VERSION"
 			else
-				print_result_card "当前已是指定版本，无需更新。"
+				success "当前已是指定版本 $RELEASE_VERSION"
 			fi
 			exit 0
 		fi
 		ACTION="修复安装"
-		print_release_info "$CURRENT_DISPLAY" "$RELEASE_VERSION" "$ACTION"
-		printf '\n'
 		warn "当前版本号一致，但文件校验失败，将重新下载修复"
 	else
 		ACTION="更新"
-		print_release_info "$CURRENT_DISPLAY" "$RELEASE_VERSION" "$ACTION"
 	fi
 else
 	ACTION="安装"
-	print_release_info "$CURRENT_DISPLAY" "$RELEASE_VERSION" "$ACTION"
 fi
 
-printf '\n'
-printf '%s下载%s %s\n' "$ORANGE" "$RESET" "$ASSET"
+detect_download_route download_asset "${DOWNLOAD_BASE}/${ASSET}"
+print_download_route
+print_release_info "$ACTION"
 download_asset "${DOWNLOAD_BASE}/${ASSET}" "$ASSET_FILE"
 
-printf '\n'
 ACTUAL_SHA256="$(file_sha256 "$ASSET_FILE")"
 [ "$ACTUAL_SHA256" = "$EXPECTED_SHA256" ] || fail "安装包 SHA-256 校验失败"
-success "SHA-256 校验通过"
 
 chmod 0755 "$ASSET_FILE"
 DOWNLOADED_VERSION="$("$ASSET_FILE" --version 2>/dev/null | sed -n '1p')"
