@@ -107,7 +107,7 @@ func TestEditorWithoutContentChangesDoesNotValidateOrPromptForReload(t *testing.
 				return nil
 			}
 			output := capturePortOutput(t, func() {
-				if err := editConfig(inputUI(t, "")); err != nil {
+				if err := editConfig(); err != nil {
 					t.Fatal(err)
 				}
 			})

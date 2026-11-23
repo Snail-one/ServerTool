@@ -503,7 +503,7 @@ func TestEditConfigUsesFirstAvailableEditorAndBacksUp(t *testing.T) {
 				return false
 			}
 			launched := ""
-			validations := 0
+			validations, loads := 0, 0
 			commandRun = func(name string, args ...string) error {
 				launched = name
 				if !reflect.DeepEqual(args, []string{configPath}) {
@@ -515,13 +515,20 @@ func TestEditConfigUsesFirstAvailableEditorAndBacksUp(t *testing.T) {
 				if launched == "" || shared.ReadFileString(configPath) != "# edited\n" {
 					t.Fatal("validation must run after the editor saves and exits")
 				}
-				if name != "nft" || !reflect.DeepEqual(args, []string{"-c", "-f", configPath}) {
-					t.Fatalf("must check the saved file without applying: %s %v", name, args)
+				switch {
+				case name == "nft" && reflect.DeepEqual(args, []string{"-c", "-f", configPath}):
+					validations++
+				case name == "nft" && reflect.DeepEqual(args, []string{"-f", configPath}):
+					if validations != 1 {
+						t.Fatal("load must follow validation")
+					}
+					loads++
+				default:
+					t.Fatalf("unexpected command: %s %v", name, args)
 				}
-				validations++
 				return "", nil
 			}
-			err := editConfig(inputUI(t, "n\n"))
+			err := editConfig()
 			backups, _ := filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))
 			if len(available) == 0 {
 				if err == nil || !strings.Contains(err.Error(), "未找到 vim、vi、nano") || launched != "" || validations != 0 || len(backups) != 0 || shared.ReadFileString(configPath) != original {
@@ -529,7 +536,7 @@ func TestEditConfigUsesFirstAvailableEditorAndBacksUp(t *testing.T) {
 				}
 				return
 			}
-			if !errors.Is(err, shared.ErrReturnToMenu) || launched != available[0] || validations != 1 || len(backups) != 1 || shared.ReadFileString(backups[0]) != original {
+			if err != nil || launched != available[0] || validations != 1 || loads != 1 || len(backups) != 1 || shared.ReadFileString(backups[0]) != original {
 				t.Fatalf("editor or backup incorrect: err=%v editor=%s backups=%v", err, launched, backups)
 			}
 		})
@@ -551,7 +558,7 @@ func TestEditConfigValidationFailurePreservesEditsAndReportsDetails(t *testing.T
 		}
 		return "nftables.conf:1: syntax error", errors.New("exit status 1")
 	}
-	err := editConfig(inputUI(t, "n\n"))
+	err := editConfig()
 	if err == nil || !strings.Contains(err.Error(), "配置校验失败") || !strings.Contains(err.Error(), "syntax error") {
 		t.Fatalf("missing validation error details: %v", err)
 	}

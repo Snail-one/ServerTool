@@ -133,7 +133,7 @@ func TestPolicyManagerBatchesDraftAndSavesOnce(t *testing.T) {
 	// then edit both address lists and save the complete draft once.
 	input := "1\n3\n3\n1\n443,8000-8100\n" +
 		"3\n1\n1\n2\n8050-8060\n4\n1\n3\n10.20.1.1/16\n" +
-		"4\n2\n5\n2\n2001:db8:1::123/64\ns\ny\n"
+		"4\n2\n5\n2\n2001:db8:1::123/64\ns\n"
 	if err := runAccessRuleManager(inputUI(t, input)); err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,6 @@ func TestPolicyManagerCancellationAndRestoreNeverWrite(t *testing.T) {
 		"1\nq\nq\n",
 		"1\n3\nq\nq\n",
 		"3\n1\n1\n1\n8443\nq\n",
-		"3\n1\n1\n1\n8443\ns\nn\nq\n",
 		"3\n1\n1\n1\n8443\nr\ns\nq\n",
 		"3\n3\nq\nq\n",
 		"4\n2\n5\nq\nq\n",
@@ -213,7 +212,7 @@ func TestPolicyEditorRetriesInvalidInputsWithoutChangingOtherLists(t *testing.T)
 	setupTest(t)
 	version := ruleTestConfig(t, nil)
 	acceptRuleCommands(t)
-	input := "3\n1\n1\n1\n65536\n443,,80\n8443\n4\n1\n3\n::1\n10.42.1.1/16\ns\ny\n"
+	input := "3\n1\n1\n1\n65536\n443,,80\n8443\n4\n1\n3\n::1\n10.42.1.1/16\ns\n"
 	if err := runAccessRuleManager(inputUI(t, input)); err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +253,7 @@ func TestPolicyManagerStopsOnValidationConflictOrLoadFailure(t *testing.T) {
 				t.Fatalf("unexpected args: %v", args)
 				return "", nil
 			}
-			err := runAccessRuleManager(inputUI(t, "3\n1\n1\n1\n8443\ns\ny\n"))
+			err := runAccessRuleManager(inputUI(t, "3\n1\n1\n1\n8443\ns\n"))
 			if err == nil {
 				t.Fatal("expected failure")
 			}

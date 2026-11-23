@@ -121,12 +121,12 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 		ui.MenuOptionHint("4", "内网 IP 范围", "设置哪些 IP / 网段按内网处理")
 		ui.MenuOptionHint("5", "规则配置", "来源、目标、网卡和端口；接受或拒绝")
 		fmt.Println()
-		ui.MenuOptionHint("p", "预览完整配置", "查看本次修改后的完整配置")
+		ui.MenuOptionHint("p", "预览配置", "查看本次变更及完整配置")
 		ui.MenuOptionHint("r", "还原本次草稿", "撤销本次全部修改")
 		if generating {
 			ui.MenuShortcutHint("s", "采用草稿并返回", "进入最终确认，暂不写入配置")
 		} else {
-			ui.MenuShortcutHint("s", "保存并立即加载", "确认后备份并应用全部修改")
+			ui.MenuShortcutHint("s", "保存并立即生效", "校验、备份并应用全部修改")
 		}
 		fmt.Println()
 		ui.MenuExit("0/q", "放弃草稿并返回")
@@ -147,6 +147,9 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 		case "p":
 			ui.ClearScreen()
 			ui.MenuTitle("防火墙管理", sessionTitle(), "预览配置")
+			if fields := policyChangeFields(original, draft); len(fields) > 0 {
+				ui.PrintInfoCard("待应用的变更", fields...)
+			}
 			fmt.Println(draft)
 			view.PauseWithPrompt("按回车返回草稿…")
 		case "r":
@@ -161,13 +164,13 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 				notice = "设置未变化，无需保存"
 				continue
 			}
+			if !generating {
+				return draft, nil
+			}
 			ui.ClearScreen()
 			ui.MenuTitle("防火墙管理", sessionTitle(), "确认变更")
 			ui.PrintInfoCard("待应用的变更", fields...)
-			prompt := "确认校验、备份、保存并加载整份当前配置（包括其他待加载修改）？(y/N，0/q 返回)："
-			if generating {
-				prompt = "确认采用此草稿并返回最终确认页？(y/N，0/q 返回)："
-			}
+			prompt := "确认采用此草稿并返回最终确认页？(y/N，0/q 返回)："
 			confirmed, err := view.Confirm(prompt)
 			if errors.Is(err, shared.ErrReturnToMenu) || err == nil && !confirmed {
 				notice = "尚未保存，草稿已保留，可继续编辑或返回放弃"
@@ -237,7 +240,10 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 				continue
 			}
 			if updated != draft {
-				notice = "已更新草稿；输入 s 统一保存并加载，输入 r 还原全部修改"
+				notice = "已更新草稿；输入 s 保存并立即生效，输入 r 还原全部修改"
+				if generating {
+					notice = "已更新草稿；输入 s 采用草稿并返回，输入 r 还原全部修改"
+				}
 			}
 			draft = updated
 		}

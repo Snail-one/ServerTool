@@ -38,7 +38,7 @@ func TestRuleManagerAddsSourceExceptionForBothProtocols(t *testing.T) {
 	ruleTestConfig(t, nil)
 	calls := acceptRuleCommands(t)
 	// Unified draft -> source exceptions -> add -> both IP versions and protocols.
-	if err := runAccessRuleManager(inputUI(t, "5\n1\n\n3\n192.168.1.0/24\nfd12::/48\n\n\n\n\n8000-8100\n3\n\nq\ns\ny\n")); err != nil {
+	if err := runAccessRuleManager(inputUI(t, "5\n1\n\n3\n192.168.1.0/24\nfd12::/48\n\n\n\n\n8000-8100\n3\n\nq\ns\n")); err != nil {
 		t.Fatal(err)
 	}
 	rules, err := managedRules(shared.ReadFileString(configPath))
@@ -70,7 +70,7 @@ func TestRuleManagerEditsByDisplayedNumberAndKeepsOtherRules(t *testing.T) {
 	ruleTestConfig(t, rules)
 	calls := acceptRuleCommands(t)
 	// Edit row 2, keep its type/source, and change its ports/protocol.
-	if err := runAccessRuleManager(inputUI(t, "5\n2\n2\n\n\n\n\n\n\n\n8443\n3\n\nq\ns\ny\n")); err != nil {
+	if err := runAccessRuleManager(inputUI(t, "5\n2\n2\n\n\n\n\n\n\n\n8443\n3\n\nq\ns\n")); err != nil {
 		t.Fatal(err)
 	}
 	want := append([]allowRule(nil), rules...)
@@ -193,11 +193,11 @@ func TestNewDropRuleIsInsertedAheadOfAllows(t *testing.T) {
 	}
 }
 
-func TestDeleteByIDRequiresFinalConfirmation(t *testing.T) {
+func TestDeleteByIDStaysInDraftUntilSaved(t *testing.T) {
 	setupTest(t)
 	rules := []allowRule{{ID: "aaaaaaaa", Kind: "port", Ports: "443", Protocol: "tcp"}}
 	version := ruleTestConfig(t, rules)
-	if err := runAccessRuleManager(inputUI(t, "5\n3\n1\naaaaaaaa\n\nq\ns\nn\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := runAccessRuleManager(inputUI(t, "5\n3\n1\naaaaaaaa\n\nq\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if shared.ReadFileString(configPath) != string(version.content) {

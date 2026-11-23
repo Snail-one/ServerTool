@@ -16,7 +16,7 @@ func showMenu() {
 	ui.MenuOptionHint("5", "端口映射管理", "将本机端口映射到指定 IP 和端口")
 	fmt.Println()
 	ui.MenuOptionHint("6", "查看配置文件", configPath)
-	ui.MenuOptionHint("7", "编辑配置文件", "保存后校验，可立即加载")
+	ui.MenuOptionHint("7", "编辑配置文件", "保存退出后自动校验并加载")
 	fmt.Println()
 	version, err := readConfigVersion()
 	switch {

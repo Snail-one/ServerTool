@@ -232,7 +232,7 @@ func TestFirstSnapshotFailurePreventsConfigAndServiceMutations(t *testing.T) {
 			case "edit":
 				exists := commandExists
 				commandExists = func(name string) bool { return name == "vim" || exists(name) }
-				err = editConfig(inputUI(t, ""))
+				err = editConfig()
 			case "load":
 				err = applyConfig([]byte(initial))
 			case "autostart":

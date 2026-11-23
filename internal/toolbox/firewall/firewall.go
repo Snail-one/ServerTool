@@ -78,9 +78,7 @@ func Run(view *ui.UI) error {
 		case "6":
 			shared.RunAction(view, "读取配置文件失败，已返回防火墙管理", showConfigFile)
 		case "7":
-			shared.RunAction(view, "编辑或加载配置失败，已返回防火墙管理", func() error {
-				return editConfig(view)
-			})
+			shared.RunAction(view, "编辑或加载配置失败，已返回防火墙管理", editConfig)
 		case "r":
 			shared.RunAction(view, "加载防火墙配置失败，已返回防火墙管理", func() error {
 				return loadConfig(view)
@@ -155,12 +153,9 @@ func loadConfig(view *ui.UI) error {
 	if err != nil {
 		return err
 	}
-	if len(bytes.TrimSpace(content)) == 0 {
-		return fmt.Errorf("防火墙配置文件为空，请先生成或编辑配置")
-	}
-	log.Info("正在校验最新防火墙配置：", configPath)
-	if out, err := commandOutput("nft", "-c", "-f", configPath); err != nil {
-		return fmt.Errorf("nftables 配置校验失败，未加载规则: %w: %s", err, strings.TrimSpace(out))
+	version := configVersion{content: content, exists: true}
+	if err := validateSavedConfig(version); err != nil {
+		return err
 	}
 	equal := false
 	var compareErr error
@@ -169,7 +164,7 @@ func loadConfig(view *ui.UI) error {
 	} else {
 		compareErr = fmt.Errorf("缺少 unshare，无法对比配置与内核规则")
 	}
-	if err := checkConfigVersion(configVersion{content: content, exists: true}); err != nil {
+	if err := checkConfigVersion(version); err != nil {
 		return err
 	}
 	if compareErr == nil && equal {
@@ -200,6 +195,27 @@ func loadConfig(view *ui.UI) error {
 		log.Info("配置文件已保留，未加载；可稍后输入 r 校验加载配置")
 		return shared.ErrReturnToMenu
 	}
+	return loadValidatedConfig(content)
+}
+
+func validateSavedConfig(version configVersion) error {
+	if !version.exists {
+		return fmt.Errorf("未找到 %s，请先生成或编辑配置", configPath)
+	}
+	if len(bytes.TrimSpace(version.content)) == 0 {
+		return fmt.Errorf("防火墙配置文件为空，请先生成或编辑配置")
+	}
+	if err := checkConfigVersion(version); err != nil {
+		return err
+	}
+	log.Info("正在校验最新防火墙配置：", configPath)
+	if out, err := commandOutput("nft", "-c", "-f", configPath); err != nil {
+		return fmt.Errorf("nftables 配置校验失败，未加载规则: %w: %s", err, strings.TrimSpace(out))
+	}
+	return nil
+}
+
+func loadValidatedConfig(content []byte) error {
 	if err := applyConfig(content); err != nil {
 		return err
 	}
@@ -228,7 +244,7 @@ func applyConfig(expected []byte) error {
 	return nil
 }
 
-func editConfig(view *ui.UI) error {
+func editConfig() error {
 	ui.ClearScreen()
 	ui.MenuTitle("防火墙管理", "编辑配置文件")
 	var editor string
@@ -266,8 +282,11 @@ func editConfig(view *ui.UI) error {
 		log.Info("配置内容未修改，无需加载")
 		return nil
 	}
-	if err := loadConfig(view); err != nil {
-		return fmt.Errorf("编辑内容已保留，请根据错误修正或重新加载: %w", err)
+	if err := validateSavedConfig(after); err != nil {
+		return fmt.Errorf("编辑内容已保留，请修正配置后重新保存: %w", err)
+	}
+	if err := loadValidatedConfig(after.content); err != nil {
+		return fmt.Errorf("编辑内容已保留，可输入 r 重试加载: %w", err)
 	}
 	return nil
 }
