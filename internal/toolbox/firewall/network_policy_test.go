@@ -134,7 +134,7 @@ func TestPolicyManagerBatchesDraftAndSavesOnce(t *testing.T) {
 	input := "1\n3\n3\n1\n443,8000-8100\n" +
 		"3\n1\n1\n2\n8050-8060\nl\n1\n3\n10.20.1.1/16\n" +
 		"L\n2\n5\n2\n2001:db8:1::123/64\ns\n"
-	if err := runAccessRuleManager(inputUI(t, input)); err != nil {
+	if err := runAccessRuleManager(inputUI(t, input+"\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	updated := shared.ReadFileString(configPath)
@@ -213,7 +213,7 @@ func TestPolicyEditorRetriesInvalidInputsWithoutChangingOtherLists(t *testing.T)
 	version := ruleTestConfig(t, nil)
 	acceptRuleCommands(t)
 	input := "3\n1\n1\n1\n65536\n443,,80\n8443\nl\n1\n3\n::1\n10.42.1.1/16\ns\n"
-	if err := runAccessRuleManager(inputUI(t, input)); err != nil {
+	if err := runAccessRuleManager(inputUI(t, input+"\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	updated := shared.ReadFileString(configPath)

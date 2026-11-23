@@ -41,7 +41,7 @@ func TestReorderRulesPersistsMatchingOrderAndKeepsLogicalRulesIntact(t *testing.
 				t.Fatal(err)
 			}
 			calls := acceptRuleCommands(t)
-			if err := runAccessRuleManager(inputUI(t, "5\no\n"+scenario.input+"\nq\ns\n")); err != nil {
+			if err := runAccessRuleManager(inputUI(t, "5\no\n"+scenario.input+"\nq\ns\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 				t.Fatal(err)
 			}
 			var want []allowRule
@@ -134,7 +134,7 @@ func TestRuleManagerOpensOrderEditorAndSelectsNumericRuleID(t *testing.T) {
 	acceptRuleCommands(t)
 	// Enter sorting, select the numeric ID at position 3, put it first, save,
 	// read the result once, and return from the rule manager.
-	if err := runAccessRuleManager(inputUI(t, "5\no\n00000001\nt\ns\n\nq\ns\n")); err != nil {
+	if err := runAccessRuleManager(inputUI(t, "5\no\n00000001\nt\ns\n\nq\ns\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	got, err := managedRules(shared.ReadFileString(configPath))

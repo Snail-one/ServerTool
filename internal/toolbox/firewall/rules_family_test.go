@@ -1,6 +1,7 @@
 package firewall
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -142,7 +143,7 @@ func TestDualStackSourceRuleIsSavedMovedQueriedAndDeletedAsOneID(t *testing.T) {
 	other := allowRule{ID: "aaaaaaaa", Kind: "port", Family: "ipv4", Ports: "53", Protocol: "udp"}
 	ruleTestConfig(t, []allowRule{other})
 	acceptRuleCommands(t)
-	if err := runAccessRuleManager(inputUI(t, "5\nn\n\n3\n192.168.1.1/16\n2001:db8::1/32\n\n\n\n\n443\n3\n\nq\ns\n")); err != nil {
+	if err := runAccessRuleManager(inputUI(t, "5\nn\n\n3\n192.168.1.1/16\n2001:db8::1/32\n\n\n\n\n443\n3\n\nq\ns\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	rules, err := managedRules(shared.ReadFileString(configPath))
@@ -154,7 +155,7 @@ func TestDualStackSourceRuleIsSavedMovedQueriedAndDeletedAsOneID(t *testing.T) {
 	if !strings.Contains(output, "IP 版本") || !strings.Contains(output, "IPv4+IPv6") || !strings.Contains(output, "2001:db8::/32") {
 		t.Fatal("rule list omitted an IP version or source")
 	}
-	if err := runAccessRuleManager(inputUI(t, "5\no\n2\nt\ns\n\nq\ns\n")); err != nil {
+	if err := runAccessRuleManager(inputUI(t, "5\no\n2\nt\ns\n\nq\ns\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	rules, err = managedRules(shared.ReadFileString(configPath))
@@ -165,7 +166,7 @@ func TestDualStackSourceRuleIsSavedMovedQueriedAndDeletedAsOneID(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(matches, []allowRule{target}) {
 		t.Fatalf("query split dual-stack rule: %v %v", matches, err)
 	}
-	if err := runAccessRuleManager(inputUI(t, "5\n"+target.ID+"\n2\n\nq\ns\n")); err != nil {
+	if err := runAccessRuleManager(inputUI(t, "5\n"+target.ID+"\n2\n\nq\ns\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	remaining, err := managedRules(shared.ReadFileString(configPath))

@@ -49,43 +49,34 @@ func policyChangeFields(before, after string) []ui.CardField {
 }
 
 func runForwardRuleManager(view *ui.UI) error {
-	if !isRoot() {
-		return fmt.Errorf("转发规则管理需要 root 权限，请使用 sudo 运行本工具")
-	}
 	restore := useForwardSession()
 	defer restore()
-	version, err := readConfigVersion()
-	if err != nil {
-		return err
-	}
-	updated, err := editAccessRulesDraft(view, string(version.content), false)
-	if err != nil {
-		return err
-	}
-	if err := saveAccessRules(version, updated); err != nil {
-		return err
-	}
-	ui.PrintSuccessCard("转发规则已保存并加载")
-	return nil
+	return runPolicyRuleManager(view, "转发规则")
 }
 
 func runAccessRuleManager(view *ui.UI) error {
+	return runPolicyRuleManager(view, "访问规则")
+}
+
+func runPolicyRuleManager(view *ui.UI, label string) error {
 	if !isRoot() {
-		return fmt.Errorf("访问规则管理需要 root 权限，请使用 sudo 运行本工具")
+		return fmt.Errorf("%s管理需要 root 权限，请使用 sudo 运行本工具", label)
 	}
-	version, err := readConfigVersion()
-	if err != nil {
-		return err
+	for {
+		version, err := readConfigVersion()
+		if err != nil {
+			return err
+		}
+		updated, err := editAccessRulesDraft(view, string(version.content), false)
+		if err != nil {
+			return err
+		}
+		if err := saveAccessRules(version, updated); err != nil {
+			return err
+		}
+		ui.PrintSuccessCard(label + "已保存并加载")
+		view.PauseWithPrompt("按回车返回" + sessionTitle() + "…")
 	}
-	updated, err := editAccessRulesDraft(view, string(version.content), false)
-	if err != nil {
-		return err
-	}
-	if err := saveAccessRules(version, updated); err != nil {
-		return err
-	}
-	ui.PrintSuccessCard("访问规则已保存并加载")
-	return nil
 }
 
 // The same draft editor is used for existing configurations and during initial
@@ -113,10 +104,14 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理", sessionTitle())
 		summary := accessSummaryFields(draft)
-		card := "访问规则草稿（尚未保存）"
+		label := "访问规则"
 		if activeSession != nil && activeSession.forward {
 			summary = forwardSummaryFields(draft)
-			card = "转发规则草稿（尚未保存）"
+			label = "转发规则"
+		}
+		card := label + "草稿（尚未保存）"
+		if !generating && len(changes) == 0 {
+			card = label + "（当前配置）"
 		}
 		ui.PrintInfoCard(card, summary...)
 		if notice != "" {

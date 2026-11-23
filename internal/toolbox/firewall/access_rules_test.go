@@ -53,7 +53,7 @@ func TestAccessManagerSharesOneDraftAndOneSaveAcrossPortsAndSources(t *testing.T
 		}
 		return query(name, args...)
 	}
-	input := "1\n3\n1\n1\n1\n8443\n5\nn\n\n1\n192.168.1.10\n\n\n\n\n3306\n1\n\nq\ns\n\nq\n"
+	input := "1\n3\n1\n1\n1\n8443\n5\nn\n\n1\n192.168.1.10\n\n\n\n\n3306\n1\n\nq\ns\n\nq\nq\n"
 	output := capturePortOutput(t, func() {
 		if err := Run(inputUI(t, input)); !errors.Is(err, shared.ErrReturnToMenu) {
 			t.Fatal(err)
@@ -61,6 +61,11 @@ func TestAccessManagerSharesOneDraftAndOneSaveAcrossPortsAndSources(t *testing.T
 	})
 	if !reflect.DeepEqual(*calls, []string{"check", "load"}) {
 		t.Fatalf("mixed edits loaded more than once: %v", *calls)
+	}
+	_, afterSave, saved := strings.Cut(output, "访问规则已保存并加载")
+	if !saved || !strings.Contains(afterSave, "按回车返回访问规则管理") ||
+		!strings.Contains(afterSave, "访问规则（当前配置）") || strings.Contains(afterSave, "保存并立即生效") {
+		t.Fatal("saving should reopen the rule manager with a clean draft")
 	}
 	if strings.Contains(output, "端口与内网设置") || strings.Contains(output, "放行规则管理") || !strings.Contains(output, "访问规则管理") {
 		t.Fatal("retired top-level entries are still visible")
@@ -160,7 +165,7 @@ func TestMigrationIsVisibleAndOnlySavedWithTheParentDraft(t *testing.T) {
 	version := ruleTestConfig(t, rules)
 	calls := acceptRuleCommands(t)
 	output := capturePortOutput(t, func() {
-		if err := runAccessRuleManager(inputUI(t, "5\n1\n3\n\nq\np\n\ns\n")); err != nil {
+		if err := runAccessRuleManager(inputUI(t, "5\n1\n3\n\nq\np\n\ns\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 			t.Fatal(err)
 		}
 	})
@@ -181,7 +186,7 @@ func TestSourceEditingStillWorksWithCustomBusinessPortExpressions(t *testing.T) 
 		t.Fatal(err)
 	}
 	acceptRuleCommands(t)
-	if err := runAccessRuleManager(inputUI(t, "5\nn\n\n1\n192.168.1.10\n\n\n\n\n3306\n1\n\nq\ns\n")); err != nil {
+	if err := runAccessRuleManager(inputUI(t, "5\nn\n\n1\n192.168.1.10\n\n\n\n\n3306\n1\n\nq\ns\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	updated := shared.ReadFileString(configPath)
