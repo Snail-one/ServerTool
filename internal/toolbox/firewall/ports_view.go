@@ -46,19 +46,6 @@ func showLoadedPorts() error {
 		)
 		return nil
 	}
-	for scope, label := range []string{"公网", "内网"} {
-		var ports []ui.CardField
-		for family, version := range []string{"IPv4", "IPv6"} {
-			for protocol, name := range []string{"TCP", "UDP"} {
-				value := summary.ports[scope][family][protocol].String()
-				if scope == 1 && len(summary.private[family]) == 0 {
-					value = "没有匹配的内网来源"
-				}
-				ports = append(ports, ui.CardField{Label: label + " " + version + " " + name, Value: value})
-			}
-		}
-		ui.PrintSectionCard(label+"放行端口", ports...)
-	}
 	ui.PrintSectionCard("来源划分",
 		ui.CardField{Label: "内网 IPv4", Value: strings.Join(summary.private[0], ", ")},
 		ui.CardField{Label: "内网 IPv6", Value: strings.Join(summary.private[1], ", ")},
@@ -80,6 +67,19 @@ func showLoadedPorts() error {
 		fields := []ui.CardField{{Label: "匹配方式", Value: "优先于公网 / 内网基础端口"}}
 		fields = append(fields, exceptions...)
 		ui.PrintSectionCard("规则配置", fields...)
+	}
+	for scope, label := range []string{"公网", "内网"} {
+		var ports []ui.CardField
+		for family, version := range []string{"IPv4", "IPv6"} {
+			for protocol, name := range []string{"TCP", "UDP"} {
+				value := summary.ports[scope][family][protocol].String()
+				if scope == 1 && len(summary.private[family]) == 0 {
+					value = "没有匹配的内网来源"
+				}
+				ports = append(ports, ui.CardField{Label: label + " " + version + " " + name, Value: value})
+			}
+		}
+		ui.PrintSectionCard(label+"放行端口", ports...)
 	}
 	if len(summary.system) > 0 {
 		system = append(system, ui.CardField{Label: "其他系统流量", Value: strings.Join(summary.system, "、"), Detail: "具体条件见完整已加载规则"})
