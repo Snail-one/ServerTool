@@ -653,6 +653,22 @@ func rotateWireGuardKeys(view *ui.UI, name string) error {
 		return fmt.Errorf("当前配置缺少接口私钥")
 	}
 
+	var peersWithPSK [][]wireGuardSetting
+	for _, peer := range config.peers {
+		if wireGuardValue(peer, "presharedkey") != "" {
+			peersWithPSK = append(peersWithPSK, peer)
+		}
+	}
+	if len(peersWithPSK) > 0 {
+		rotatePSK, err := view.Confirm("是否同时更换已配置的预共享密钥？(y/N，0/q 返回)：")
+		if err != nil {
+			return err
+		}
+		if !rotatePSK {
+			peersWithPSK = nil
+		}
+	}
+
 	lines := strings.Split(string(before), "\n")
 	privateKey, err := generateWireGuardKey("genkey", "私钥")
 	if err != nil {
@@ -663,11 +679,7 @@ func rotateWireGuardKeys(view *ui.UI, name string) error {
 			lines[setting.line] = strings.Replace(lines[setting.line], setting.value, privateKey, 1)
 		}
 	}
-	pskCount := 0
-	for _, peer := range config.peers {
-		if wireGuardValue(peer, "presharedkey") == "" {
-			continue
-		}
+	for _, peer := range peersWithPSK {
 		key, err := generateWireGuardKey("genpsk", "预共享密钥")
 		if err != nil {
 			return err
@@ -677,12 +689,16 @@ func rotateWireGuardKeys(view *ui.UI, name string) error {
 				lines[setting.line] = strings.Replace(lines[setting.line], setting.value, key, 1)
 			}
 		}
-		pskCount++
 	}
 
+	scope, sync := "本机私钥", "各对端需更新本机公钥"
+	if len(peersWithPSK) > 0 {
+		scope += fmt.Sprintf("和 %d 个对端的预共享密钥", len(peersWithPSK))
+		sync += "，相关对端还需更新对应的预共享密钥"
+	}
 	return saveWireGuardProfile(view, name, before, []byte(strings.Join(lines, "\n")),
-		ui.CardField{Label: "更换范围", Value: fmt.Sprintf("本机私钥和 %d 个对端的预共享密钥", pskCount)},
-		ui.CardField{Label: "对端同步", Value: "各对端需更新本机公钥，已使用预共享密钥的对端还需更新对应密钥"},
+		ui.CardField{Label: "更换范围", Value: scope},
+		ui.CardField{Label: "对端同步", Value: sync},
 	)
 }
 

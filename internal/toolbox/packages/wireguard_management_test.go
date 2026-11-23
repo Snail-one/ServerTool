@@ -376,13 +376,14 @@ func TestWireGuardRotateKeysFromInterfaceMenu(t *testing.T) {
 	}
 	commandExists = func(name string) bool { return name == "wg" }
 	pskCalls := 0
+	newPrivateKey := key(7)
 	commandOutput = func(name string, args ...string) (string, error) {
 		if name == "wg" {
 			switch strings.Join(args, " ") {
 			case "show interfaces":
 				return "", nil
 			case "genkey":
-				return key(7) + "\n", nil
+				return newPrivateKey + "\n", nil
 			case "genpsk":
 				pskCalls++
 				return key(byte(7+pskCalls)) + "\n", nil
@@ -395,23 +396,29 @@ func TestWireGuardRotateKeysFromInterfaceMenu(t *testing.T) {
 		t.Fatalf("key rotation must not start a stopped interface: %s %v", name, args)
 		return nil
 	}
-	if err := rotateWireGuardKeys(newUIWithInput(t, "\n"), "wg0"); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := rotateWireGuardKeys(newUIWithInput(t, "\n\n"), "wg0"); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if after := shared.ReadFileString(path); after != before {
 		t.Fatal("declining key rotation must keep the old configuration")
 	}
-	pskCalls = 0
+	if err := rotateWireGuardKeys(newUIWithInput(t, "\ny\n"), "wg0"); err != nil {
+		t.Fatal(err)
+	}
+	if after := shared.ReadFileString(path); after != strings.Replace(before, key(1), key(7), 1) || pskCalls != 0 {
+		t.Fatal("default rotation must preserve preshared keys")
+	}
+	newPrivateKey = key(10)
 	output := wireGuardTestOutput(t, func() {
-		if err := runWireGuardInterface(newUIWithInput(t, "K\ny\n\nq\n"), "wg0"); !errors.Is(err, shared.ErrReturnToMenu) {
+		if err := runWireGuardInterface(newUIWithInput(t, "K\ny\ny\n\nq\n"), "wg0"); !errors.Is(err, shared.ErrReturnToMenu) {
 			t.Fatal(err)
 		}
 	})
-	want := strings.NewReplacer(key(1), key(7), key(3), key(8), key(5), key(9)).Replace(before)
+	want := strings.NewReplacer(key(1), key(10), key(3), key(8), key(5), key(9)).Replace(before)
 	if after := shared.ReadFileString(path); after != want || pskCalls != 2 {
 		t.Fatal("rotation must change just the private key and generate a separate key for each configured PSK")
 	}
-	for _, value := range []byte{1, 3, 5, 7, 8, 9} {
+	for _, value := range []byte{1, 3, 5, 7, 8, 9, 10} {
 		if strings.Contains(output, key(value)) {
 			t.Fatal("rotation displayed a secret key")
 		}

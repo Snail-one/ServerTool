@@ -273,7 +273,7 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 		}
 		if saved {
 			if canRotate {
-				ui.MenuShortcutHint("k", "更换密钥", "更换接口私钥和已配置的预共享密钥")
+				ui.MenuShortcutHint("k", "更换密钥", "更换接口私钥，可选择同时更换预共享密钥")
 				actions["k"] = func() error { return rotateWireGuardKeys(view, name) }
 			}
 			if canDelete {
