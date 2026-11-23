@@ -72,8 +72,12 @@ func Run(view *ui.UI) error {
 				return runForwardRuleManager(view)
 			})
 		case "5":
-			shared.RunAction(view, "读取配置文件失败，已返回防火墙管理", showConfigFile)
+			shared.RunAction(view, "端口映射设置失败，已返回防火墙管理", func() error {
+				return runPortMappingManager(view)
+			})
 		case "6":
+			shared.RunAction(view, "读取配置文件失败，已返回防火墙管理", showConfigFile)
+		case "7":
 			shared.RunAction(view, "编辑或加载配置失败，已返回防火墙管理", func() error {
 				return editConfig(view)
 			})
@@ -81,15 +85,15 @@ func Run(view *ui.UI) error {
 			shared.RunAction(view, "加载防火墙配置失败，已返回防火墙管理", func() error {
 				return loadConfig(view)
 			})
-		case "7":
+		case "8":
 			shared.RunAction(view, "生成防火墙配置失败，已返回防火墙管理", func() error {
 				return configure(view)
 			})
-		case "8":
+		case "9":
 			shared.RunAction(view, "常用功能设置失败，已返回防火墙管理", func() error {
 				return runFeatureSettings(view)
 			})
-		case "9":
+		case "10":
 			shared.RunAction(view, "实时查看规则失败，已返回防火墙管理", func() error {
 				return monitorTraffic(view, time.Second)
 			})
@@ -105,7 +109,7 @@ func showConfigFile() error {
 	ui.MenuTitle("防火墙管理", "配置文件")
 	data, err := os.ReadFile(configPath)
 	if os.IsNotExist(err) {
-		ui.PrintInfoCard("尚未生成防火墙配置", ui.CardField{Label: "下一步", Value: "选择 7 生成默认配置"})
+		ui.PrintInfoCard("尚未生成防火墙配置", ui.CardField{Label: "下一步", Value: "选择 8 生成默认配置"})
 		return nil
 	}
 	if err != nil {
@@ -318,6 +322,10 @@ func configure(view *ui.UI) error {
 			autostartAction = "不支持自动设置（未找到 systemctl）"
 		}
 	}
+	mappings, err := readPortMappings(string(version.content))
+	if err != nil {
+		return err
+	}
 	var preserved, preservedForward []allowRule
 	countersEnabled, err := packetCountersEnabled(string(version.content))
 	if err != nil {
@@ -425,6 +433,10 @@ func configure(view *ui.UI) error {
 				} else {
 					content, err = withPingSetting(content, pingEnabled)
 				}
+				if err != nil {
+					return err
+				}
+				content, err = withPortMappings(content, mappings)
 				if err != nil {
 					return err
 				}

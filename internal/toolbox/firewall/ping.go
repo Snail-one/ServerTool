@@ -128,7 +128,7 @@ func configurePing(view *ui.UI) error {
 		return err
 	}
 	if !version.exists || !hasManagedConfig(string(version.content)) {
-		return fmt.Errorf("请先返回防火墙管理，选择 7 生成本工具防火墙配置，再设置 ICMP 回显")
+		return fmt.Errorf("请先返回防火墙管理，选择 8 生成本工具防火墙配置，再设置 ICMP 回显")
 	}
 	enabled, found, err := readPingSetting(string(version.content))
 	if err != nil {

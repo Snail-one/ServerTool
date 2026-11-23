@@ -375,7 +375,7 @@ func TestRunConfirmsInstallAndWritesThenApplies(t *testing.T) {
 		t.Fatalf("unexpected command: %s %v", name, args)
 		return "", nil
 	}
-	if err := Run(inputUI(t, "y\n7\n\n\ny\n\n1\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := Run(inputUI(t, "y\n8\n\n\ny\n\n1\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if want := []string{"apt-get update", "apt-get install -y nftables"}; !reflect.DeepEqual(commands, want) {
@@ -576,7 +576,7 @@ func TestRunViewsFilesAndLoadedRulesWithoutSSHDetectionOrWrites(t *testing.T) {
 		queries++
 		return "table inet snail {}", nil
 	}
-	if err := Run(inputUI(t, "5\n\n2\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := Run(inputUI(t, "6\n\n2\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if queries != 1 || shared.ReadFileString(configPath) != "# existing rules\n" {

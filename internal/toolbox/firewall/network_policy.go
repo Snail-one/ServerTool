@@ -376,7 +376,7 @@ func withNamedSetElements(content, name, value string) (string, error) {
 
 func validatePolicyConfig(content string) error {
 	if !hasManagedConfig(content) {
-		return fmt.Errorf("请先选择 7 生成本工具防火墙配置")
+		return fmt.Errorf("请先选择 8 生成本工具防火墙配置")
 	}
 	if _, _, _, err := inputChainBounds(content); err != nil {
 		return err
@@ -394,10 +394,10 @@ func validatePolicyConfig(content string) error {
 
 func validateForwardConfig(content string) error {
 	if !hasManagedConfig(content) {
-		return fmt.Errorf("请先选择 7 生成本工具防火墙配置")
+		return fmt.Errorf("请先选择 8 生成本工具防火墙配置")
 	}
 	if _, err := managedRulesIn(content, forwardRuleBlock); err != nil {
-		return fmt.Errorf("当前配置没有可用的转发链，请先选择 7 重建基础配置: %w", err)
+		return fmt.Errorf("当前配置没有可用的转发链，请先选择 8 重建基础配置: %w", err)
 	}
 	for _, list := range forwardPolicyLists {
 		if _, err := readPolicyValue(content, list); err != nil {
