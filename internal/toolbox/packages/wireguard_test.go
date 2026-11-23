@@ -42,7 +42,7 @@ func TestWireGuardMenuInstallsAndRemovesSystemPackage(t *testing.T) {
 		}
 		return nil
 	}
-	err := RunWireGuard(newUIWithInput(t, "1\ny\n\n2\ny\n\nq\n"))
+	err := RunWireGuard(newUIWithInput(t, "8\ny\n\n9\ny\n\nq\n"))
 	if !errors.Is(err, shared.ErrReturnToMenu) || installed {
 		t.Fatalf("uninstall or navigation did not finish: installed=%v error=%v", installed, err)
 	}

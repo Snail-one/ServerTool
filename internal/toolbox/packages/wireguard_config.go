@@ -164,7 +164,7 @@ func wireGuardFields(settings []wireGuardSetting, labels [][2]string) []ui.CardF
 	return fields
 }
 
-func createWireGuardProfile(view *ui.UI, importing bool) error {
+func createWireGuardProfile(view *ui.UI) error {
 	if !isRoot() {
 		return fmt.Errorf("写入 WireGuard 配置需要 root 权限")
 	}
@@ -185,38 +185,16 @@ func createWireGuardProfile(view *ui.UI, importing bool) error {
 		return fmt.Errorf("配置 %s 已存在，请通过编辑入口修改", path)
 	}
 
-	var data []byte
-	if importing {
-		source, err := view.Ask("请输入要导入的配置文件绝对路径（0/q 返回）：")
-		if err != nil {
-			return err
-		}
-		if shared.IsReturnChoice(source) {
-			return shared.ErrReturnToMenu
-		}
-		if !filepath.IsAbs(source) {
-			return fmt.Errorf("请使用配置文件的绝对路径")
-		}
-		var exists bool
-		data, exists, err = shared.ReadRegularFile(filepath.Clean(source))
-		if err != nil {
-			return err
-		}
-		if !exists {
-			return fmt.Errorf("导入文件不存在")
-		}
-	} else {
-		key, err := commandOutput("wg", "genkey")
-		key = strings.TrimSpace(key)
-		if _, valid := wireGuardKey(key); err != nil || !valid {
-			return fmt.Errorf("生成 WireGuard 私钥失败")
-		}
-		initial := "[Interface]\nPrivateKey = " + key + "\n"
-		template := initial + "# Address = 10.77.0.1/24\n# ListenPort = 51820\n\n# [Peer]\n# PublicKey = 对端公钥\n# AllowedIPs = 10.77.0.2/32\n"
-		data, err = editWireGuardCopy([]byte(template))
-		if err != nil {
-			return err
-		}
+	key, err := commandOutput("wg", "genkey")
+	key = strings.TrimSpace(key)
+	if _, valid := wireGuardKey(key); err != nil || !valid {
+		return fmt.Errorf("生成 WireGuard 私钥失败")
+	}
+	initial := "[Interface]\nPrivateKey = " + key + "\n"
+	template := initial + "# Address = 10.77.0.1/24\n# ListenPort = 51820\n\n# [Peer]\n# PublicKey = 对端公钥\n# AllowedIPs = 10.77.0.2/32\n"
+	data, err := editWireGuardCopy([]byte(template))
+	if err != nil {
+		return err
 	}
 	return saveWireGuardProfile(view, name, nil, data)
 }

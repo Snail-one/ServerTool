@@ -56,17 +56,17 @@ func RunWireGuard(view *ui.UI) error {
 			fields = append(fields, ui.CardField{Label: "当前接口", Value: value})
 		}
 		ui.PrintInfoCard("WireGuard", fields...)
+		ui.MenuOption("1", "接口与配置")
+		if tools.wg {
+			ui.MenuOption("2", "新建配置")
+		}
+		fmt.Println()
 		if !tools.ready() {
-			ui.MenuOptionHint("1", "安装 WireGuard 工具", "使用系统软件源安装 wg 和 wg-quick")
+			ui.MenuOptionHint("8", "安装 WireGuard 工具", "使用系统软件源安装 wg 和 wg-quick")
 		}
 		if tools.wg || tools.quick {
-			ui.MenuOptionHint("2", "卸载 WireGuard 工具", "保留 /etc/wireguard 配置")
+			ui.MenuOptionHint("9", "卸载 WireGuard 工具", "保留 /etc/wireguard 配置")
 		}
-		ui.MenuOption("3", "接口与配置")
-		if tools.wg {
-			ui.MenuOption("4", "新建配置")
-		}
-		ui.MenuOption("5", "导入配置")
 		ui.MenuOption("r", "刷新状态")
 		ui.MenuExit("0/q", "返回主菜单")
 
@@ -80,25 +80,21 @@ func RunWireGuard(view *ui.UI) error {
 		switch {
 		case choice == "" || strings.EqualFold(choice, "r"):
 			continue
-		case choice == "1" && !tools.ready():
-			shared.RunAction(view, "安装 WireGuard 失败，已返回管理菜单", func() error {
-				return installWireGuard(view)
-			})
-		case choice == "2" && (tools.wg || tools.quick):
-			shared.RunAction(view, "卸载 WireGuard 失败，已返回管理菜单", func() error {
-				return uninstallWireGuard(view)
-			})
-		case choice == "3":
+		case choice == "1":
 			shared.RunAction(view, "读取 WireGuard 接口失败，已返回管理菜单", func() error {
 				return runWireGuardInterfaces(view)
 			})
-		case choice == "4" && tools.wg:
+		case choice == "2" && tools.wg:
 			shared.RunAction(view, "新建 WireGuard 配置失败，已返回管理菜单", func() error {
-				return createWireGuardProfile(view, false)
+				return createWireGuardProfile(view)
 			})
-		case choice == "5":
-			shared.RunAction(view, "导入 WireGuard 配置失败，已返回管理菜单", func() error {
-				return createWireGuardProfile(view, true)
+		case choice == "8" && !tools.ready():
+			shared.RunAction(view, "安装 WireGuard 失败，已返回管理菜单", func() error {
+				return installWireGuard(view)
+			})
+		case choice == "9" && (tools.wg || tools.quick):
+			shared.RunAction(view, "卸载 WireGuard 失败，已返回管理菜单", func() error {
+				return uninstallWireGuard(view)
 			})
 		default:
 			ui.InvalidChoice()

@@ -53,7 +53,7 @@ func TestWireGuardConfigAndPeers(t *testing.T) {
 		return os.WriteFile(path, []byte(strings.Replace(data, "# Address", "Address", 1)), 0600)
 	}
 
-	if err := createWireGuardProfile(newUIWithInput(t, "wg0\ny\n"), false); err != nil {
+	if err := createWireGuardProfile(newUIWithInput(t, "wg0\ny\n")); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(wireGuardProfilePath("wg0"))
@@ -176,23 +176,19 @@ func wireGuardTestOutput(t *testing.T, run func()) string {
 	return string(output)
 }
 
-func TestWireGuardImportsAndUsesWGQuickWithoutSystemd(t *testing.T) {
-	root := setupWireGuardManagement(t)
-	source := filepath.Join(root, "import.conf")
+func TestWireGuardUsesWGQuickWithoutSystemd(t *testing.T) {
+	setupWireGuardManagement(t)
+	if err := os.MkdirAll(wireGuardConfigDir, 0700); err != nil {
+		t.Fatal(err)
+	}
 	data := []byte("[Interface]\nAddress = 10.77.0.1/24\n")
-	if err := os.WriteFile(source, data, 0644); err != nil {
+	if err := os.WriteFile(wireGuardProfilePath("wg0"), data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := createWireGuardProfile(newUIWithInput(t, "wg0\n"+source+"\ny\n"), true); err != nil {
-		t.Fatal(err)
+	if err := createWireGuardProfile(newUIWithInput(t, "wg0\n")); err == nil {
+		t.Fatal("creation should refuse to replace an existing profile")
 	}
-	if got, err := readWireGuardProfile("wg0"); err != nil || !bytes.Equal(got, data) {
-		t.Fatalf("unexpected imported configuration: %q %v", got, err)
-	}
-	if err := createWireGuardProfile(newUIWithInput(t, "wg0\n"), true); err == nil {
-		t.Fatal("import should refuse to replace an existing profile")
-	}
-	if err := createWireGuardProfile(newUIWithInput(t, "../wg0\n"), true); err == nil {
+	if err := createWireGuardProfile(newUIWithInput(t, "../wg0\n")); err == nil {
 		t.Fatal("invalid name must be rejected")
 	}
 
