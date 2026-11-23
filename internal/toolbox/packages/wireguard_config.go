@@ -125,6 +125,18 @@ func wireGuardValue(settings []wireGuardSetting, key string) string {
 	return value
 }
 
+func wireGuardPublicKey(settings []wireGuardSetting) string {
+	key, valid := wireGuardKey(wireGuardValue(settings, "privatekey"))
+	if !valid {
+		return ""
+	}
+	private, err := ecdh.X25519().NewPrivateKey(key)
+	if err != nil {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(private.PublicKey().Bytes())
+}
+
 func showWireGuardProfile(name string) error {
 	ui.ClearScreen()
 	ui.MenuTitle("WireGuard", name, "查看配置")
@@ -137,10 +149,8 @@ func showWireGuardProfile(name string) error {
 		return err
 	}
 	fields := []ui.CardField{{Label: "配置文件", Value: wireGuardProfilePath(name)}}
-	if key, valid := wireGuardKey(wireGuardValue(config.device, "privatekey")); valid {
-		if private, err := ecdh.X25519().NewPrivateKey(key); err == nil {
-			fields = append(fields, ui.CardField{Label: "本机公钥", Value: base64.StdEncoding.EncodeToString(private.PublicKey().Bytes())})
-		}
+	if public := wireGuardPublicKey(config.device); public != "" {
+		fields = append(fields, ui.CardField{Label: "本机公钥", Value: public})
 	}
 	fields = append(fields, wireGuardFields(config.device, [][2]string{
 		{"address", "隧道地址"}, {"listenport", "监听端口"}, {"dns", "DNS"}, {"mtu", "MTU"},
@@ -383,6 +393,10 @@ func addWireGuardPeer(view *ui.UI, name string) error {
 	if err != nil {
 		return err
 	}
+	return saveWireGuardPeer(view, name, before, peer)
+}
+
+func saveWireGuardPeer(view *ui.UI, name string, before []byte, peer string) error {
 	after := append([]byte(nil), bytes.TrimRight(before, "\r\n")...)
 	return saveWireGuardProfile(view, name, before, append(after, peer...))
 }
@@ -424,7 +438,7 @@ func withDefaultWireGuardPSKs(data []byte) ([]byte, error) {
 func askWireGuardPeerConfig(view *ui.UI, optional bool) (string, error) {
 	ui.PrintField("输入格式", "对端公钥 AllowedIPs [Endpoint] [保活秒数]")
 	ui.PrintField("说明", "AllowedIPs 用逗号分隔，Endpoint 可填主机名或 IP 加端口。用 - 跳过 Endpoint")
-	ui.PrintField("预共享密钥", "默认生成，两端必须填相同值。末尾加 --no-psk 可跳过生成")
+	ui.PrintField("预共享密钥", "默认生成。可粘贴快速配置里的 --psk=密钥，或在末尾加 --no-psk 跳过")
 	prompt := "请输入对端配置（0/q 返回）："
 	if optional {
 		prompt = "请输入首个对端配置（回车跳过，0/q 返回）："
@@ -439,10 +453,24 @@ func askWireGuardPeerConfig(view *ui.UI, optional bool) (string, error) {
 	if optional && line == "" {
 		return "", nil
 	}
+	return wireGuardPeerFromInput(line)
+}
+
+func wireGuardPeerFromInput(line string) (string, error) {
 	fields := strings.Fields(line)
-	generatePSK := len(fields) == 0 || fields[len(fields)-1] != "--no-psk"
-	if !generatePSK {
-		fields = fields[:len(fields)-1]
+	generatePSK, psk := true, ""
+	if len(fields) > 0 {
+		last := fields[len(fields)-1]
+		if last == "--no-psk" {
+			generatePSK = false
+			fields = fields[:len(fields)-1]
+		} else if supplied, found := strings.CutPrefix(last, "--psk="); found {
+			if _, valid := wireGuardKey(supplied); !valid {
+				return "", fmt.Errorf("WireGuard 预共享密钥格式无效")
+			}
+			generatePSK, psk = false, supplied
+			fields = fields[:len(fields)-1]
+		}
 	}
 	if len(fields) < 2 || len(fields) > 4 {
 		return "", fmt.Errorf("请填写对端公钥和 AllowedIPs")
@@ -475,7 +503,10 @@ func askWireGuardPeerConfig(view *ui.UI, optional bool) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		peer += "PresharedKey = " + key + "\n"
+		psk = key
+	}
+	if psk != "" {
+		peer += "PresharedKey = " + psk + "\n"
 	}
 	return peer, nil
 }

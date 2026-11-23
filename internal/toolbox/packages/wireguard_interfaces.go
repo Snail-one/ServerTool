@@ -162,7 +162,7 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 		}
 		canDelete := activeErr == nil && !running && !unit.active && !unit.enabled
 		canRotate := saved && commandExists("wg")
-		if saved && (unit.available || canDelete || canRotate) {
+		if saved {
 			fmt.Println()
 			if unit.available {
 				label := "开启开机自启"
@@ -176,6 +176,8 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 				ui.MenuShortcutHint("d", "删除配置", "")
 				actions["d"] = func() error { return deleteWireGuardProfile(view, name) }
 			}
+			ui.MenuShortcutHint("g", "快速配置", "复制本机配置或粘贴对端配置")
+			actions["g"] = func() error { return quickWireGuardConfig(view, name) }
 			if canRotate {
 				ui.MenuShortcutHint("k", "更换密钥", "更换接口私钥和已配置的预共享密钥")
 				actions["k"] = func() error { return rotateWireGuardKeys(view, name) }

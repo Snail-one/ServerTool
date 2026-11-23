@@ -159,7 +159,7 @@ func TestWireGuardRuntimeAndBootControls(t *testing.T) {
 		}
 	})
 	offset := -1
-	for _, item := range []string{"1   查看配置", "2   编辑配置", "3   添加对端", "4   删除对端", "5   启动接口", "a   开启开机自启", "d   删除配置", "k   更换密钥"} {
+	for _, item := range []string{"1   查看配置", "2   编辑配置", "3   添加对端", "4   删除对端", "5   启动接口", "a   开启开机自启", "d   删除配置", "g   快速配置", "k   更换密钥"} {
 		position := strings.Index(stoppedMenu, item)
 		if position <= offset {
 			t.Fatalf("menu item missing or out of order: %q", item)
@@ -173,6 +173,66 @@ func TestWireGuardRuntimeAndBootControls(t *testing.T) {
 	want := []string{"start", "enable", "restart", "stop", "disable"}
 	if !errors.Is(err, shared.ErrReturnToMenu) || !reflect.DeepEqual(actions, want) || up || enabled {
 		t.Fatalf("actions: %v, running: %v, autostart: %v, error: %v", actions, up, enabled, err)
+	}
+}
+
+func TestWireGuardQuickConfigRoundTrip(t *testing.T) {
+	setupWireGuardManagement(t)
+	key := func(value byte) string {
+		return base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{value}, 32))
+	}
+	if err := os.MkdirAll(wireGuardConfigDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	remote := "[Interface]\nPrivateKey = " + key(2) + "\nAddress = 10.77.0.2/32\n"
+	remoteConfig, err := parseWireGuardConfig([]byte(remote))
+	if err != nil {
+		t.Fatal(err)
+	}
+	local := "[Interface]\nPrivateKey = " + key(1) + "\nAddress = 10.77.0.1/24,fd77::1/64\n" +
+		"ListenPort = 51820\n[Peer]\nPublicKey = " + wireGuardPublicKey(remoteConfig.device) +
+		"\nAllowedIPs = 10.77.0.2/32\nPresharedKey = " + key(3) + "\n"
+	for name, content := range map[string]string{"wg0": local, "wg1": remote, "wg2": remote} {
+		if err := os.WriteFile(wireGuardProfilePath(name), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	commandOutput = func(name string, args ...string) (string, error) {
+		t.Fatalf("exporting or importing a supplied PSK should not generate a key: %s %v", name, args)
+		return "", nil
+	}
+	output := wireGuardTestOutput(t, func() {
+		if err := quickWireGuardConfig(newUIWithInput(t, "e\nvpn.example.test:51820\n1\nq\n"), "wg0"); !errors.Is(err, shared.ErrReturnToMenu) {
+			t.Fatal(err)
+		}
+	})
+	exported := ""
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasSuffix(line, " --psk="+key(3)) {
+			exported = line
+		}
+	}
+	if exported == "" || strings.Contains(output, key(1)) || strings.Count(output, key(3)) != 1 {
+		t.Fatal("the copyable line should reveal only the explicitly selected PSK and no private key")
+	}
+	input := exported + "\ny\n"
+	if err := quickWireGuardConfig(newUIWithInput(t, input), "wg1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := addWireGuardPeer(newUIWithInput(t, input), "wg2"); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"wg1", "wg2"} {
+		config, err := parseWireGuardConfig([]byte(shared.ReadFileString(wireGuardProfilePath(name))))
+		if err != nil || len(config.peers) != 1 {
+			t.Fatalf("missing imported peer: %v", err)
+		}
+		peer := config.peers[0]
+		if wireGuardValue(peer, "presharedkey") != key(3) ||
+			wireGuardValue(peer, "allowedips") != "10.77.0.1/32,fd77::1/128" ||
+			wireGuardValue(peer, "endpoint") != "vpn.example.test:51820" {
+			t.Fatal("import did not preserve the exported settings")
+		}
 	}
 }
 
