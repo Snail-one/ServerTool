@@ -76,7 +76,7 @@ func RunWireGuard(view *ui.UI) error {
 			fmt.Println()
 		}
 		if tools.wg {
-			ui.MenuShortcutHint("n", "新建配置", "接口名处回车使用默认配置")
+			ui.MenuShortcutHint("n", "新建配置", "支持手动填写隧道地址")
 		}
 		if !tools.ready() {
 			ui.MenuShortcutHint("i", "安装 WireGuard 工具", "使用系统软件源安装 wg 和 wg-quick")

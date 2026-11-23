@@ -27,6 +27,11 @@ var (
 	wireGuardName      = regexp.MustCompile(`^[A-Za-z0-9_=+.-]{1,15}$`)
 )
 
+const (
+	defaultWireGuardIPv4Prefix = "10.77.0."
+	defaultWireGuardAddress    = defaultWireGuardIPv4Prefix + "1/24"
+)
+
 func validWireGuardName(name string) bool {
 	return wireGuardName.MatchString(name) && name != "." && name != ".."
 }
@@ -187,7 +192,7 @@ func createWireGuardProfile(view *ui.UI) error {
 	if !isRoot() {
 		return fmt.Errorf("写入 WireGuard 配置需要 root 权限")
 	}
-	name, err := view.Ask("请输入接口名（回车使用默认配置 wg0，0/q 返回）：")
+	name, err := view.Ask("请输入接口名（回车使用 wg0，0/q 返回）：")
 	if err != nil {
 		return err
 	}
@@ -208,12 +213,19 @@ func createWireGuardProfile(view *ui.UI) error {
 		return fmt.Errorf("配置 %s 已存在，请通过编辑入口修改", path)
 	}
 
+	address := defaultWireGuardAddress
+	if useDefaults {
+		address, err = askWireGuardAddress(view)
+		if err != nil {
+			return err
+		}
+	}
 	key, err := generateWireGuardKey("genkey", "私钥")
 	if err != nil {
 		return err
 	}
 	port := 20000 + rand.IntN(60000-20000+1)
-	data := []byte(fmt.Sprintf("[Interface]\nPrivateKey = %s\nAddress = 10.77.0.1/24\nListenPort = %d\n", key, port))
+	data := []byte(fmt.Sprintf("[Interface]\nPrivateKey = %s\nAddress = %s\nListenPort = %d\n", key, address, port))
 	if useDefaults {
 		peer, err := askWireGuardPeerConfig(view, true)
 		if err != nil {
@@ -232,6 +244,50 @@ func createWireGuardProfile(view *ui.UI) error {
 		}
 	}
 	return saveWireGuardProfile(view, name, nil, data)
+}
+
+func parseWireGuardAddress(value string) (netip.Prefix, error) {
+	value = strings.TrimSpace(value)
+	if strings.Contains(value, "/") {
+		return netip.ParsePrefix(value)
+	}
+	addr, err := netip.ParseAddr(value)
+	if err != nil || addr.Zone() != "" {
+		return netip.Prefix{}, fmt.Errorf("接口地址格式无效")
+	}
+	return netip.PrefixFrom(addr, addr.BitLen()), nil
+}
+
+func askWireGuardAddress(view *ui.UI) (string, error) {
+	for {
+		value, err := view.Ask("请输入隧道地址（支持尾号 1–255，回车默认 " + defaultWireGuardAddress + "，0/q 返回）：")
+		if err != nil {
+			return "", err
+		}
+		if shared.IsReturnChoice(value) {
+			return "", shared.ErrReturnToMenu
+		}
+		if value == "" {
+			return defaultWireGuardAddress, nil
+		}
+		if octet, err := strconv.ParseUint(value, 10, 8); err == nil && octet > 0 {
+			return fmt.Sprintf("%s%d/24", defaultWireGuardIPv4Prefix, octet), nil
+		}
+		addresses := strings.Split(value, ",")
+		valid := true
+		for i, value := range addresses {
+			prefix, err := parseWireGuardAddress(value)
+			if err != nil {
+				valid = false
+				break
+			}
+			addresses[i] = prefix.String()
+		}
+		if valid {
+			return strings.Join(addresses, ", "), nil
+		}
+		ui.PrintField("提示", "请输入尾号 1–255，或填写完整的 IPv4 / IPv6 地址。多个完整地址用逗号分隔")
+	}
 }
 
 func editWireGuardProfile(view *ui.UI, name string) error {

@@ -120,16 +120,11 @@ func wireGuardInterfacePrefixes(settings []wireGuardSetting) (string, error) {
 			continue
 		}
 		for _, value := range strings.Split(setting.value, ",") {
-			value = strings.TrimSpace(value)
-			ip, err := netip.ParseAddr(value)
-			if strings.Contains(value, "/") {
-				var prefix netip.Prefix
-				prefix, err = netip.ParsePrefix(value)
-				ip = prefix.Addr()
-			}
-			if err != nil || ip.Zone() != "" {
+			prefix, err := parseWireGuardAddress(value)
+			if err != nil {
 				return "", fmt.Errorf("接口的 Address 格式无效")
 			}
+			ip := prefix.Addr()
 			if !seen[ip] {
 				prefixes = append(prefixes, netip.PrefixFrom(ip, ip.BitLen()).String())
 				seen[ip] = true

@@ -478,7 +478,7 @@ func TestWireGuardEnterUsesDefaults(t *testing.T) {
 		return nil
 	}
 	output := wireGuardTestOutput(t, func() {
-		if err := createWireGuardProfile(newUIWithInput(t, "\n\ny\n")); err != nil {
+		if err := createWireGuardProfile(newUIWithInput(t, "\n\n\ny\n")); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -528,7 +528,8 @@ func TestWireGuardNewProfileWithFirstPeerPSK(t *testing.T) {
 				}
 			}
 			output := wireGuardTestOutput(t, func() {
-				view := newUIWithInput(t, "\n"+peerKey+" 10.77.0.2/32"+tc.suffix+"\ny\n")
+				input := "\n10.77.0.20/33\n10.77.0.20/32, fd77::20\n" + peerKey + " 10.77.0.2/32" + tc.suffix + "\ny\n"
+				view := newUIWithInput(t, input)
 				if err := createWireGuardProfile(view); err != nil {
 					t.Fatal(err)
 				}
@@ -541,6 +542,9 @@ func TestWireGuardNewProfileWithFirstPeerPSK(t *testing.T) {
 			if err != nil || len(config.peers) != 1 {
 				t.Fatalf("expected exactly one peer: %v", err)
 			}
+			if wireGuardValue(config.device, "address") != "10.77.0.20/32, fd77::20/128" {
+				t.Fatal("manual addresses should be saved with their expected prefixes")
+			}
 			want := ""
 			if tc.generatePSK {
 				want = psk
@@ -549,6 +553,21 @@ func TestWireGuardNewProfileWithFirstPeerPSK(t *testing.T) {
 				t.Fatal("PSK was saved incorrectly or a secret was displayed")
 			}
 		})
+	}
+}
+
+func TestWireGuardAddressAcceptsIPv4Suffix(t *testing.T) {
+	for _, tc := range []struct {
+		input, want string
+	}{
+		{"1\n", "10.77.0.1/24"},
+		{"20\n", "10.77.0.20/24"},
+		{"256\n255\n", "10.77.0.255/24"},
+	} {
+		address, err := askWireGuardAddress(newUIWithInput(t, tc.input))
+		if err != nil || address != tc.want {
+			t.Fatalf("want %q, got %q: %v", tc.want, address, err)
+		}
 	}
 }
 
