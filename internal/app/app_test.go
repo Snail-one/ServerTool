@@ -47,6 +47,10 @@ func TestShowMenuIncludesVersionAndStatus(t *testing.T) {
 	if strings.Contains(output, "\033[") {
 		t.Fatalf("NO_COLOR 模式不应包含 ANSI 转义序列：%q", output)
 	}
+	if !strings.Contains(output, "系统工具\n\n  5   WireGuard") ||
+		!strings.Contains(output, "[未安装]\n\n  7   清理配置") {
+		t.Fatalf("主菜单分组之间应空一行：\n%s", output)
+	}
 	if toolbox := strings.Index(output, "4   系统工具"); toolbox < 0 {
 		t.Fatalf("系统工具应在第 4 项：\n%s", output)
 	} else if cleanup := strings.Index(output, "7   清理配置"); cleanup < 0 || cleanup < toolbox {

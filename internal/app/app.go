@@ -115,8 +115,10 @@ func showMenu(status status.Status) {
 	ui.MenuOptionStatus("2", "SSH 管理", ui.ConfiguredBadge(status.SSH))
 	ui.MenuOption("3", "配置管理")
 	ui.MenuOption("4", "系统工具")
+	fmt.Println()
 	ui.MenuOptionStatus("5", "WireGuard", toolpackages.WireGuardBadge())
 	ui.MenuOptionStatus("6", "容器管理", ui.SoftwareBadge(defaultStatus(status.Runtime, "未安装"), runtimeConfigured))
+	fmt.Println()
 	ui.MenuOption("7", "清理配置")
 	ui.MenuExit("0/q", "退出")
 }
