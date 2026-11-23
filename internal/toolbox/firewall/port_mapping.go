@@ -21,6 +21,11 @@ const (
 
 const portMappingMetadata = "        # SNAIL PORT MAPPING "
 
+const (
+	portMappingSNATHeader       = "    chain port_mapping_snat {\n        type nat hook postrouting priority 99; policy accept;\n"
+	legacyPortMappingSNATHeader = "    chain port_mapping_snat {\n        type nat hook postrouting priority 101; policy accept;\n"
+)
+
 type mappingEndpoint struct {
 	addr  netip.Addr
 	ports portInterval
@@ -258,7 +263,7 @@ func portMappingBlock(mappings []portMapping, metadata bool) string {
 	}
 	block.WriteString("    }\n")
 	if snatRules.Len() > 0 {
-		block.WriteString("    chain port_mapping_snat {\n        type nat hook postrouting priority 101; policy accept;\n")
+		block.WriteString(portMappingSNATHeader)
 		block.WriteString(snatRules.String())
 		block.WriteString("    }\n")
 	}
@@ -344,7 +349,8 @@ func readPortMappings(content string) ([]portMapping, error) {
 			mappings = append(mappings, mapping)
 		}
 	}
-	if portMappingBlock(mappings, metadata) != block {
+	expected := portMappingBlock(mappings, metadata)
+	if block != expected && block != strings.Replace(expected, portMappingSNATHeader, legacyPortMappingSNATHeader, 1) {
 		return nil, fmt.Errorf("端口映射托管区块内容已修改")
 	}
 	return mappings, nil

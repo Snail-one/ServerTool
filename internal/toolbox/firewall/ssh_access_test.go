@@ -112,7 +112,7 @@ func TestConfigureSSHAccessFromMenu(t *testing.T) {
 		return output(name, args...)
 	}
 	text := capturePortOutput(t, func() {
-		if err := Run(inputUI(t, "9\n5\n2\ny\n\nq\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+		if err := Run(inputUI(t, "8\n5\n2\ny\n\nq\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 			t.Fatal(err)
 		}
 	})
@@ -145,7 +145,7 @@ func TestConfigureSSHAccessCancelDoesNotWrite(t *testing.T) {
 		t.Fatalf("cancel must not validate or load: %s %v", name, args)
 		return "", nil
 	}
-	if err := Run(inputUI(t, "9\n5\n2\nn\nq\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := Run(inputUI(t, "8\n5\n2\nn\nq\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if shared.ReadFileString(configPath) != content {

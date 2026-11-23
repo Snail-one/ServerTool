@@ -87,7 +87,7 @@ func TestMenuReflectsAutostartChangeAndQueriesStateOncePerDisplay(t *testing.T) 
 		return nil
 	}
 	output := capturePortOutput(t, func() {
-		if err := Run(inputUI(t, "9\n1\ny\n\nq\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+		if err := Run(inputUI(t, "8\n1\ny\n\nq\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 			t.Fatal(err)
 		}
 	})

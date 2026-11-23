@@ -88,11 +88,11 @@ func Run(view *ui.UI) error {
 			shared.RunAction(view, "生成防火墙配置失败，已返回防火墙管理", func() error {
 				return configure(view)
 			})
-		case "9":
+		case "8":
 			shared.RunAction(view, "常用功能设置失败，已返回防火墙管理", func() error {
 				return runFeatureSettings(view)
 			})
-		case "10":
+		case "9":
 			shared.RunAction(view, "实时查看规则失败，已返回防火墙管理", func() error {
 				return monitorTraffic(view, time.Second)
 			})

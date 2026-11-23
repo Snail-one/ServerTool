@@ -241,7 +241,7 @@ func TestPortMappingSNATSwitch(t *testing.T) {
 	}
 	mapping, content := read()
 	want := `oifname "wg0" ct direction original ct status dnat ip daddr 10.77.0.2 udp dport 8211 ct original ip saddr 192.0.2.0/24 ct original proto-dst 8211 snat ip to 10.77.0.1`
-	if !mapping.snatEnabled() || !strings.Contains(content, want) || !strings.Contains(content, "type nat hook postrouting priority 101") {
+	if !mapping.snatEnabled() || !strings.Contains(content, want) || !strings.Contains(content, "type nat hook postrouting priority 99") {
 		t.Fatalf("missing SNAT rule or settings")
 	}
 
@@ -272,6 +272,36 @@ func TestPortMappingSNATSwitch(t *testing.T) {
 	}
 	if len(*calls) != 16 {
 		t.Fatalf("expected eight changes, each validated and loaded, got %v", *calls)
+	}
+}
+
+func TestPortMappingSNATLegacyPriority(t *testing.T) {
+	original, err := buildConfig([]int{22}, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapping, err := (portMappingConfig{
+		Protocol: "udp", From: "*:80", To: "10.77.0.2:80",
+		SNAT: &portMappingSNATConfig{Iface: "wg0", Address: "10.77.0.1"},
+	}).parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := withPortMappings(original, []portMapping{mapping})
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := strings.Replace(current, "postrouting priority 99", "postrouting priority 101", 1)
+	mappings, err := readPortMappings(legacy)
+	if err != nil || !reflect.DeepEqual(mappings, []portMapping{mapping}) {
+		t.Fatalf("legacy mappings: %v, error: %v", mappings, err)
+	}
+	upgraded, err := withPortMappings(legacy, mappings)
+	if err != nil || upgraded != current {
+		t.Fatalf("saving a legacy mapping must upgrade its SNAT priority: %v", err)
+	}
+	if _, err := readPortMappings(strings.Replace(legacy, "postrouting priority 101", "postrouting priority 100", 1)); err == nil {
+		t.Fatal("unexpected SNAT priorities must still be rejected")
 	}
 }
 
