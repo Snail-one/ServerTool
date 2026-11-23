@@ -10,6 +10,8 @@ import (
 	"snail_tool/internal/ui"
 )
 
+const defaultWireGuardKeepalive = "0"
+
 var wireGuardPeerOptions = [][2]string{
 	{"PublicKey", "公钥"},
 	{"AllowedIPs", "允许地址"},
@@ -146,6 +148,10 @@ func editWireGuardPeer(view *ui.UI, name string, before []byte, config wireGuard
 				value = wireGuardPeerValue(peer, field[0])
 			}
 			switch {
+			case field[0] == "PersistentKeepalive" && value == "":
+				value = "默认 0（关闭）"
+			case field[0] == "PersistentKeepalive" && (value == "0" || strings.EqualFold(value, "off")):
+				value = "0（关闭）"
 			case value == "":
 				value = "未设置"
 			case field[0] == "PresharedKey":
@@ -191,7 +197,11 @@ func editWireGuardPeer(view *ui.UI, name string, before []byte, config wireGuard
 			continue
 		}
 		field := wireGuardPeerOptions[number-1]
-		value, err := askWireGuardPeerField(view, field[0], field[1])
+		current, changed := changes[field[0]]
+		if !changed {
+			current = wireGuardPeerValue(peer, field[0])
+		}
+		value, err := askWireGuardPeerField(view, field[0], field[1], current)
 		if errors.Is(err, shared.ErrReturnToMenu) {
 			continue
 		}
@@ -211,17 +221,30 @@ func editWireGuardPeer(view *ui.UI, name string, before []byte, config wireGuard
 	}
 }
 
-func askWireGuardPeerField(view *ui.UI, key, label string) (string, error) {
+func askWireGuardPeerField(view *ui.UI, key, label, current string) (string, error) {
 	hint := "回车保留，- 清除，0/q 返回"
 	switch key {
 	case "PublicKey":
 		hint = "回车保留，0/q 返回"
 	case "PresharedKey":
 		hint = "回车保留，g 生成，- 清除，0/q 返回"
+	case "PersistentKeepalive":
+		hint = "回车保留，0 关闭，- 清除，q 返回"
+		if current == "" {
+			hint = "回车默认 0（关闭），- 清除，q 返回"
+		}
 	}
 	value, err := view.Ask("请输入" + label + "（" + hint + "）：")
 	if err != nil {
 		return "", err
+	}
+	if key == "PersistentKeepalive" {
+		switch {
+		case value == "" && current == "":
+			return defaultWireGuardKeepalive, nil
+		case value == defaultWireGuardKeepalive || strings.EqualFold(value, "off"):
+			return defaultWireGuardKeepalive, nil
+		}
 	}
 	if value == "" || shared.IsReturnChoice(value) {
 		return "", shared.ErrReturnToMenu
@@ -249,7 +272,7 @@ func askWireGuardPeerField(view *ui.UI, key, label string) (string, error) {
 		}
 	case "PersistentKeepalive":
 		if _, err := strconv.ParseUint(value, 10, 16); err != nil {
-			return "", fmt.Errorf("保活秒数须在 1–65535 之间，清除请输入 -")
+			return "", fmt.Errorf("保活秒数须在 0–65535 之间，0 表示关闭")
 		}
 	}
 	return value, nil
