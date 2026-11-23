@@ -117,6 +117,12 @@ func TestWireGuardRuntimeAndBootControls(t *testing.T) {
 	commandOutput = func(name string, args ...string) (string, error) {
 		switch name {
 		case "wg":
+			if reflect.DeepEqual(args, []string{"show", "wg0", "peers"}) {
+				return "loaded-test-peer\n", nil
+			}
+			if reflect.DeepEqual(args, []string{"show", "wg0", "listen-port"}) {
+				return "51820\n", nil
+			}
 			if up {
 				return "wg0\n", nil
 			}
@@ -158,6 +164,9 @@ func TestWireGuardRuntimeAndBootControls(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+	if !strings.Contains(stoppedMenu, "对端数量：已保存 0 个\n") {
+		t.Fatal("a stopped interface should show the saved peer count")
+	}
 	offset := -1
 	for _, item := range []string{"1   查看配置", "2   编辑配置", "3   添加对端", "4   删除对端", "5   启动接口", "a   开启开机自启", "d   删除配置", "g   快速配置", "k   更换密钥"} {
 		position := strings.Index(stoppedMenu, item)
@@ -168,8 +177,17 @@ func TestWireGuardRuntimeAndBootControls(t *testing.T) {
 	}
 
 	// The profile submenu should still be usable after each successful action.
-	input := "5\ny\n\nA\ny\n\n6\ny\n\n5\ny\n\na\ny\n\nq\n"
-	err := runWireGuardInterface(newUIWithInput(t, input), "wg0")
+	input := "5\ny\n\nC\n\nA\ny\n\n6\ny\n\n5\ny\n\na\ny\n\nq\n"
+	var err error
+	output := wireGuardTestOutput(t, func() {
+		err = runWireGuardInterface(newUIWithInput(t, input), "wg0")
+	})
+	if !strings.Contains(output, "c   查看运行状态") || !strings.Contains(output, "监听端口：51820") {
+		t.Fatal("running status should open from shortcut c")
+	}
+	if !strings.Contains(output, "对端数量：已保存 0 个 · 已加载 1 个") {
+		t.Fatal("a running interface should show saved and loaded peer counts separately")
+	}
 	want := []string{"start", "enable", "restart", "stop", "disable"}
 	if !errors.Is(err, shared.ErrReturnToMenu) || !reflect.DeepEqual(actions, want) || up || enabled {
 		t.Fatalf("actions: %v, running: %v, autostart: %v, error: %v", actions, up, enabled, err)
@@ -198,6 +216,9 @@ func TestWireGuardQuickConfigRoundTrip(t *testing.T) {
 		}
 	}
 	commandOutput = func(name string, args ...string) (string, error) {
+		if name == "wg" && reflect.DeepEqual(args, []string{"show", "interfaces"}) {
+			return "", nil
+		}
 		t.Fatalf("exporting or importing a supplied PSK should not generate a key: %s %v", name, args)
 		return "", nil
 	}
@@ -258,7 +279,7 @@ func TestWireGuardRotateKeysFromInterfaceMenu(t *testing.T) {
 		if name == "wg" {
 			switch strings.Join(args, " ") {
 			case "show interfaces":
-				return "wg0\n", nil
+				return "", nil
 			case "genkey":
 				return key(7) + "\n", nil
 			case "genpsk":
@@ -270,7 +291,7 @@ func TestWireGuardRotateKeysFromInterfaceMenu(t *testing.T) {
 		return "", nil
 	}
 	commandRun = func(name string, args ...string) error {
-		t.Fatalf("key rotation must only save the configuration: %s %v", name, args)
+		t.Fatalf("key rotation must not start a stopped interface: %s %v", name, args)
 		return nil
 	}
 	if err := rotateWireGuardKeys(newUIWithInput(t, "\n"), "wg0"); !errors.Is(err, shared.ErrReturnToMenu) {
@@ -293,6 +314,76 @@ func TestWireGuardRotateKeysFromInterfaceMenu(t *testing.T) {
 		if strings.Contains(output, key(value)) {
 			t.Fatal("rotation displayed a secret key")
 		}
+	}
+}
+
+func TestWireGuardRemovingPeerRestartsRunningInterface(t *testing.T) {
+	for _, fails := range []bool{false, true} {
+		t.Run(strconv.FormatBool(fails), func(t *testing.T) {
+			setupWireGuardManagement(t)
+			if err := os.MkdirAll(wireGuardConfigDir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			path := wireGuardProfilePath("wg0")
+			base := "[Interface]\nAddress = 10.77.0.1/24\nSaveConfig = true\n"
+			before := base + "\n[Peer]\nPublicKey = " + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32)) +
+				"\nAllowedIPs = 10.77.0.2/32\n"
+			if err := os.WriteFile(path, []byte(before), 0600); err != nil {
+				t.Fatal(err)
+			}
+			running := true
+			commandExists = func(name string) bool { return name == "wg" || name == "wg-quick" }
+			commandOutput = func(name string, args ...string) (string, error) {
+				if name != "wg" || !reflect.DeepEqual(args, []string{"show", "interfaces"}) {
+					t.Fatalf("unexpected command: %s %v", name, args)
+				}
+				if running {
+					return "wg0\n", nil
+				}
+				return "", nil
+			}
+			var operations []string
+			wireGuardQuick = func(args ...string) error {
+				if len(args) != 2 || args[1] != path {
+					t.Fatalf("unexpected wg-quick arguments: %v", args)
+				}
+				operations = append(operations, args[0])
+				saved := shared.ReadFileString(path)
+				switch args[0] {
+				case "down":
+					if saved != before {
+						t.Fatal("old configuration must be in place when the interface stops")
+					}
+					running = false
+					return os.WriteFile(path, []byte(before+"# written by SaveConfig\n"), 0600)
+				case "up":
+					if len(operations) == 2 && strings.Contains(saved, "[Peer]") {
+						t.Fatal("removed peer must be absent when the interface starts")
+					}
+					if len(operations) == 2 && fails {
+						return errors.New("simulated start failure")
+					}
+					running = true
+					return nil
+				default:
+					t.Fatalf("unexpected action: %v", args)
+					return nil
+				}
+			}
+			err := removeWireGuardPeer(newUIWithInput(t, "1\ny\n"), "wg0")
+			if fails {
+				if err == nil || !strings.Contains(err.Error(), "已恢复并启动旧配置") ||
+					shared.ReadFileString(path) != before || !reflect.DeepEqual(operations, []string{"down", "up", "up"}) {
+					t.Fatalf("failed restart did not restore the original configuration: %v, operations %v", err, operations)
+				}
+			} else if err != nil || strings.Contains(shared.ReadFileString(path), "[Peer]") ||
+				!reflect.DeepEqual(operations, []string{"down", "up"}) {
+				t.Fatalf("peer deletion was not saved and applied: %v, operations %v", err, operations)
+			}
+			if !running {
+				t.Fatal("the interface must be running after a successful restart or rollback")
+			}
+		})
 	}
 }
 

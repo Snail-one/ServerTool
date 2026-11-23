@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ecdh"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -319,10 +320,35 @@ func saveWireGuardProfile(view *ui.UI, name string, before, after []byte, detail
 		return err
 	}
 	path := wireGuardProfilePath(name)
+	checkRuntime := before != nil && commandExists("wg")
+	var unit wireGuardUnit
+	var running, saveOnStop bool
+	if checkRuntime {
+		active, err := wireGuardActiveNames()
+		if err != nil {
+			return err
+		}
+		running = active[name]
+		if running {
+			unit = inspectWireGuardUnit(name)
+			if !unit.active && !commandExists("wg-quick") {
+				return fmt.Errorf("缺少 wg-quick，无法在修改后重启接口")
+			}
+			old, err := parseWireGuardConfig(before)
+			if err != nil {
+				return fmt.Errorf("无法读取当前运行接口的配置，请停止接口后修正: %w", err)
+			}
+			saveOnStop = strings.EqualFold(wireGuardValue(old.device, "saveconfig"), "true")
+		}
+	}
+	effect := "下次启动接口时读取"
+	if running {
+		effect = "确认后重启接口，连接会短暂中断"
+	}
 	fields := []ui.CardField{
 		{Label: "路径", Value: path},
 		{Label: "对端数量", Value: strconv.Itoa(len(config.peers))},
-		{Label: "生效方式", Value: "下次启动或重启接口时读取"},
+		{Label: "生效方式", Value: effect},
 	}
 	fields = append(fields, details...)
 	fields = append(fields, wireGuardFields(config.device, [][2]string{
@@ -335,14 +361,27 @@ func saveWireGuardProfile(view *ui.UI, name string, before, after []byte, detail
 		}
 	}
 	if strings.EqualFold(wireGuardValue(config.device, "saveconfig"), "true") {
-		fields = append(fields, ui.CardField{Label: "SaveConfig", Value: "接口停止时写回运行状态，可能覆盖尚未应用的修改"})
+		fields = append(fields, ui.CardField{Label: "SaveConfig", Value: "接口停止时将运行状态写回配置文件"})
 	}
 	ui.PrintInfoCard("保存 WireGuard 配置", fields...)
-	if err := confirmWireGuard(view, "确认保存"); err != nil {
+	prompt := "确认保存"
+	if running {
+		prompt = "确认保存并重启接口"
+	}
+	if err := confirmWireGuard(view, prompt); err != nil {
 		return err
 	}
 	if err := checkWireGuardProfile(path, before); err != nil {
 		return err
+	}
+	if checkRuntime {
+		active, err := wireGuardActiveNames()
+		if err != nil {
+			return err
+		}
+		if active[name] != running || running && inspectWireGuardUnit(name) != unit {
+			return fmt.Errorf("接口或服务状态已变化，请返回后重试")
+		}
 	}
 	if before != nil {
 		if err := backupWireGuardProfile(path); err != nil {
@@ -352,16 +391,69 @@ func saveWireGuardProfile(view *ui.UI, name string, before, after []byte, detail
 	if err := shared.EnsurePrivateDir(wireGuardConfigDir); err != nil {
 		return err
 	}
-	if err := shared.AtomicWrite(path, shared.AtomicWriteOptions{Mode: 0600, ForceMode: true}, func(w io.Writer) error {
+	if running {
+		if err := restartWireGuardWithProfile(name, before, after, unit.active, saveOnStop); err != nil {
+			return err
+		}
+		ui.PrintSuccessCard("WireGuard 配置已保存，接口已重启")
+		return nil
+	}
+	if err := writeWireGuardProfile(path, before, after); err != nil {
+		return err
+	}
+	ui.PrintSuccessCard("WireGuard 配置已保存")
+	return nil
+}
+
+func writeWireGuardProfile(path string, before, after []byte) error {
+	return shared.AtomicWrite(path, shared.AtomicWriteOptions{Mode: 0600, ForceMode: true}, func(w io.Writer) error {
 		if err := checkWireGuardProfile(path, before); err != nil {
 			return err
 		}
 		_, err := w.Write(after)
 		return err
-	}); err != nil {
+	})
+}
+
+func restartWireGuardWithProfile(name string, before, after []byte, useSystemd, saveOnStop bool) error {
+	path := wireGuardProfilePath(name)
+	if err := checkWireGuardProfile(path, before); err != nil {
 		return err
 	}
-	ui.PrintSuccessCard("WireGuard 配置已保存")
+	// Stop with the previous settings so wg-quick removes their routes and
+	// SaveConfig writes back before the new configuration is installed.
+	if err := applyWireGuardRuntime(name, "stop", useSystemd); err != nil {
+		return fmt.Errorf("停止接口失败，未保存新配置: %w", err)
+	}
+	stopped := before
+	if saveOnStop {
+		var err error
+		stopped, err = readWireGuardProfile(name)
+		if err != nil {
+			return fmt.Errorf("接口已停止，读取写回的旧配置失败，未保存新配置: %w", err)
+		}
+	}
+	if err := writeWireGuardProfile(path, stopped, after); err != nil {
+		if checkWireGuardProfile(path, stopped) == nil {
+			if startErr := applyWireGuardRuntime(name, "start", useSystemd); startErr == nil {
+				return fmt.Errorf("保存新配置失败，已重新启动旧接口配置: %w", err)
+			}
+		}
+		return fmt.Errorf("保存新配置失败，请检查接口状态: %w", err)
+	}
+	if err := applyWireGuardRuntime(name, "start", useSystemd); err != nil {
+		active, statusErr := wireGuardActiveNames()
+		if statusErr != nil || active[name] {
+			return fmt.Errorf("新配置已保存，接口启动结果异常，请查看运行状态: %w", err)
+		}
+		if restoreErr := writeWireGuardProfile(path, after, before); restoreErr != nil {
+			return fmt.Errorf("新配置启动失败且旧配置未恢复: %w", errors.Join(err, restoreErr))
+		}
+		if startErr := applyWireGuardRuntime(name, "start", useSystemd); startErr != nil {
+			return fmt.Errorf("新配置启动失败，已恢复旧配置文件，但旧接口也未能启动: %w", errors.Join(err, startErr))
+		}
+		return fmt.Errorf("新配置启动失败，已恢复并启动旧配置: %w", err)
+	}
 	return nil
 }
 
@@ -527,15 +619,6 @@ func rotateWireGuardKeys(view *ui.UI, name string) error {
 	}
 	if wireGuardValue(config.device, "privatekey") == "" {
 		return fmt.Errorf("当前配置缺少接口私钥")
-	}
-	if strings.EqualFold(wireGuardValue(config.device, "saveconfig"), "true") {
-		active, err := wireGuardActiveNames()
-		if err != nil {
-			return err
-		}
-		if active[name] {
-			return fmt.Errorf("接口启用了 SaveConfig，停止时会写回旧密钥。请先停止接口，再更换密钥")
-		}
 	}
 
 	lines := strings.Split(string(before), "\n")

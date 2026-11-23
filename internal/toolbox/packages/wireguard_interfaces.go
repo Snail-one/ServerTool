@@ -97,7 +97,7 @@ func inspectWireGuardUnit(name string) wireGuardUnit {
 
 func runWireGuardInterface(view *ui.UI, name string) error {
 	for {
-		_, saved, err := shared.ReadRegularFile(wireGuardProfilePath(name))
+		data, saved, err := shared.ReadRegularFile(wireGuardProfilePath(name))
 		if err != nil {
 			return err
 		}
@@ -125,6 +125,9 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 			}
 			fields = append(fields, ui.CardField{Label: "开机自启", Value: ui.SoftwareBadge(bootState, unit.enabled)})
 		}
+		if saved || running {
+			fields = append(fields, wireGuardPeerCountField(name, data, saved, running))
+		}
 		ui.PrintInfoCard("WireGuard 接口", fields...)
 
 		actions := make(map[string]func() error)
@@ -140,20 +143,13 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 		}
 
 		canChangeRuntime := saved && activeErr == nil && commandExists("wg-quick")
-		if canChangeRuntime || running {
-			if saved {
-				fmt.Println()
-			}
-			if canChangeRuntime {
-				if running {
-					add("5", "停止接口", func() error { return changeWireGuardRuntime(view, name, "stop") })
-					add("6", "重启接口", func() error { return changeWireGuardRuntime(view, name, "restart") })
-				} else {
-					add("5", "启动接口", func() error { return changeWireGuardRuntime(view, name, "start") })
-				}
-			}
+		if canChangeRuntime {
+			fmt.Println()
 			if running {
-				add("7", "查看运行状态", func() error { return showWireGuardRuntime(name) })
+				add("5", "停止接口", func() error { return changeWireGuardRuntime(view, name, "stop") })
+				add("6", "重启接口", func() error { return changeWireGuardRuntime(view, name, "restart") })
+			} else {
+				add("5", "启动接口", func() error { return changeWireGuardRuntime(view, name, "start") })
 			}
 		}
 
@@ -162,16 +158,20 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 		}
 		canDelete := activeErr == nil && !running && !unit.active && !unit.enabled
 		canRotate := saved && commandExists("wg")
-		if saved {
-			fmt.Println()
-			if unit.available {
-				label := "开启开机自启"
-				if unit.enabled {
-					label = "关闭开机自启"
-				}
-				ui.MenuShortcutHint("a", label, "")
-				actions["a"] = func() error { return changeWireGuardAutostart(view, name, unit) }
+		fmt.Println()
+		if saved && unit.available {
+			label := "开启开机自启"
+			if unit.enabled {
+				label = "关闭开机自启"
 			}
+			ui.MenuShortcutHint("a", label, "")
+			actions["a"] = func() error { return changeWireGuardAutostart(view, name, unit) }
+		}
+		if running {
+			ui.MenuShortcutHint("c", "查看运行状态", "")
+			actions["c"] = func() error { return showWireGuardRuntime(name) }
+		}
+		if saved {
 			if canDelete {
 				ui.MenuShortcutHint("d", "删除配置", "")
 				actions["d"] = func() error { return deleteWireGuardProfile(view, name) }
@@ -201,6 +201,27 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 			view.Pause()
 		}
 	}
+}
+
+func wireGuardPeerCountField(name string, data []byte, saved, running bool) ui.CardField {
+	var counts []string
+	if saved {
+		config, err := parseWireGuardConfig(data)
+		if err != nil {
+			counts = append(counts, "已保存数量读取失败")
+		} else {
+			counts = append(counts, fmt.Sprintf("已保存 %d 个", len(config.peers)))
+		}
+	}
+	if running {
+		output, err := commandOutput("wg", "show", name, "peers")
+		if err != nil {
+			counts = append(counts, "已加载数量读取失败")
+		} else {
+			counts = append(counts, fmt.Sprintf("已加载 %d 个", len(strings.Fields(output))))
+		}
+	}
+	return ui.CardField{Label: "对端数量", Value: strings.Join(counts, " · ")}
 }
 
 func showWireGuardRuntime(name string) error {
@@ -314,7 +335,15 @@ func changeWireGuardRuntime(view *ui.UI, name, action string) error {
 			return err
 		}
 	}
-	if unit.active || action == "start" && unit.available {
+	if err := applyWireGuardRuntime(name, action, unit.active || action == "start" && unit.available); err != nil {
+		return err
+	}
+	ui.PrintSuccessCard("WireGuard 接口已" + label)
+	return nil
+}
+
+func applyWireGuardRuntime(name, action string, useSystemd bool) error {
+	if useSystemd {
 		if err := commandRun("systemctl", action, wireGuardUnitName(name)); err != nil {
 			return fmt.Errorf("systemctl %s WireGuard 失败: %w", action, err)
 		}
@@ -330,14 +359,13 @@ func changeWireGuardRuntime(view *ui.UI, name, action string) error {
 			}
 		}
 	}
-	active, err = wireGuardActiveNames()
+	active, err := wireGuardActiveNames()
 	if err != nil {
 		return err
 	}
 	if active[name] != (action != "stop") {
 		return fmt.Errorf("操作后接口状态与预期不符")
 	}
-	ui.PrintSuccessCard("WireGuard 接口已" + label)
 	return nil
 }
 
