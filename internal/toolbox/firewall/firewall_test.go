@@ -593,7 +593,7 @@ func TestRunViewsFilesAndLoadedRulesWithoutSSHDetectionOrWrites(t *testing.T) {
 		queries++
 		return "table inet snail {}", nil
 	}
-	if err := Run(inputUI(t, "C\n\n2\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := Run(inputUI(t, "C\n\n5\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if queries != 1 || shared.ReadFileString(configPath) != "# existing rules\n" {

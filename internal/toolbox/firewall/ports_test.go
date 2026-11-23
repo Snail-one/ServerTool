@@ -252,7 +252,7 @@ func TestLoadedPortsMenuUsesReadOnlyKernelQueries(t *testing.T) {
 		return portFixture(t), nil
 	}
 	output := capturePortOutput(t, func() {
-		if err := Run(inputUI(t, "1\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+		if err := Run(inputUI(t, "4\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
 			t.Fatal(err)
 		}
 	})

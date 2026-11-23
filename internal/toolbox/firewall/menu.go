@@ -9,11 +9,12 @@ import (
 
 func showMenu() {
 	fmt.Println()
-	ui.MenuOptionHint("1", "查看端口策略", "公网 / 内网 · Docker 发布端口")
-	ui.MenuOptionHint("2", "查看全部规则", "当前已加载的完整规则")
-	ui.MenuOptionHint("3", "访问规则管理", "公网 / 内网端口 · 内网 IP 范围 · 规则配置")
-	ui.MenuOptionHint("4", "转发规则管理", "转发端口 · 转发内网范围 · 规则配置")
-	ui.MenuOptionHint("5", "端口映射管理", "将本机端口映射到指定 IP 和端口")
+	ui.MenuOptionHint("1", "访问规则管理", "公网 / 内网端口 · 内网 IP 范围 · 规则配置")
+	ui.MenuOptionHint("2", "转发规则管理", "转发端口 · 转发内网范围 · 规则配置")
+	ui.MenuOptionHint("3", "端口映射管理", "将本机端口映射到指定 IP 和端口")
+	fmt.Println()
+	ui.MenuOptionHint("4", "查看端口策略", "公网 / 内网 · Docker 发布端口")
+	ui.MenuOptionHint("5", "查看全部规则", "当前已加载的完整规则")
 	fmt.Println()
 	ui.MenuOptionHint("8", "常用功能设置", "自启、访问和转发等开关")
 	ui.MenuOptionHint("9", "实时查看规则", "每秒刷新，支持切换规则表")

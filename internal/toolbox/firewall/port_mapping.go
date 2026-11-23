@@ -630,7 +630,7 @@ func askPortMapping(view *ui.UI, current portMapping) (portMapping, error) {
 		ui.CardField{Label: "地址", Value: "入口用 * 匹配同一地址族的所有本机地址。目标填实际接收地址", Detail: "两端地址族须一致，IPv6 用 [地址]:端口，例如 [fd00::20]:80"},
 		ui.CardField{Label: "端口", Value: "支持单端口或连续范围。目标可填单端口或等长范围"},
 		ui.CardField{Label: "匹配条件", Value: "网卡和来源同时填写时，两者都必须匹配", Detail: "只限制来源时，用 - 占住入站网卡的位置"},
-		ui.CardField{Label: "出站网卡", Value: "由系统路由选择，可在「4 转发规则管理 → 5 规则配置」限制放行"},
+		ui.CardField{Label: "出站网卡", Value: "由系统路由选择，可在「2 转发规则管理 → 5 规则配置」限制放行"},
 	)
 	ui.PrintSectionCard("配置示例",
 		ui.CardField{Label: "不限网卡和来源", Value: "tcp *:80 192.168.1.20:80"},

@@ -53,7 +53,7 @@ func TestAccessManagerSharesOneDraftAndOneSaveAcrossPortsAndSources(t *testing.T
 		}
 		return query(name, args...)
 	}
-	input := "3\n3\n1\n1\n1\n8443\n5\nn\n\n1\n192.168.1.10\n\n\n\n\n3306\n1\n\nq\ns\n\nq\n"
+	input := "1\n3\n1\n1\n1\n8443\n5\nn\n\n1\n192.168.1.10\n\n\n\n\n3306\n1\n\nq\ns\n\nq\n"
 	output := capturePortOutput(t, func() {
 		if err := Run(inputUI(t, input)); !errors.Is(err, shared.ErrReturnToMenu) {
 			t.Fatal(err)

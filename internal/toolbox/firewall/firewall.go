@@ -61,21 +61,21 @@ func Run(view *ui.UI) error {
 		case "":
 			continue
 		case "1":
-			shared.RunAction(view, "读取端口策略失败，已返回防火墙管理", showLoadedPorts)
-		case "2":
-			shared.RunAction(view, "读取已加载规则失败，已返回防火墙管理", showLoadedRules)
-		case "3":
 			shared.RunAction(view, "规则管理失败，已返回防火墙管理", func() error {
 				return runAccessRuleManager(view)
 			})
-		case "4":
+		case "2":
 			shared.RunAction(view, "转发规则管理失败，已返回防火墙管理", func() error {
 				return runForwardRuleManager(view)
 			})
-		case "5":
+		case "3":
 			shared.RunAction(view, "端口映射设置失败，已返回防火墙管理", func() error {
 				return runPortMappingManager(view)
 			})
+		case "4":
+			shared.RunAction(view, "读取端口策略失败，已返回防火墙管理", showLoadedPorts)
+		case "5":
+			shared.RunAction(view, "读取已加载规则失败，已返回防火墙管理", showLoadedRules)
 		case "c":
 			shared.RunAction(view, "读取配置文件失败，已返回防火墙管理", showConfigFile)
 		case "v":
@@ -223,7 +223,7 @@ func loadValidatedConfig(content []byte) error {
 	ui.PrintSuccessCard("防火墙配置已加载",
 		ui.CardField{Label: "配置文件", Value: configPath},
 		ui.CardField{Label: "当前状态", Value: "已立即生效"},
-		ui.CardField{Label: "查看规则", Value: "选择 1 查看端口策略，选择 2 查看全部规则"},
+		ui.CardField{Label: "查看规则", Value: "选择 4 查看端口策略，选择 5 查看全部规则"},
 	)
 	return nil
 }
@@ -570,7 +570,7 @@ func configure(view *ui.UI) error {
 		ui.CardField{Label: "局域网 SSH", Value: sshChoiceLabel(privateSSH)},
 		ui.CardField{Label: "当前状态", Value: "配置已校验并立即生效"},
 		ui.CardField{Label: "开机自启", Value: autostartAction},
-		ui.CardField{Label: "查看规则", Value: "选择 1 查看端口策略，选择 2 查看全部规则"},
+		ui.CardField{Label: "查看规则", Value: "选择 4 查看端口策略，选择 5 查看全部规则"},
 	)
 	return nil
 }

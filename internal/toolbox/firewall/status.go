@@ -160,7 +160,7 @@ func currentConfigFields(autostart autostartStatus) []ui.CardField {
 			fields = append(fields, ui.CardField{Label: "本工具规则", Value: fmt.Sprintf("%d 条链 · %d 条规则", live.snailChains, live.snailRules)})
 		}
 		if !live.inputActive && live.otherInputChains > 0 {
-			fields = append(fields, ui.CardField{Label: "其他入站链", Value: fmt.Sprintf("%d 条，选择 2 查看全部规则", live.otherInputChains)})
+			fields = append(fields, ui.CardField{Label: "其他入站链", Value: fmt.Sprintf("%d 条，选择 5 查看全部规则", live.otherInputChains)})
 		}
 	}
 	sync := configSyncField(data, fileErr, installed, live)
