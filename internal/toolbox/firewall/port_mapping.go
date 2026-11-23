@@ -2,6 +2,7 @@ package firewall
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -345,47 +346,56 @@ func withPortMappings(content string, mappings []portMapping) (string, error) {
 }
 
 func runPortMappingManager(view *ui.UI) error {
-	version, err := readConfigVersion()
-	if err != nil {
-		return err
-	}
-	content := string(version.content)
-	if !hasManagedConfig(content) {
-		return fmt.Errorf("请先选择 8 生成本工具防火墙配置")
-	}
-	mappings, err := readPortMappings(content)
-	if err != nil {
-		return err
-	}
-	ui.ClearScreen()
-	ui.MenuTitle("防火墙管理", "端口映射管理")
-	if len(mappings) == 0 {
-		ui.PrintInfoCard("尚未配置端口映射")
-	} else {
-		fields := make([]ui.CardField, 0, len(mappings))
-		for i, mapping := range mappings {
-			fields = append(fields, ui.CardField{Label: strconv.Itoa(i + 1), Value: mapping.description()})
+	for {
+		version, err := readConfigVersion()
+		if err != nil {
+			return err
 		}
-		ui.PrintInfoCard("已保存的端口映射", fields...)
-	}
-	ui.MenuOption("1", "添加端口映射")
-	options := map[string]string{"1": "添加"}
-	if len(mappings) > 0 {
-		ui.MenuOption("2", "删除端口映射")
-		ui.MenuOption("3", "编辑端口映射")
-		ui.MenuOption("4", "启用或停用端口映射")
-		options["2"], options["3"], options["4"] = "删除", "编辑", "切换"
-	}
-	ui.MenuExit("0/q", "返回防火墙管理")
-	action, err := askRuleChoice(view, "请选择", "", options)
-	if err != nil {
+		content := string(version.content)
+		if !hasManagedConfig(content) {
+			return fmt.Errorf("请先选择 8 生成本工具防火墙配置")
+		}
+		mappings, err := readPortMappings(content)
+		if err != nil {
+			return err
+		}
+		ui.ClearScreen()
+		ui.MenuTitle("防火墙管理", "端口映射管理")
+		if len(mappings) == 0 {
+			ui.PrintInfoCard("尚未配置端口映射")
+		} else {
+			fields := make([]ui.CardField, 0, len(mappings))
+			for i, mapping := range mappings {
+				fields = append(fields, ui.CardField{Label: strconv.Itoa(i + 1), Value: mapping.description()})
+			}
+			ui.PrintInfoCard("已保存的端口映射", fields...)
+		}
+		ui.MenuOption("1", "添加端口映射")
+		options := map[string]string{"1": "添加"}
+		if len(mappings) > 0 {
+			ui.MenuOption("2", "删除端口映射")
+			ui.MenuOption("3", "编辑端口映射")
+			ui.MenuOption("4", "启用或停用端口映射")
+			options["2"], options["3"], options["4"] = "删除", "编辑", "切换"
+		}
+		ui.MenuExit("0/q", "返回防火墙管理")
+		action, err := askRuleChoice(view, "请选择", "", options)
+		if err != nil {
+			return err
+		}
+		err = changePortMapping(view, version, mappings, action)
+		if errors.Is(err, shared.ErrReturnToMenu) {
+			continue
+		}
 		return err
 	}
+}
 
+func changePortMapping(view *ui.UI, version configVersion, mappings []portMapping, action string) error {
 	index := len(mappings)
 	var current portMapping
 	if action != "添加" {
-		line, err := view.Ask("输入映射编号（0/q 返回）：")
+		line, err := view.Ask("输入映射编号（0/q 返回端口映射列表）：")
 		if err != nil {
 			return err
 		}
@@ -406,10 +416,11 @@ func runPortMappingManager(view *ui.UI) error {
 		if action == "编辑" {
 			ui.PrintInfoCard("正在编辑", ui.CardField{Label: "当前配置", Value: current.description()})
 		}
-		mapping, err = askPortMapping(view, current.disabled)
+		updated, err := askPortMapping(view, current.disabled)
 		if err != nil {
 			return err
 		}
+		mapping = updated
 		if action == "编辑" && mapping == current {
 			return shared.ErrReturnToMenu
 		}
@@ -450,7 +461,7 @@ func runPortMappingManager(view *ui.UI) error {
 	if !confirmed {
 		return shared.ErrReturnToMenu
 	}
-	updated, err := withPortMappings(content, mappings)
+	updated, err := withPortMappings(string(version.content), mappings)
 	if err != nil {
 		return err
 	}

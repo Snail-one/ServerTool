@@ -1,10 +1,13 @@
 package firewall
 
 import (
+	"errors"
 	"os"
 	"reflect"
 	"strings"
 	"testing"
+
+	"snail_tool/internal/shared"
 )
 
 func TestPortMappingsRoundTrip(t *testing.T) {
@@ -160,5 +163,37 @@ func TestEditAndDisablePortMapping(t *testing.T) {
 	}
 	if !reflect.DeepEqual(*calls, []string{"check", "load", "check", "load", "check", "load"}) {
 		t.Fatalf("expected validation and load for each change, got %v", *calls)
+	}
+}
+
+func TestPortMappingCancelReturnsToList(t *testing.T) {
+	setupTest(t)
+	version := ruleTestConfig(t, nil)
+	mapping, err := parsePortMapping("tcp", "*:80", "192.168.1.20:80")
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial, err := withPortMappings(string(version.content), []portMapping{mapping})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(initial), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	view := inputUI(t, "2\n0\n2\n1\nq\n0\nnext\n")
+	output := capturePortOutput(t, func() {
+		if err := runPortMappingManager(view); !errors.Is(err, shared.ErrReturnToMenu) {
+			t.Fatalf("expected to exit only from the mapping list: %v", err)
+		}
+	})
+	if strings.Count(output, "已保存的端口映射") != 3 {
+		t.Fatal("canceling the selection and confirmation should redraw the mapping list")
+	}
+	if next, err := view.ReadLine(); err != nil || next != "next" {
+		t.Fatalf("unexpected remaining input %q: %v", next, err)
+	}
+	if got := shared.ReadFileString(configPath); got != initial {
+		t.Fatal("canceling the operation must preserve the saved mappings")
 	}
 }
