@@ -36,6 +36,11 @@ func showMenu() {
 	ui.MenuExit("0/q", "返回主菜单")
 }
 
+func confirmFeatureChange(view *ui.UI, question string) (bool, error) {
+	ui.PrintField("取消", "回车或 n 返回常用功能设置，0/q 返回上一步")
+	return view.Confirm(question + "(y/N)：")
+}
+
 func runFeatureSettings(view *ui.UI) error {
 	for {
 		ui.ClearScreen()

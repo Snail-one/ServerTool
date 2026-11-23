@@ -61,7 +61,7 @@ func TestPortMappingManagerSavesAndLoads(t *testing.T) {
 	})
 	for _, want := range []string{
 		"端口映射状态", "内核转发：IPv4 已开启 · IPv6 已关闭", "共 1 条 · 已启用 1 条 · 已停用 0 条",
-		"端口映射已保存并加载", "本机端点 → 目标端点", "已启用", "192.0.2.10:8080 → 192.168.1.20:80",
+		"端口映射已保存并加载", "按回车返回映射列表", "本机端点 → 目标端点", "已启用", "192.0.2.10:8080 → 192.168.1.20:80",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("missing %q in output:\n%s", want, output)
@@ -156,7 +156,7 @@ func TestEditAndDisablePortMapping(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	for _, want := range []string{"映射 1", "目标端点：192.168.1.21:80", "入站网卡：eth0", "启用映射"} {
+	for _, want := range []string{"映射 1", "目标端点：192.168.1.21:80", "入站网卡：eth0", "启用映射", "按回车返回映射详情"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("missing mapping details %q:\n%s", want, output)
 		}
@@ -267,7 +267,9 @@ func TestPortMappingSNATSwitch(t *testing.T) {
 		t.Fatal("editing the target must update the associated SNAT")
 	}
 
-	run("1\n4\ny\n")
+	if output := run("1\n4\ny\n"); !strings.Contains(output, "按回车返回映射列表") {
+		t.Fatal("deleting a mapping should report that it returns to the list")
+	}
 	if content := shared.ReadFileString(configPath); strings.Contains(content, portMappingsBegin) || strings.Contains(content, "hook postrouting") {
 		t.Fatal("deleting the last mapping must also remove its SNAT")
 	}

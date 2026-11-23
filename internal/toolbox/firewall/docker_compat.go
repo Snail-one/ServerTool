@@ -428,7 +428,7 @@ func ConfigureDockerCompat(view *ui.UI) error {
 			if err := requireDockerPresent(); err != nil {
 				return err
 			}
-			confirmed, err := view.Confirm("确认开启 Docker 放行标记？会更新防火墙转发规则并加载。(y/N，0/q 返回)：")
+			confirmed, err := confirmFeatureChange(view, "确认开启 Docker 放行标记？会更新防火墙转发规则并加载。")
 			if errors.Is(err, shared.ErrReturnToMenu) {
 				continue
 			}
@@ -456,7 +456,7 @@ func ConfigureDockerCompat(view *ui.UI) error {
 			)
 			return nil
 		}
-		confirmed, err := view.Confirm("确认关闭 Docker 放行标记？Docker 会重新拦截未被它自己放行的转发。(y/N，0/q 返回)：")
+		confirmed, err := confirmFeatureChange(view, "确认关闭 Docker 放行标记？Docker 会重新拦截未被它自己放行的转发。")
 		if errors.Is(err, shared.ErrReturnToMenu) {
 			continue
 		}

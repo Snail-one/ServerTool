@@ -2,6 +2,7 @@ package firewall
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
 	"snail_tool/internal/ui"
 )
@@ -418,10 +420,7 @@ func runPortMappingManager(view *ui.UI) error {
 		number, numberErr := strconv.Atoi(choice)
 		switch {
 		case strings.EqualFold(choice, "n"):
-			shared.RunAction(view, "新建端口映射失败，已返回映射列表", func() error {
-				_, err := changePortMapping(view, version, mappings, len(mappings), "新建")
-				return err
-			})
+			runPortMappingChange(view, version, mappings, len(mappings), "新建")
 		case numberErr == nil && number >= 1 && number <= len(mappings):
 			shared.RunAction(view, "打开端口映射失败，已返回映射列表", func() error {
 				return runPortMappingDetails(view, version, mappings, number-1)
@@ -523,12 +522,7 @@ func runPortMappingDetails(view *ui.UI, version configVersion, mappings []portMa
 		if err != nil {
 			return err
 		}
-		var updated string
-		shared.RunAction(view, "修改端口映射失败", func() error {
-			var err error
-			updated, err = changePortMapping(view, version, mappings, index, action)
-			return err
-		})
+		updated := runPortMappingChange(view, version, mappings, index, action)
 		if updated == "" {
 			continue
 		}
@@ -541,6 +535,22 @@ func runPortMappingDetails(view *ui.UI, version configVersion, mappings []portMa
 			return err
 		}
 	}
+}
+
+func runPortMappingChange(view *ui.UI, version configVersion, mappings []portMapping, index int, action string) string {
+	updated, err := changePortMapping(view, version, mappings, index, action)
+	if errors.Is(err, shared.ErrReturnToMenu) {
+		return updated
+	}
+	if err != nil {
+		log.Error(err)
+	}
+	destination := "映射详情"
+	if action == "新建" || action == "删除" && updated != "" {
+		destination = "映射列表"
+	}
+	view.PauseWithPrompt("按回车返回" + destination + "…")
+	return updated
 }
 
 // Return the written configuration even if loading fails so navigation and

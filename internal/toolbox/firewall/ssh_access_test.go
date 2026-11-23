@@ -145,8 +145,13 @@ func TestConfigureSSHAccessCancelDoesNotWrite(t *testing.T) {
 		t.Fatalf("cancel must not validate or load: %s %v", name, args)
 		return "", nil
 	}
-	if err := Run(inputUI(t, "8\n5\n2\nn\nq\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
-		t.Fatal(err)
+	output := capturePortOutput(t, func() {
+		if err := Run(inputUI(t, "8\n5\n2\nn\nq\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+			t.Fatal(err)
+		}
+	})
+	if !strings.Contains(output, "回车或 n 返回常用功能设置，0/q 返回上一步") {
+		t.Fatal("confirmation should explain both cancellation options")
 	}
 	if shared.ReadFileString(configPath) != content {
 		t.Fatal("declining the confirmation rewrote the config")

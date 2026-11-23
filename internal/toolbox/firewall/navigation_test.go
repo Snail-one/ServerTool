@@ -80,7 +80,7 @@ func TestRuleDraftDefaultsToKeepingUnsavedChanges(t *testing.T) {
 	}
 }
 
-func TestRuleDraftShowsSaveOnlyWithChanges(t *testing.T) {
+func TestRuleDraftShowsDraftActionsOnlyWithChanges(t *testing.T) {
 	setupTest(t)
 	version := ruleTestConfig(t, nil)
 	output := capturePortOutput(t, func() {
@@ -94,8 +94,15 @@ func TestRuleDraftShowsSaveOnlyWithChanges(t *testing.T) {
 		t.Fatal("expected an updated draft")
 	}
 	edited, restored, found := strings.Cut(rest, "已还原本次全部修改")
-	if !found || strings.Contains(before, "保存并立即生效") ||
-		strings.Count(edited, "保存并立即生效") != 1 || strings.Contains(restored, "保存并立即生效") {
-		t.Fatalf("save should appear only between editing and restoring:\n%s", output)
+	if !found {
+		t.Fatal("expected the draft to be restored")
+	}
+	for _, label := range []string{"保存并立即生效", "还原本次草稿", "放弃草稿并返回"} {
+		if strings.Contains(before, label) || strings.Count(edited, label) != 1 || strings.Contains(restored, label) {
+			t.Fatalf("%q should appear only with unsaved changes:\n%s", label, output)
+		}
+	}
+	if !strings.Contains(before, "0/q 返回防火墙管理") || !strings.Contains(restored, "0/q 返回防火墙管理") {
+		t.Fatal("a clean draft should offer to return to the firewall menu")
 	}
 }

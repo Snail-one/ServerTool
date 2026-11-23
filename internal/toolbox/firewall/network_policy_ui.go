@@ -127,14 +127,22 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 		fmt.Println()
 		ui.MenuShortcutHint("l", "内网 IP 范围", "设置哪些 IP / 网段按内网处理")
 		ui.MenuShortcutHint("p", "预览配置", "查看本次变更及完整配置")
-		ui.MenuShortcutHint("r", "还原本次草稿", "撤销本次全部修改")
+		if len(changes) > 0 {
+			ui.MenuShortcutHint("r", "还原本次草稿", "撤销本次全部修改")
+		}
 		if generating {
 			ui.MenuShortcutHint("s", "采用草稿并返回", "进入最终确认，暂不写入配置")
 		} else if len(changes) > 0 {
 			ui.MenuShortcutHint("s", "保存并立即生效", "校验、备份并应用全部修改")
 		}
 		fmt.Println()
-		ui.MenuExit("0/q", "放弃草稿并返回")
+		exitLabel := "返回防火墙管理"
+		if len(changes) > 0 {
+			exitLabel = "放弃草稿并返回"
+		} else if generating {
+			exitLabel = "返回配置确认"
+		}
+		ui.MenuExit("0/q", exitLabel)
 		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return "", err

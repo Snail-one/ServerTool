@@ -246,7 +246,7 @@ func configureSSHAccess(view *ui.UI) error {
 			ui.CardField{Label: "操作", Value: action + scopeName + " SSH 访问"},
 			ui.CardField{Label: "生效方式", Value: "保存并加载整份当前配置，包括其他待加载修改"},
 		)
-		confirmed, err := view.Confirm("确认" + action + scopeName + " SSH 端口 " + portList(ports) + " 并加载当前配置？(y/N，0/q 返回)：")
+		confirmed, err := confirmFeatureChange(view, "确认"+action+scopeName+" SSH 端口 "+portList(ports)+" 并加载当前配置？")
 		if errors.Is(err, shared.ErrReturnToMenu) {
 			continue
 		}

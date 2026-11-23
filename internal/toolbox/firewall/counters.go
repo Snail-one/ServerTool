@@ -350,7 +350,7 @@ func configurePacketCounters(view *ui.UI) error {
 			ui.CardField{Label: "操作", Value: action + "数据包统计"},
 			ui.CardField{Label: "影响", Value: "保存并加载整份当前配置，现有累计计数可能重置"},
 		)
-		confirmed, err := view.Confirm("确认" + action + "本工具数据包统计并加载当前配置？(y/N，0/q 返回)：")
+		confirmed, err := confirmFeatureChange(view, "确认"+action+"本工具数据包统计并加载当前配置？")
 		if errors.Is(err, shared.ErrReturnToMenu) {
 			continue
 		}
