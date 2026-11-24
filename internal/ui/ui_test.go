@@ -110,7 +110,7 @@ func captureStdout(t *testing.T, run func()) string {
 }
 
 func stripANSI(input string) string {
-	for _, code := range []string{reset, bold, dim, orange, blue, green, yellow, gray} {
+	for _, code := range []string{reset, bold, dim, orange, blue, green, yellow, gray, white} {
 		input = strings.ReplaceAll(input, code, "")
 	}
 	return input
@@ -253,7 +253,7 @@ func TestSemanticCardsUseSharedLayoutAndColors(t *testing.T) {
 	os.Unsetenv("NO_COLOR")
 
 	output := captureStdout(t, func() {
-		PrintInfoCard("运行状态")
+		PrintInfoCard("运行状态", CardField{Label: "nftables", Value: InstallationBadge(true) + " v1.1.3"})
 		PrintSectionCard("当前配置")
 		PrintSuccessCard("配置完成",
 			CardField{Label: "端口", Value: "30948"},
@@ -273,8 +273,11 @@ func TestSemanticCardsUseSharedLayoutAndColors(t *testing.T) {
 			t.Fatalf("卡片顶栏缺少 %q：%q", header, output)
 		}
 	}
-	if !strings.Contains(output, orange+"端口："+reset+"30948") {
-		t.Fatalf("卡片字段名未使用橙色主视觉：%q", output)
+	if !strings.Contains(output, orange+"端口："+reset+white+"30948"+reset) {
+		t.Fatalf("卡片字段未使用橙色标签和白色值：%q", output)
+	}
+	if !strings.Contains(output, orange+"nftables："+reset+white+"[已安装] v1.1.3"+reset) {
+		t.Fatalf("卡片徽标和后续文字未统一为白色：%q", output)
 	}
 	if !strings.Contains(output, gray+"实际生效配置"+reset) {
 		t.Fatalf("卡片详情未使用灰色：%q", output)

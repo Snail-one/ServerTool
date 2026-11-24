@@ -21,6 +21,7 @@ BLUE=""
 GREEN=""
 YELLOW=""
 RED=""
+WHITE=""
 
 init_colors() {
 	# NO_COLOR 始终优先；FORCE_COLOR=1 可为保留 ANSI 的日志采集器强制启用颜色。
@@ -42,6 +43,7 @@ init_colors() {
 	GREEN="${ESC}[32m"
 	YELLOW="${ESC}[33m"
 	RED="${ESC}[31m"
+	WHITE="${ESC}[97m"
 }
 
 print_banner() {
@@ -55,7 +57,7 @@ print_card() {
 	printf '%s╭─ %s%s\n' "$BOLD$1" "$2" "$RESET"
 	shift 2
 	while [ "$#" -ge 2 ]; do
-		printf '%s│ %s%s：%s%s\n' "$ORANGE" "$BLUE" "$1" "$RESET" "$2"
+		printf '%s│ %s%s：%s%s%s%s\n' "$ORANGE" "$BLUE" "$1" "$RESET" "$WHITE" "$2" "$RESET"
 		shift 2
 	done
 	printf '%s%s%s\n' "$ORANGE" "╰──────────────────────────────────────────────" "$RESET"

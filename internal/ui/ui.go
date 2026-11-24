@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 
 	"snail_tool/internal/input"
@@ -21,7 +22,10 @@ const (
 	yellow = "\033[33m"
 	red    = "\033[31m"
 	gray   = "\033[90m"
+	white  = "\033[97m"
 )
+
+var terminalStyle = regexp.MustCompile(`\x1b\[[0-9;:]*m`)
 
 type UI struct {
 	reader     *bufio.Reader
@@ -374,7 +378,7 @@ func MutedText(text string) string {
 }
 
 // PrintInfoCard and its variants put the card title in the top border.
-// Values may already contain colored badges.
+// Labeled values use white even when the caller supplies colored badges.
 func PrintInfoCard(title string, fields ...CardField) {
 	printCard(title, orange, fields)
 }
@@ -404,6 +408,7 @@ func printCard(title, titleColor string, fields []CardField) {
 		if label == "" {
 			fmt.Println(PrimaryText("│") + " " + value)
 		} else {
+			value = paint(white, strings.TrimSpace(terminalStyle.ReplaceAllString(value, "")))
 			fmt.Println(PrimaryText("│") + " " + InfoText(label+"：") + value)
 		}
 		if detail := strings.TrimSpace(field.Detail); detail != "" {
