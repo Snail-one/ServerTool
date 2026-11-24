@@ -22,6 +22,8 @@ const (
 	green     = "\033[32m"
 	yellow    = "\033[33m"
 	red       = "\033[31m"
+	cyan      = "\033[36m"
+	purple    = "\033[35m"
 	gray      = "\033[90m"
 	lightBlue = "\033[94m"
 	white     = "\033[97m"
@@ -443,6 +445,18 @@ func SuccessText(text string) string {
 
 func WarningText(text string) string {
 	return paint(yellow, text)
+}
+
+func CyanText(text string) string {
+	return paint(cyan, text)
+}
+
+func LightBlueText(text string) string {
+	return paint(lightBlue, text)
+}
+
+func PurpleText(text string) string {
+	return paint(purple, text)
 }
 
 func DangerText(text string) string {

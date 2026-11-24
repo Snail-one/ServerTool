@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"snail_tool/internal/firewall/listeners"
 	"snail_tool/internal/firewall/loadedrules"
 	"snail_tool/internal/firewall/portmapping"
 	"snail_tool/internal/firewall/portpolicy"
@@ -60,6 +61,8 @@ func Run(view *ui.UI) error {
 			ui.RunAction(view, "读取端口策略失败，已返回防火墙管理", (portpolicy.Service{CommandExists: commandExists, CommandOutput: commandOutput}).Show)
 		case "5":
 			ui.RunAction(view, "读取已加载规则失败，已返回防火墙管理", func() error { return loadedrules.Show(commandOutput) })
+		case "6":
+			ui.RunAction(view, "读取开放端口失败，已返回防火墙管理", func() error { return listeners.Show(commandOutput) })
 		case "c":
 			ui.RunAction(view, "读取配置文件失败，已返回防火墙管理", configStore().Show)
 		case "v":
@@ -95,6 +98,7 @@ func showMenu() {
 	fmt.Println()
 	ui.MenuOptionHint("4", "查看端口策略", "公网 / 内网 · Docker 发布端口")
 	ui.MenuOptionHint("5", "查看全部规则", "当前已加载的完整规则")
+	ui.MenuOptionHint("6", "查看开放端口", "IP、端口、进程和用户")
 	fmt.Println()
 	ui.MenuOptionHint("8", "常用功能设置", "自启、访问和转发等开关")
 	ui.MenuOptionHint("9", "实时查看规则", "每秒刷新，支持切换规则表")

@@ -128,6 +128,37 @@ func TestMenuEmptyInputRefreshesAndUppercaseReloadWorks(t *testing.T) {
 	}
 }
 
+func TestOpenPortMenuShowsListenersWithoutChangingConfiguration(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	setupTest(t)
+	version := ruleTestConfig(t, nil)
+	commandExists = func(name string) bool { return name == "nft" }
+	commandOutput = func(name string, args ...string) (string, error) {
+		switch {
+		case name == "ss" && reflect.DeepEqual(args, []string{"-H", "-lntup"}):
+			return "tcp LISTEN 0 511 127.0.0.1:80 0.0.0.0:* users:((\"nginx\",pid=1,fd=6))\n", nil
+		case name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}):
+			return `{"nftables":[]}`, nil
+		default:
+			t.Fatalf("unexpected query: %s %v", name, args)
+			return "", errors.New("unexpected query")
+		}
+	}
+	output := capturePortOutput(t, func() {
+		if err := Run(inputUI(t, "6\n\nq\n")); !errors.Is(err, ui.ErrReturnToMenu) {
+			t.Fatal(err)
+		}
+	})
+	if storage.ReadFileString(configPath) != string(version.Content) {
+		t.Fatal("open port view changed the firewall configuration")
+	}
+	for _, text := range []string{"查看开放端口", "127.0.0.1:80", `users:(("nginx",pid=1,fd=6))`, "└─", "不代表防火墙已经放行"} {
+		if !strings.Contains(output, text) {
+			t.Fatalf("missing %q in %s", text, output)
+		}
+	}
+}
+
 func TestTrafficMonitorMenuReturnsWithoutPauseOrConfigurationWrites(t *testing.T) {
 	setupTest(t)
 	version := ruleTestConfig(t, nil)

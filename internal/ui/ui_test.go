@@ -110,7 +110,7 @@ func captureStdout(t *testing.T, run func()) string {
 }
 
 func stripANSI(input string) string {
-	for _, code := range []string{reset, bold, dim, orange, blue, green, yellow, red, gray, lightBlue, white} {
+	for _, code := range []string{reset, bold, dim, orange, blue, green, yellow, red, cyan, purple, gray, lightBlue, white} {
 		input = strings.ReplaceAll(input, code, "")
 	}
 	return input
