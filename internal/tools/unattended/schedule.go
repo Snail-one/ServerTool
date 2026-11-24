@@ -17,13 +17,21 @@ const timerHeader = "# Managed by ServerTool.\n"
 func (service manager) scheduleMenu(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
-		ui.MenuTitle("系统工具", "unattended-upgrades 管理", "定时器")
-		ui.MenuOptionHint("1", "设置软件包索引刷新时间", refreshTimer)
-		ui.MenuOptionHint("2", "设置自动更新触发时间", upgradeTimer)
-		ui.MenuOptionHint("3", "恢复索引刷新定时器原设置", refreshTimer)
-		ui.MenuOptionHint("4", "恢复自动更新定时器原设置", upgradeTimer)
-		ui.MenuExit("0/q", "返回自动更新管理")
-		choice, err := ui.AskChoice(view, "请选择", "", map[string]string{"1": "1", "2": "2", "3": "3", "4": "4"})
+		refresh := service.scheduleOverview(refreshTimer)
+		upgrade := service.scheduleOverview(upgradeTimer)
+		draw := func() {
+			ui.MenuTitle("系统工具", Title, "定时器")
+			ui.PrintInfoCard("索引刷新", refresh...)
+			fmt.Println()
+			ui.PrintInfoCard("自动更新", upgrade...)
+			fmt.Println()
+			ui.MenuOption("1", "调整索引刷新定时器")
+			ui.MenuOption("2", "调整自动更新定时器")
+			ui.MenuOption("3", "恢复索引刷新原设置")
+			ui.MenuOption("4", "恢复自动更新原设置")
+			ui.MenuExit("0/q", "返回自动更新管理")
+		}
+		choice, err := ui.AskMenuChoice(view, "请选择", "", map[string]string{"1": "1", "2": "2", "3": "3", "4": "4"}, draw)
 		if err != nil {
 			return err
 		}
@@ -54,10 +62,13 @@ func (service manager) editSchedule(view *ui.UI, name string, reset bool) error 
 		return err
 	}
 	if reset {
+		showPage("恢复" + timerLabel(name) + "定时器")
 		if !exists {
 			ui.PrintInfoCard("当前使用原有定时器设置")
 			return nil
 		}
+		ui.PrintInfoCard("将移除的定时配置", ui.CardField{Label: "定时器", Value: name}, ui.CardField{Label: "文件", Value: path})
+		fmt.Println()
 		if err := confirm(view, "确认移除本工具的定时设置？(y/N)："); err != nil {
 			return err
 		}
@@ -66,11 +77,9 @@ func (service manager) editSchedule(view *ui.UI, name string, reset bool) error 
 	if !service.exists("systemd-analyze") {
 		return fmt.Errorf("定时设置需要 systemd-analyze 校验日历表达式")
 	}
-	current, err := service.scheduleFields(name)
-	if err != nil {
-		return err
-	}
-	ui.PrintInfoCard(name, current...)
+	showPage("调整" + timerLabel(name) + "定时器")
+	ui.PrintInfoCard("当前定时设置", state.scheduleFields(name)...)
+	fmt.Println()
 	var calendar string
 	var delay, accuracy int
 	var persistent string
@@ -138,19 +147,33 @@ func askSeconds(view *ui.UI, prompt, fallback string, minimum int) (int, error) 
 	return input.Number(value, minimum, 2147483647)
 }
 
-func (service manager) scheduleFields(name string) ([]ui.CardField, error) {
-	output, err := service.query("systemctl", "show", "--property=TimersCalendar,NextElapseUSecRealtime,RandomizedDelayUSec,AccuracyUSec,Persistent", name)
+func (service manager) scheduleOverview(name string) []ui.CardField {
+	state, err := service.timer(name)
 	if err != nil {
-		return nil, err
+		return []ui.CardField{{Label: "系统单元", Value: name}, {Label: "读取失败", Value: err.Error()}}
 	}
-	values := assignments(output)
-	return []ui.CardField{
-		{Label: "日历规则", Value: values["TimersCalendar"]},
-		{Label: "下次触发", Value: values["NextElapseUSecRealtime"]},
-		{Label: "随机延迟", Value: values["RandomizedDelayUSec"]},
-		{Label: "触发精度", Value: values["AccuracyUSec"]},
-		{Label: "补跑错过的任务", Value: values["Persistent"]},
-	}, nil
+	return state.scheduleFields(name)
+}
+
+func (state timer) scheduleFields(name string) []ui.CardField {
+	fields := []ui.CardField{
+		{Label: "系统单元", Value: name},
+		{Label: "状态", Value: state.statusLabel()},
+	}
+	if state.load != "loaded" {
+		return fields
+	}
+	calendar := state.calendar
+	if calendar == "" {
+		calendar = "未设置"
+	}
+	return append(fields,
+		ui.CardField{Label: "日历规则", Value: calendar},
+		ui.CardField{Label: "下次触发", Value: triggerLabel(state.next)},
+		ui.CardField{Label: "随机延迟", Value: state.delay},
+		ui.CardField{Label: "触发精度", Value: state.accuracy},
+		ui.CardField{Label: "补跑错过的任务", Value: switchLabel(state.persistent)},
+	)
 }
 
 func (service manager) publishSchedule(name, path string, previous []byte, exists bool, content string) error {

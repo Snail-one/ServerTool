@@ -7,6 +7,8 @@ import (
 	"snail_tool/internal/ui"
 )
 
+const Title = "软件包自动更新"
+
 func (service manager) menu(view *ui.UI) error {
 	choices := map[string]string{
 		"1": "enable", "2": "disable", "3": "options", "4": "schedule",
@@ -15,13 +17,20 @@ func (service manager) menu(view *ui.UI) error {
 	}
 	for {
 		ui.ClearScreen()
-		fields := service.fields()
+		policy, timers, installed := service.overview()
 		draw := func() {
-			ui.MenuTitle("系统工具", "unattended-upgrades 管理")
-			ui.PrintInfoCard("当前状态", fields...)
+			ui.MenuTitle("系统工具", Title)
+			ui.PrintInfoCard("更新策略", policy...)
 			fmt.Println()
-			ui.MenuOptionHint("1", "开启自动更新", "如有需要，先安装 unattended-upgrades")
+			ui.PrintInfoCard("系统定时器", timers...)
+			fmt.Println()
+			if installed {
+				ui.MenuOption("1", "开启自动更新")
+			} else {
+				ui.MenuOptionHint("1", "开启自动更新", "先安装 unattended-upgrades")
+			}
 			ui.MenuOption("2", "关闭自动更新")
+			fmt.Println()
 			ui.MenuOptionHint("3", "APT 策略与开关", "更新频率、重启、软件包清理、邮件报告")
 			ui.MenuOptionHint("4", "设置定时器", "触发时刻、随机延迟、补跑")
 			ui.MenuOptionHint("5", "编辑原生 APT 配置", "软件源、允许或阻止的软件包及其他原生参数")
@@ -81,7 +90,11 @@ func (service manager) showLog() error {
 	if dir == "" {
 		dir = "/var/log/unattended-upgrades"
 	}
-	return service.run("tail", "-n", "60", "--", strings.TrimRight(dir, "/")+"/unattended-upgrades.log")
+	path := strings.TrimRight(dir, "/") + "/unattended-upgrades.log"
+	showPage("最近更新日志")
+	ui.PrintInfoCard("日志来源", ui.CardField{Label: "文件", Value: path}, ui.CardField{Label: "范围", Value: "最近 60 行"})
+	fmt.Println()
+	return service.run("tail", "-n", "60", "--", path)
 }
 
 func (service manager) showEffective() error {
@@ -89,20 +102,22 @@ func (service manager) showEffective() error {
 	if err != nil {
 		return err
 	}
+	showPage("查看生效配置")
+	for _, name := range []string{refreshTimer, upgradeTimer} {
+		ui.PrintInfoCard(timerLabel(name), service.scheduleOverview(name)...)
+		fmt.Println()
+	}
 	ui.MenuSection("APT 生效配置")
+	found := false
 	for _, line := range strings.Split(output, "\n") {
 		if strings.HasPrefix(line, "APT::Periodic ") || strings.HasPrefix(line, "APT::Periodic::") ||
 			strings.HasPrefix(line, "Unattended-Upgrade ") || strings.HasPrefix(line, "Unattended-Upgrade::") {
 			fmt.Println(line)
+			found = true
 		}
 	}
-	for _, name := range []string{refreshTimer, upgradeTimer} {
-		fields, err := service.scheduleFields(name)
-		if err != nil {
-			fields = []ui.CardField{{Label: "读取失败", Value: err.Error()}}
-		}
-		fmt.Println()
-		ui.PrintInfoCard(name, fields...)
+	if !found {
+		fmt.Println("暂无显式设置")
 	}
 	return nil
 }
@@ -115,6 +130,9 @@ func (service manager) runUpdate(view *ui.UI, simulate bool) error {
 		return fmt.Errorf("未安装 unattended-upgrades，请先安装")
 	}
 	if simulate {
+		showPage("模拟运行")
+		ui.PrintInfoCard("模拟范围", ui.CardField{Label: "更新计划", Value: "根据当前 APT 索引和生效策略计算"})
+		fmt.Println()
 		return service.run("unattended-upgrade", "--dry-run", "--verbose")
 	}
 	current, err := service.settings()
@@ -124,6 +142,12 @@ func (service manager) runUpdate(view *ui.UI, simulate bool) error {
 	if current.shutdown == "true" {
 		return fmt.Errorf("当前策略在关机时安装更新。要立即安装，请先关闭关机安装")
 	}
+	showPage("立即执行一次更新")
+	ui.PrintInfoCard("执行策略",
+		ui.CardField{Label: "更新范围", Value: "按当前生效策略选择软件包"},
+		ui.CardField{Label: "自动重启", Value: switchLabel(current.reboot)},
+	)
+	fmt.Println()
 	if err := confirm(view, "确认按生效策略立即更新？已开启的自动重启和软件包清理设置也会生效。(y/N)："); err != nil {
 		return err
 	}

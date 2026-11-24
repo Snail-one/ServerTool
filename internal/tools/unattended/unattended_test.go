@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"snail_tool/internal/ui"
 )
 
 const previousPolicy = managedHeader + `APT::Periodic::Update-Package-Lists "2";
@@ -16,6 +18,70 @@ APT::Periodic::Unattended-Upgrade "7";
 Unattended-Upgrade::InstallOnShutdown "true";
 Unattended-Upgrade::Origins-Pattern { "origin=Debian"; };
 `
+
+func TestManagementMenuShowsDistinctPolicyAndTimerStatus(t *testing.T) {
+	t.Setenv("TERM", "dumb")
+	t.Setenv("NO_COLOR", "1")
+	file, err := os.CreateTemp(t.TempDir(), "menu-input")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	if _, err := file.WriteString("3\nq\n4\nq\n6\n\nq\n"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Seek(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	previousInput := os.Stdin
+	os.Stdin = file
+	view := ui.New()
+	os.Stdin = previousInput
+	output, err := os.CreateTemp(t.TempDir(), "menu-output")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer output.Close()
+	service := manager{
+		exists: func(command string) bool { return command == "systemctl" },
+		query: func(command string, args ...string) (string, error) {
+			if command == "systemctl" {
+				return "LoadState=loaded\nUnitFileState=enabled\nActiveState=active\n" +
+					"NextElapseUSecRealtime=Tue 2026-11-24 18:36:09 PST\nTimersCalendar=*-*-* 18:30:00\nPersistent=yes\n", nil
+			}
+			if args[0] == "dump" {
+				return "APT::Periodic::Unattended-Upgrade \"0\";\n", nil
+			}
+			return "PREFERRED='7'\nOPT1='0'\nUPGRADE='0'\n", nil
+		},
+	}
+	previousOutput := os.Stdout
+	os.Stdout = output
+	err = service.menu(view)
+	os.Stdout = previousOutput
+	if !errors.Is(err, ui.ErrReturnToMenu) {
+		t.Fatalf("menu did not return: %v", err)
+	}
+	data, err := os.ReadFile(output.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, want := range []string{
+		"系统工具  ›  软件包自动更新",
+		"软件包：[未安装]", "自动安装更新：关闭", "保存的更新频率：每 7 天",
+		"索引刷新：已启用 · 已启动", "下次触发：2026-11-24 18:36:09 PST",
+		"周期与调度", "关闭 · 已保存每 7 天", "系统单元：apt-daily.timer", "补跑错过的任务：开启",
+		"APT::Periodic::Unattended-Upgrade \"0\";", "\n\n  0/q 返回系统工具",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("menu missing %q", want)
+		}
+	}
+	if strings.Contains(text, "enabled / active") {
+		t.Fatal("menu exposed raw timer status")
+	}
+}
 
 func TestApplyAutomaticUpdates(t *testing.T) {
 	for _, scenario := range []struct {

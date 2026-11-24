@@ -17,6 +17,7 @@ import (
 
 const (
 	refreshKey         = "APT::Periodic::Update-Package-Lists"
+	downloadKey        = "APT::Periodic::Download-Upgradeable-Packages"
 	upgradeKey         = "APT::Periodic::Unattended-Upgrade"
 	intervalKey        = "ServerTool::Unattended-Upgrade::Interval"
 	rebootKey          = "Unattended-Upgrade::Automatic-Reboot"
@@ -192,6 +193,12 @@ func (service manager) editNative(view *ui.UI) error {
 	if !bytes.HasPrefix(edited, []byte(managedHeader)) {
 		edited = append([]byte(managedHeader), edited...)
 	}
+	showPage("保存原生 APT 配置")
+	ui.PrintInfoCard("保存目标",
+		ui.CardField{Label: "配置文件", Value: service.path},
+		ui.CardField{Label: "APT 语法校验", Value: "已通过"},
+	)
+	fmt.Println()
 	confirmed, err := view.Confirm("确认保存原生 APT 配置？(y/N)：")
 	if err != nil {
 		return err
@@ -210,10 +217,13 @@ func (service manager) resetNative(view *ui.UI) error {
 	if err != nil {
 		return err
 	}
+	showPage("恢复原有 APT 策略")
 	if !exists {
 		ui.PrintInfoCard("当前使用原有 APT 策略")
 		return nil
 	}
+	ui.PrintInfoCard("将移除的配置", ui.CardField{Label: "配置文件", Value: service.path})
+	fmt.Println()
 	if err := confirm(view, "确认恢复系统原有的自动更新策略？(y/N)："); err != nil {
 		return err
 	}

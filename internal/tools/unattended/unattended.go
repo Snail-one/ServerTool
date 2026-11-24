@@ -35,20 +35,20 @@ func Run(view *ui.UI) error {
 }
 
 type settings struct {
-	periodic, refresh, upgrade, reboot, preferred string
-	shutdown, preferredShutdown                   string
+	periodic, refresh, download, upgrade, reboot, preferred string
+	shutdown, preferredShutdown                             string
 }
 
 func (service manager) settings() (settings, error) {
 	output, err := service.query("apt-config", "shell",
 		"PERIODIC", "APT::Periodic::Enable", "REFRESH", "APT::Periodic::Update-Package-Lists",
-		"UPGRADE", upgradeKey, "REBOOT", rebootKey+"/b", "PREFERRED", intervalKey,
+		"DOWNLOAD", downloadKey, "UPGRADE", upgradeKey, "REBOOT", rebootKey+"/b", "PREFERRED", intervalKey,
 		"SHUTDOWN", shutdownKey+"/b", "PREFERRED_SHUTDOWN", shutdownPreference)
 	if err != nil {
 		return settings{}, fmt.Errorf("读取 APT 生效设置失败: %w", err)
 	}
 	values := assignments(output)
-	return settings{periodic: values["PERIODIC"], refresh: values["REFRESH"], upgrade: values["UPGRADE"],
+	return settings{periodic: values["PERIODIC"], refresh: values["REFRESH"], download: values["DOWNLOAD"], upgrade: values["UPGRADE"],
 		reboot: values["REBOOT"], preferred: values["PREFERRED"], shutdown: values["SHUTDOWN"],
 		preferredShutdown: values["PREFERRED_SHUTDOWN"]}, nil
 }
@@ -80,62 +80,28 @@ func intervalLabel(value string) string {
 }
 
 type timer struct {
-	load, file, active, next string
+	load, file, active, next              string
+	calendar, delay, accuracy, persistent string
 }
 
 func (service manager) timer(name string) (timer, error) {
 	if !service.exists("systemctl") {
 		return timer{}, fmt.Errorf("未找到 systemctl")
 	}
-	output, err := service.query("systemctl", "show", "--property=LoadState,UnitFileState,ActiveState,NextElapseUSecRealtime", name)
+	output, err := service.query("systemctl", "show", "--property=LoadState,UnitFileState,ActiveState,NextElapseUSecRealtime,TimersCalendar,RandomizedDelayUSec,AccuracyUSec,Persistent", name)
 	if err != nil {
 		return timer{}, fmt.Errorf("查询 %s 失败: %w", name, err)
 	}
 	values := assignments(output)
-	return timer{values["LoadState"], values["UnitFileState"], values["ActiveState"], values["NextElapseUSecRealtime"]}, nil
+	return timer{
+		load: values["LoadState"], file: values["UnitFileState"], active: values["ActiveState"], next: values["NextElapseUSecRealtime"],
+		calendar: values["TimersCalendar"], delay: values["RandomizedDelayUSec"],
+		accuracy: values["AccuracyUSec"], persistent: values["Persistent"],
+	}, nil
 }
 
 func (state timer) running() bool {
 	return state.file == "enabled" && state.active == "active"
-}
-
-func (service manager) fields() []ui.CardField {
-	fields := []ui.CardField{{Label: "软件包", Value: ui.InstallationBadge(service.exists("unattended-upgrade"))}}
-	current, err := service.settings()
-	if err != nil {
-		fields = append(fields, ui.CardField{Label: "APT 设置", Value: "检测失败", Detail: err.Error()})
-	} else {
-		reboot := "关闭"
-		if current.reboot == "true" || current.reboot == "1" {
-			reboot = "开启"
-		}
-		shutdown := "关闭"
-		if current.shutdown == "true" {
-			shutdown = "开启"
-		}
-		if current.periodic == "0" {
-			fields = append(fields, ui.CardField{Label: "APT 定时任务", Value: "全局已关闭"})
-		}
-		fields = append(fields,
-			ui.CardField{Label: "刷新软件包索引", Value: intervalLabel(current.refresh)},
-			ui.CardField{Label: "自动安装更新", Value: intervalLabel(current.upgrade)},
-			ui.CardField{Label: "自动重启", Value: reboot},
-			ui.CardField{Label: "关机时安装更新", Value: shutdown},
-		)
-	}
-	for _, name := range []string{refreshTimer, upgradeTimer} {
-		state, err := service.timer(name)
-		field := ui.CardField{Label: name, Value: state.file + " / " + state.active}
-		if err != nil {
-			field.Value, field.Detail = "检测失败", err.Error()
-		} else if state.load != "loaded" {
-			field.Value = state.load
-		} else if state.next != "" && state.next != "n/a" {
-			field.Detail = "下次触发：" + state.next
-		}
-		fields = append(fields, field)
-	}
-	return fields
 }
 
 func (service manager) change(view *ui.UI, enable bool) error {
@@ -153,8 +119,17 @@ func (service manager) change(view *ui.UI, enable bool) error {
 			message = "安装 unattended-upgrades，然后" + message
 		}
 	}
-	ui.PrintField("配置文件", service.path)
-	confirmed, err := view.Confirm("确认" + message + "？(y/N)：")
+	title := "关闭自动更新"
+	if enable {
+		title = "开启自动更新"
+	}
+	showPage(title)
+	ui.PrintInfoCard("应用范围",
+		ui.CardField{Label: "操作", Value: message},
+		ui.CardField{Label: "配置文件", Value: service.path},
+	)
+	fmt.Println()
+	confirmed, err := view.Confirm("确认执行？(y/N)：")
 	if err != nil {
 		return err
 	}

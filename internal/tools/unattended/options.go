@@ -17,21 +17,28 @@ type aptOption struct {
 var policyOptions = []aptOption{
 	{"软件包索引刷新频率", refreshKey, "interval", "0"},
 	{"自动更新频率", upgradeKey, "frequency", "1"},
-	{"可升级软件包预下载频率", "APT::Periodic::Download-Upgradeable-Packages", "interval", "0"},
+	{"预下载频率", downloadKey, "interval", "0"},
 	{"APT 定时任务总开关", "APT::Periodic::Enable", "numeric toggle", "1"},
 	{"自动重启", rebootKey, "toggle", "false"},
-	{"有用户登录时允许自动重启", "Unattended-Upgrade::Automatic-Reboot-WithUsers", "toggle", "true"},
+	{"允许有用户时重启", "Unattended-Upgrade::Automatic-Reboot-WithUsers", "toggle", "true"},
 	{"自动重启时间", "Unattended-Upgrade::Automatic-Reboot-Time", "reboot time", "now"},
 	{"关机时安装更新", shutdownKey, "toggle", "false"},
-	{"自动修复中断的 dpkg 配置", "Unattended-Upgrade::AutoFixInterruptedDpkg", "toggle", "true"},
+	{"修复中断的 dpkg", "Unattended-Upgrade::AutoFixInterruptedDpkg", "toggle", "true"},
 	{"仅接通交流电时更新", "Unattended-Upgrade::OnlyOnACPower", "toggle", "true"},
-	{"严格按软件包允许名单更新", "Unattended-Upgrade::Package-Whitelist-Strict", "toggle", "false"},
+	{"严格匹配允许名单", "Unattended-Upgrade::Package-Whitelist-Strict", "toggle", "false"},
 	{"按最小步骤升级", "Unattended-Upgrade::MinimalSteps", "toggle", "true"},
 	{"移除不再使用的内核包", "Unattended-Upgrade::Remove-Unused-Kernel-Packages", "toggle", "true"},
-	{"移除本次更新后不再使用的依赖", "Unattended-Upgrade::Remove-New-Unused-Dependencies", "toggle", "true"},
+	{"移除新产生的无用依赖", "Unattended-Upgrade::Remove-New-Unused-Dependencies", "toggle", "true"},
 	{"移除所有不再使用的依赖", "Unattended-Upgrade::Remove-Unused-Dependencies", "toggle", "false"},
 	{"报告收件地址", "Unattended-Upgrade::Mail", "mail", ""},
 	{"发送报告条件", "Unattended-Upgrade::MailReport", "report", ""},
+}
+
+var policySections = map[string]string{
+	refreshKey: "周期与调度",
+	rebootKey:  "重启与关机",
+	"Unattended-Upgrade::AutoFixInterruptedDpkg": "升级与清理",
+	"Unattended-Upgrade::Mail":                   "邮件报告",
 }
 
 func (service manager) optionMenu(view *ui.UI) error {
@@ -42,12 +49,29 @@ func (service manager) optionMenu(view *ui.UI) error {
 	}
 	for {
 		ui.ClearScreen()
-		ui.MenuTitle("系统工具", "unattended-upgrades 管理", "APT 策略与开关")
-		for index, option := range policyOptions {
-			ui.MenuOption(strconv.Itoa(index+1), option.label)
+		current, err := service.policyValues()
+		draw := func() {
+			ui.MenuTitle("系统工具", Title, "APT 策略与开关")
+			if err != nil {
+				ui.PrintWarningCard("读取生效策略失败", ui.CardField{Label: "原因", Value: err.Error()})
+				fmt.Println()
+			}
+			for index, option := range policyOptions {
+				if section := policySections[option.key]; section != "" {
+					if index > 0 {
+						fmt.Println()
+					}
+					ui.MenuSection(section)
+				}
+				status := ""
+				if err == nil {
+					status = option.display(current[option.key], current[intervalKey])
+				}
+				ui.MenuOptionHint(strconv.Itoa(index+1), option.label, status)
+			}
+			ui.MenuExit("0/q", "返回自动更新管理")
 		}
-		ui.MenuExit("0/q", "返回自动更新管理")
-		choice, err := ui.AskChoice(view, "请选择", "", choices)
+		choice, err := ui.AskMenuChoice(view, "请选择", "", choices, draw)
 		if err != nil {
 			return err
 		}
@@ -56,6 +80,67 @@ func (service manager) optionMenu(view *ui.UI) error {
 			return service.editOption(view, policyOptions[index-1])
 		})
 	}
+}
+
+func (service manager) policyValues() (map[string]string, error) {
+	args := []string{"shell", "PREFERRED", intervalKey}
+	for index, option := range policyOptions {
+		key := option.key
+		if option.kind == "toggle" {
+			key += "/b"
+		}
+		args = append(args, fmt.Sprintf("OPT%d", index), key)
+	}
+	output, err := service.query("apt-config", args...)
+	if err != nil {
+		return nil, err
+	}
+	assigned := assignments(output)
+	current := map[string]string{intervalKey: assigned["PREFERRED"]}
+	for index, option := range policyOptions {
+		current[option.key] = assigned[fmt.Sprintf("OPT%d", index)]
+	}
+	return current, nil
+}
+
+func (option aptOption) display(value, preferred string) string {
+	switch option.kind {
+	case "frequency":
+		if !activeInterval(value) && activeInterval(preferred) {
+			return intervalLabel(value) + " · 已保存" + intervalLabel(preferred)
+		}
+		return intervalLabel(value)
+	case "interval":
+		return intervalLabel(value)
+	}
+	suffix := ""
+	if value == "" && option.fallback != "" {
+		value, suffix = option.fallback, "（默认）"
+	}
+	switch option.kind {
+	case "toggle", "numeric toggle":
+		return switchLabel(value) + suffix
+	case "reboot time":
+		if value == "now" {
+			return "立即重启" + suffix
+		}
+		return value + suffix
+	case "report":
+		switch value {
+		case "always":
+			return "始终发送"
+		case "on-change":
+			return "有变更时发送"
+		case "only-on-error":
+			return "仅错误时发送"
+		case "":
+			return "使用默认策略"
+		}
+	}
+	if value == "" {
+		return "未设置"
+	}
+	return value
 }
 
 func (service manager) editOption(view *ui.UI, option aptOption) error {
@@ -72,20 +157,23 @@ func (service manager) editOption(view *ui.UI, option aptOption) error {
 	}
 	before := assignments(current)["CURRENT"]
 	value := before
+	preferred := ""
 	if option.kind == "frequency" && !activeInterval(value) {
 		settings, err := service.settings()
 		if err != nil {
 			return err
 		}
-		value = settings.preferred
+		value, preferred = settings.preferred, settings.preferred
 	}
 	if value == "" {
 		value = option.fallback
 	}
-	ui.PrintField("设置", option.label)
-	if value != "" {
-		ui.PrintField("当前值", value)
-	}
+	showPage(option.label)
+	ui.PrintInfoCard("当前设置",
+		ui.CardField{Label: "当前值", Value: option.display(before, preferred)},
+		ui.CardField{Label: "APT 参数", Value: option.key},
+	)
+	fmt.Println()
 	value, err = askOption(view, option.kind, value)
 	if err != nil {
 		return err

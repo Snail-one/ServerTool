@@ -32,7 +32,7 @@ func Run(view *ui.UI, report *startup.Report) error {
 		}
 		ui.MenuOptionStatus("2", "Go 语言环境", ui.SoftwareBadge(goStatus, goVersion != ""))
 		ui.MenuOptionStatus("3", "UPS（NUT）", ui.ConfiguredBadge(ups.IsUPSConfigured()))
-		ui.MenuOption("4", "unattended-upgrades 管理")
+		ui.MenuOption("4", unattended.Title)
 		ui.MenuOption("5", "查看本次启动信息")
 		ui.MenuExit("0/q", "返回")
 
