@@ -71,8 +71,10 @@ func TestManagementMenuShowsDistinctPolicyAndTimerStatus(t *testing.T) {
 	text := string(data)
 	for _, want := range []string{
 		"系统工具  ›  软件包自动更新",
-		"软件包：[未安装]", "自动安装更新：关闭", "保存的更新频率：每 7 天",
-		"索引刷新：已启用 · 已启动", "下次触发：2026-11-24 18:36:09 PST",
+		"软件包：[未安装]", "APT 周期任务总开关：开启（默认）", "定时自动安装：关闭", "保存的更新频率：每 7 天",
+		"系统定时器\n│ 索引刷新：未生效 · 索引刷新策略未开启",
+		"自动更新：未生效 · 定时安装策略未开启",
+		"定时器：已启用 · 已启动 · 下次唤醒：2026-11-24 18:36:09 PST",
 		"周期与调度", "关闭 · 已保存每 7 天", "系统单元：apt-daily.timer", "补跑错过的任务：开启",
 		"APT::Periodic::Unattended-Upgrade \"0\";", "\n\n  0/q 返回系统工具",
 		"更新设置\n  1   更新范围与开关", "重启\n  2   APT 策略与开关",
@@ -97,6 +99,46 @@ func TestManagementMenuShowsDistinctPolicyAndTimerStatus(t *testing.T) {
 	}
 	if _, err := os.Stat(service.path); !os.IsNotExist(err) {
 		t.Fatalf("canceled toggle changed the APT policy: %v", err)
+	}
+}
+
+func TestScheduledInstallStatus(t *testing.T) {
+	waiting := timer{load: "loaded", active: "active", next: "Tue 2026-11-24 18:36:09 PST"}
+	for _, tt := range []struct {
+		name                 string
+		policy               settings
+		state                timer
+		timerErr             error
+		installed, wantReady bool
+		wantValue            string
+	}{
+		{name: "policy off with active timer", policy: settings{upgrade: "0"}, state: waiting, installed: true, wantValue: "关闭"},
+		{name: "package missing", policy: settings{upgrade: "1"}, state: waiting, wantValue: "未生效 · 软件包未安装"},
+		{name: "master switch off", policy: settings{upgrade: "1", periodic: "0"}, state: waiting, installed: true, wantValue: "未生效 · APT 周期任务总开关已关闭"},
+		{name: "shutdown only", policy: settings{upgrade: "1", shutdown: "true"}, state: waiting, installed: true, wantValue: "未生效 · 已配置关机安装"},
+		{name: "timer query failed", policy: settings{upgrade: "1"}, timerErr: errors.New("systemctl failed"), installed: true, wantValue: "无法确认 · 定时器检测失败"},
+		{name: "inactive timer", policy: settings{upgrade: "1"}, state: timer{load: "loaded", active: "inactive"}, installed: true, wantValue: "未生效 · 定时器未运行"},
+		{name: "no next wake-up", policy: settings{upgrade: "1"}, state: timer{load: "loaded", active: "active", next: "n/a"}, installed: true, wantValue: "未生效 · 定时器暂无下次唤醒时间"},
+		{name: "ready", policy: settings{upgrade: "7"}, state: waiting, installed: true, wantReady: true, wantValue: "调度已生效 · 每 7 天"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			field, ready := tt.policy.scheduledInstallStatus(tt.installed, tt.state, tt.timerErr)
+			if field.Value != tt.wantValue || ready != tt.wantReady {
+				t.Fatalf("scheduled install status = %q, %t; want %q, %t", field.Value, ready, tt.wantValue, tt.wantReady)
+			}
+		})
+	}
+}
+
+func TestScheduledRefreshStatus(t *testing.T) {
+	current := settings{refresh: "2"}
+	state := timer{load: "loaded", active: "active", next: "Tue 2026-11-24 18:36:09 PST"}
+	if got := current.scheduledRefreshStatus(state, nil); got != "调度已生效 · 每 2 天" {
+		t.Fatalf("active refresh schedule = %q", got)
+	}
+	current.periodic = "0"
+	if got := current.scheduledRefreshStatus(state, nil); got != "未生效 · APT 周期任务总开关已关闭" {
+		t.Fatalf("refresh with APT disabled = %q", got)
 	}
 }
 
