@@ -52,7 +52,9 @@ func TestManagementMenuShowsDistinctPolicyAndTimerStatus(t *testing.T) {
 					"NextElapseUSecRealtime=Tue 2026-11-24 18:36:09 PST\nTimersCalendar=*-*-* 18:30:00\nPersistent=yes\n", nil
 			}
 			if args[0] == "dump" {
-				return "APT::Periodic::Unattended-Upgrade \"0\";\n", nil
+				return `APT::Periodic::Unattended-Upgrade "0";
+Unattended-Upgrade::Origins-Pattern:: "origin=Debian,codename=${distro_codename},label=Debian";
+Unattended-Upgrade::Origins-Pattern:: "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";`, nil
 			}
 			return "PREFERRED='7'\nOPT1='0'\nUPGRADE='0'\n", nil
 		},
@@ -83,9 +85,11 @@ func TestManagementMenuShowsDistinctPolicyAndTimerStatus(t *testing.T) {
 		"哪些更新\n  7   立即执行一次更新\n  8   查看最近更新日志\n\n  a   开启自动更新",
 		"先安装 unattended-upgrades\n  r   刷新状态",
 		"软件包自动更新  ›  开启自动更新", "安装 unattended-upgrades，然后按当前频率及软件源策略开启自动更新",
-		"系统安全更新：沿用原生策略", "系统普通更新：沿用原生策略", "Linux 内核更新：沿用原生策略",
-		"旧内核清理：开启（默认）", "Docker Engine 更新：沿用原生策略", "Debian 大版本升级提醒：关闭",
+		"系统安全更新：开启", "系统普通更新：开启", "Linux 内核更新：开启",
+		"旧内核清理：开启（默认）", "Docker Engine 更新：取决于软件包来源", "Debian 大版本升级提醒：关闭",
 		"服务器自动重启：关闭（默认）", "\n\n  0/q 返回自动更新管理",
+		"1   系统安全更新      [开启]", "4   旧内核清理        [开启（默认）]",
+		"[取决于软件包来源]", "[关闭]", "[关闭（默认）]",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("menu missing %q", want)

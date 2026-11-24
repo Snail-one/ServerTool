@@ -72,6 +72,9 @@ Unattended-Upgrade::Package-Blacklist { "^custom-package$"; };
 	}) || len(lists[allowedKey]) != 0 || !samePatterns(lists[blacklistKey], []string{"^custom-package$", kernelPattern, dockerPattern}) {
 		t.Fatalf("unexpected security-only config: %v", lists)
 	}
+	if labels := effectiveScopeLabels(lists); labels["1"] != "开启" || labels["2"] != "关闭" || labels["3"] != "关闭" || labels["5"] != "关闭" {
+		t.Fatalf("unexpected security-only labels: %v", labels)
+	}
 	current, previous, exists := read()
 	if current != first || !exists {
 		t.Fatalf("unexpected saved scope: %+v", current)
@@ -106,6 +109,9 @@ Unattended-Upgrade::Package-Blacklist { "^custom-package$"; };
 	lists = load()
 	if !samePatterns(lists[originsKey], []string{"origin=Custom"}) || !samePatterns(lists[allowedKey], []string{"Debian:stable"}) {
 		t.Fatalf("restoring the scope with the reminder enabled changed the native APT policy: %v", lists)
+	}
+	if labels := effectiveScopeLabels(lists); labels["1"] != "由自定义 APT 规则决定" || labels["5"] != "由自定义 APT 规则决定" {
+		t.Fatalf("custom origins produced definitive labels: %v", labels)
 	}
 }
 

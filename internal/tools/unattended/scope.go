@@ -15,6 +15,8 @@ const (
 	originsKey    = "Unattended-Upgrade::Origins-Pattern"
 	allowedKey    = "Unattended-Upgrade::Allowed-Origins"
 	blacklistKey  = "Unattended-Upgrade::Package-Blacklist"
+	whitelistKey  = "Unattended-Upgrade::Package-Whitelist"
+	strictListKey = "Unattended-Upgrade::Package-Whitelist-Strict"
 	kernelPattern = "^linux-(image|headers|modules|kbuild|source|tools)(-|$)"
 	dockerPattern = "^(docker[.]io|docker-ce(-cli|-rootless-extras)?|docker-cli|docker-buildx(-plugin)?|docker-compose(-plugin)?|containerd([.]io)?|runc)$"
 )
@@ -124,7 +126,7 @@ func (service manager) saveScope(scope updateScope, previous []byte, exists bool
 }
 
 func aptScopeLists(output string) map[string]map[string]int {
-	lists := map[string]map[string]int{originsKey: {}, allowedKey: {}, blacklistKey: {}}
+	lists := map[string]map[string]int{originsKey: {}, allowedKey: {}, blacklistKey: {}, whitelistKey: {}, strictListKey: {}}
 	for _, line := range strings.Split(output, "\n") {
 		key, value, ok := strings.Cut(line, " ")
 		value = strings.TrimSpace(value)
@@ -161,10 +163,68 @@ func scopeLabel(enabled bool) string {
 }
 
 func (scope updateScope) optionLabel(key string) string {
-	if key != "6" && !scope.Managed {
-		return "沿用原生策略"
-	}
 	return scopeLabel(*scopeOptions[key].enabled(&scope))
+}
+
+func effectiveScopeLabels(config map[string]map[string]int) map[string]string {
+	sources := make(map[string]string)
+	for key, scope := range map[string]updateScope{"1": {Security: true}, "2": {Ordinary: true}, "5": {Docker: true}} {
+		for _, pattern := range scope.origins() {
+			sources[pattern] = key
+		}
+	}
+	allowed := make(map[string]bool)
+	customSource := len(config[allowedKey]) > 0
+	for pattern := range config[originsKey] {
+		if key, known := sources[strings.ReplaceAll(strings.TrimSpace(pattern), ", ", ",")]; known {
+			allowed[key] = true
+		} else {
+			customSource = true
+		}
+	}
+	const custom = "由自定义 APT 规则决定"
+	labels := map[string]string{"1": "关闭", "2": "关闭", "3": "关闭", "5": "关闭"}
+	for _, key := range []string{"1", "2"} {
+		if allowed[key] {
+			labels[key] = "开启"
+		} else if customSource {
+			labels[key] = custom
+		}
+	}
+	debSource := allowed["1"] || allowed["2"]
+	blocked := config[blacklistKey]
+	customFilter := len(config[whitelistKey]) > 0
+	if !customFilter {
+		for value := range config[strictListKey] {
+			if switchLabel(value) == "开启" {
+				return labels
+			}
+		}
+	}
+	for pattern := range blocked {
+		if pattern != kernelPattern && pattern != dockerPattern {
+			customFilter = true
+		}
+	}
+	if blocked[kernelPattern] == 0 {
+		switch {
+		case debSource && !customFilter:
+			labels["3"] = "开启"
+		case debSource || customSource:
+			labels["3"] = custom
+		}
+	}
+	if blocked[dockerPattern] == 0 {
+		switch {
+		case allowed["5"] && !customFilter:
+			labels["5"] = "开启"
+		case customSource || allowed["5"]:
+			labels["5"] = custom
+		case debSource:
+			labels["5"] = "取决于软件包来源"
+		}
+	}
+	return labels
 }
 
 func (service manager) scopeMenu(view *ui.UI) error {
@@ -174,6 +234,14 @@ func (service manager) scopeMenu(view *ui.UI) error {
 		if err != nil {
 			return err
 		}
+		output, scopeErr := service.query("apt-config", "dump")
+		labels := effectiveScopeLabels(aptScopeLists(output))
+		if scopeErr != nil {
+			for key := range labels {
+				labels[key] = "检测失败"
+			}
+		}
+		labels["6"] = scope.optionLabel("6")
 		policy, err := service.policyValues()
 		if err != nil {
 			return err
@@ -190,27 +258,31 @@ func (service manager) scopeMenu(view *ui.UI) error {
 			}
 			fields := []ui.CardField{{Label: "更新来源", Value: value}}
 			for _, key := range []string{"1", "2", "3"} {
-				fields = append(fields, ui.CardField{Label: scopeOptions[key].label, Value: scope.optionLabel(key)})
+				fields = append(fields, ui.CardField{Label: scopeOptions[key].label, Value: labels[key]})
 			}
 			cleanup := ui.CardField{Label: "旧内核清理", Value: oldKernelOption.display(policy[oldKernelOption.key], "")}
 			if cleanup.Value == "关闭" {
 				cleanup.Detail = "其他自动依赖清理也可能移除闲置内核"
 			}
+			reboot := rebootOption.display(policy[rebootOption.key], "")
 			fields = append(fields,
 				cleanup,
-				ui.CardField{Label: scopeOptions["5"].label, Value: scope.optionLabel("5")},
-				ui.CardField{Label: scopeOptions["6"].label, Value: scope.optionLabel("6")},
-				ui.CardField{Label: "服务器自动重启", Value: rebootOption.display(policy[rebootOption.key], "")},
+				ui.CardField{Label: scopeOptions["5"].label, Value: labels["5"]},
+				ui.CardField{Label: scopeOptions["6"].label, Value: labels["6"]},
+				ui.CardField{Label: "服务器自动重启", Value: reboot},
 			)
 			ui.PrintInfoCard("当前策略", fields...)
 			fmt.Println()
-			ui.MenuOption("1", scopeOptions["1"].label)
-			ui.MenuOption("2", scopeOptions["2"].label)
-			ui.MenuOptionHint("3", scopeOptions["3"].label, "从已允许的来源选择内核更新")
-			ui.MenuOption("4", "旧内核清理")
-			ui.MenuOptionHint("5", scopeOptions["5"].label, "包含已配置的 Docker 官方稳定仓库")
-			ui.MenuOptionHint("6", scopeOptions["6"].label, "检查 Debian 稳定版是否有新大版本")
-			ui.MenuOption("7", "服务器自动重启")
+			badge := func(value string) string {
+				return ui.SoftwareBadge(value, strings.HasPrefix(value, "开启"))
+			}
+			ui.MenuOptionStatus("1", scopeOptions["1"].label, badge(labels["1"]))
+			ui.MenuOptionStatus("2", scopeOptions["2"].label, badge(labels["2"]))
+			ui.MenuOptionStatusHint("3", scopeOptions["3"].label, badge(labels["3"]), "从已允许的来源选择内核更新")
+			ui.MenuOptionStatus("4", "旧内核清理", badge(cleanup.Value))
+			ui.MenuOptionStatusHint("5", scopeOptions["5"].label, badge(labels["5"]), "包含已配置的 Docker 官方稳定仓库")
+			ui.MenuOptionStatusHint("6", scopeOptions["6"].label, badge(labels["6"]), "检查 Debian 稳定版是否有新大版本")
+			ui.MenuOptionStatus("7", "服务器自动重启", badge(reboot))
 			if scope.Managed {
 				fmt.Println()
 				ui.MenuShortcutHint("x", "恢复原生更新范围", "移除本工具设定的来源和排除规则")
@@ -228,13 +300,13 @@ func (service manager) scopeMenu(view *ui.UI) error {
 			case "7":
 				return service.editOption(view, rebootOption)
 			default:
-				return service.editScope(view, choice, scope, previous, exists)
+				return service.editScope(view, choice, labels[choice], scope, previous, exists)
 			}
 		})
 	}
 }
 
-func (service manager) editScope(view *ui.UI, choice string, scope updateScope, previous []byte, exists bool) error {
+func (service manager) editScope(view *ui.UI, choice, currentLabel string, scope updateScope, previous []byte, exists bool) error {
 	if !service.root() {
 		return fmt.Errorf("修改更新策略需要 root 权限")
 	}
@@ -252,7 +324,7 @@ func (service manager) editScope(view *ui.UI, choice string, scope updateScope, 
 	}
 	option := scopeOptions[choice]
 	showPage(option.label)
-	ui.PrintInfoCard("当前设置", ui.CardField{Label: option.label, Value: scope.optionLabel(choice)})
+	ui.PrintInfoCard("当前设置", ui.CardField{Label: option.label, Value: currentLabel})
 	fmt.Println()
 	value, err := ui.AskChoice(view, "输入 1 开启或 2 关闭", "", map[string]string{"1": "on", "2": "off"})
 	if err != nil {
