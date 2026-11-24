@@ -131,7 +131,7 @@ func editPolicyDraft(view *ui.UI, original string, generating bool, save func(st
 		}
 		ui.PrintInfoCard(card, summary...)
 		if showDocker {
-			ui.PrintInfoCard("Docker 转发状态", dockerBridgeStateField(), dockerCompatStateField())
+			ui.PrintInfoCard("Docker 转发状态", append(dockerBridgeStateFields(original), dockerCompatStateField())...)
 		}
 		if notice != "" {
 			fmt.Println()
@@ -146,7 +146,7 @@ func editPolicyDraft(view *ui.UI, original string, generating bool, save func(st
 			ui.MenuOptionHint("5", "规则配置", "来源、目标、网卡和端口；接受或拒绝")
 		}
 		if showDocker {
-			ui.MenuOptionHint("6", "Docker 流量放行", "由 Docker 管理网桥转发")
+			ui.MenuOptionHint("6", "Docker 流量放行", "分别设置 Docker 网桥入站和出站")
 			ui.MenuOptionHint("7", "Docker 放行标记", "让 Docker 接受 ServerTool 已放行的转发")
 		}
 		if forwardConfigErr == nil {

@@ -3,6 +3,7 @@ package firewall
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"snail_tool/internal/shared"
@@ -10,16 +11,40 @@ import (
 )
 
 const (
-	dockerBridgeBegin = "# ===== BEGIN SNAIL DOCKER FORWARD ====="
-	dockerBridgeEnd   = "# ===== END SNAIL DOCKER FORWARD ====="
-	dockerBridgeJump  = "jump forward_docker"
+	dockerBridgeBegin       = "# ===== BEGIN SNAIL DOCKER FORWARD ====="
+	dockerBridgeEnd         = "# ===== END SNAIL DOCKER FORWARD ====="
+	dockerBridgeLegacyJump  = "jump forward_docker"
+	dockerBridgeNextRule    = "ip saddr $snail_forward_private_ipv4 goto forward_private_ports"
+	dockerBridgeInbound     = "Docker 入站放行"
+	dockerBridgeOutbound    = "Docker 出站放行"
+	dockerBridgeNeedsConfig = "请先返回防火墙管理，选择 d 生成本工具防火墙配置，再设置 Docker 流量放行"
 )
 
-func dockerBridgeBlock(enabled bool) string {
-	if !enabled {
-		return dockerBridgeBegin + "\n        " + dockerBridgeEnd
+type dockerBridgeSettings struct {
+	inbound  bool // The packet leaves the host's forward chain toward a Docker bridge.
+	outbound bool // The packet arrives at the host's forward chain from a Docker bridge.
+}
+
+func dockerBridgeRules(settings dockerBridgeSettings, counters bool) []string {
+	var rules []string
+	verdict := "accept"
+	if counters {
+		verdict = "counter accept"
 	}
-	return dockerBridgeBegin + "\n        " + dockerBridgeJump + "\n        " + dockerBridgeEnd
+	for _, direction := range []struct {
+		enabled bool
+		match   string
+	}{
+		{settings.inbound, "oifname"},
+		{settings.outbound, "iifname"},
+	} {
+		if direction.enabled {
+			for _, bridge := range []string{"docker0", "docker_gwbridge", "br-*"} {
+				rules = append(rules, fmt.Sprintf("%s %q %s", direction.match, bridge, verdict))
+			}
+		}
+	}
+	return rules
 }
 
 func dockerBridgeLabel(enabled bool) string {
@@ -29,117 +54,99 @@ func dockerBridgeLabel(enabled bool) string {
 	return "已关闭"
 }
 
-func readDockerBridge(content string) (enabled, found bool, err error) {
+func readDockerBridge(content string) (settings dockerBridgeSettings, found bool, err error) {
 	begins, ends := strings.Count(content, dockerBridgeBegin), strings.Count(content, dockerBridgeEnd)
 	if begins == 0 && ends == 0 {
-		return false, false, nil
-	}
-	if begins != 1 || ends != 1 {
-		return false, false, fmt.Errorf("Docker 流量放行开关标记损坏，未修改")
+		return settings, false, nil
 	}
 	begin, end := strings.Index(content, dockerBridgeBegin), strings.Index(content, dockerBridgeEnd)
-	if begin > end {
-		return false, false, fmt.Errorf("Docker 流量放行开关标记损坏，未修改")
+	if begins != 1 || ends != 1 || begin > end {
+		return settings, false, fmt.Errorf("Docker 流量放行开关标记损坏，未修改")
 	}
 	jumpAt := strings.Index(content, "jump forward_source_allow")
-	routeAt := strings.Index(content, "ip saddr $snail_forward_private_ipv4 goto forward_private_ports")
+	routeAt := strings.Index(content, dockerBridgeNextRule)
 	if jumpAt < 0 || routeAt < 0 || begin < jumpAt || end+len(dockerBridgeEnd) > routeAt {
-		return false, false, fmt.Errorf("Docker 流量放行开关不在转发链的来源放行和端口名单之间，未修改")
+		return settings, false, fmt.Errorf("Docker 流量放行开关不在转发链的来源放行和端口名单之间，未修改")
 	}
-	tokens, err := configTokens(content[begin+len(dockerBridgeBegin) : end])
+	body, err := withoutCounterStatements(content[begin+len(dockerBridgeBegin) : end])
 	if err != nil {
-		return false, false, err
+		return settings, false, err
 	}
-	switch {
-	case len(tokens) == 0:
-		return false, true, nil
-	case len(tokens) == 2 && tokens[0].text == "jump" && tokens[1].text == "forward_docker":
-		return true, true, nil
-	default:
-		return false, false, fmt.Errorf("Docker 流量放行开关内容已被手动修改，无法确认状态，未覆盖")
-	}
-}
-
-const forwardDockerChain = `    chain forward_docker {
-        iifname "docker0" counter accept
-        oifname "docker0" counter accept
-        iifname "docker_gwbridge" counter accept
-        oifname "docker_gwbridge" counter accept
-        iifname "br-*" counter accept
-        oifname "br-*" counter accept
-        return
-    }
-`
-
-// Older files can contain the jump switch without this chain. The jump is then
-// rejected because the chain does not exist.
-func ensureForwardDockerChain(content string) (string, error) {
-	if strings.Contains(content, "chain forward_docker {") {
-		return content, nil
-	}
-	hook := strings.Index(content, "type filter hook forward")
-	if hook < 0 {
-		return "", fmt.Errorf("请先返回防火墙管理，选择 d 生成本工具防火墙配置，再设置 Docker 流量放行")
-	}
-	chain := strings.LastIndex(content[:hook], "chain forward {")
-	if chain < 0 {
-		return "", fmt.Errorf("请先返回防火墙管理，选择 d 生成本工具防火墙配置，再设置 Docker 流量放行")
-	}
-	line := strings.LastIndex(content[:chain], "\n") + 1
-	return content[:line] + forwardDockerChain + "\n" + content[line:], nil
-}
-
-func withDockerBridge(content string, enabled bool) (string, bool, error) {
-	original := content
-	if enabled {
-		var err error
-		content, err = ensureForwardDockerChain(content)
-		if err != nil {
-			return "", false, err
+	var rules []string
+	for _, line := range strings.Split(body, "\n") {
+		line, _, _ = strings.Cut(line, "#")
+		line = strings.TrimSuffix(strings.TrimSpace(line), ";")
+		if fields := strings.Fields(line); len(fields) > 0 {
+			rules = append(rules, strings.Join(fields, " "))
 		}
 	}
+	if slices.Equal(rules, []string{dockerBridgeLegacyJump}) {
+		return dockerBridgeSettings{inbound: true, outbound: true}, true, nil
+	}
+	for _, candidate := range []dockerBridgeSettings{
+		{}, {inbound: true}, {outbound: true}, {inbound: true, outbound: true},
+	} {
+		if slices.Equal(rules, dockerBridgeRules(candidate, false)) {
+			return candidate, true, nil
+		}
+	}
+	return settings, false, fmt.Errorf("Docker 流量放行开关内容已被手动修改，无法确认状态，未覆盖")
+}
+
+func withDockerBridge(content string, settings dockerBridgeSettings) (string, bool, error) {
 	current, found, err := readDockerBridge(content)
 	if err != nil {
 		return "", false, err
 	}
-	if found && current == enabled || !found && !enabled {
-		return content, content != original, nil
+	if current == settings {
+		return content, false, nil
 	}
-	block := dockerBridgeBlock(enabled)
+	counters, err := packetCountersEnabled(content)
+	if err != nil {
+		return "", false, err
+	}
+	lines := append([]string{dockerBridgeBegin}, dockerBridgeRules(settings, counters)...)
+	block := strings.Join(append(lines, dockerBridgeEnd), "\n        ")
 	if found {
 		begin := strings.Index(content, dockerBridgeBegin)
 		end := strings.Index(content, dockerBridgeEnd) + len(dockerBridgeEnd)
 		return content[:begin] + block + content[end:], true, nil
 	}
-	route := "ip saddr $snail_forward_private_ipv4 goto forward_private_ports"
-	at := strings.Index(content, route)
-	if at < 0 {
-		return "", false, fmt.Errorf("请先返回防火墙管理，选择 d 生成本工具防火墙配置，再设置 Docker 流量放行")
+	at := strings.Index(content, dockerBridgeNextRule)
+	source := strings.Index(content, "jump forward_source_allow")
+	if source < 0 || at <= source {
+		return "", false, errors.New(dockerBridgeNeedsConfig)
 	}
 	lineStart := strings.LastIndex(content[:at], "\n") + 1
 	return content[:lineStart] + "        " + block + "\n" + content[lineStart:], true, nil
 }
 
-func dockerBridgeStateField() ui.CardField {
-	field := ui.CardField{Label: "Docker 流量放行"}
-	version, err := readConfigVersion()
+func (settings dockerBridgeSettings) fields() []ui.CardField {
+	return []ui.CardField{
+		{Label: dockerBridgeInbound, Value: dockerBridgeLabel(settings.inbound)},
+		{Label: dockerBridgeOutbound, Value: dockerBridgeLabel(settings.outbound)},
+	}
+}
+
+func dockerBridgeStateFields(content string) []ui.CardField {
+	if !hasManagedConfig(content) {
+		return []ui.CardField{
+			{Label: dockerBridgeInbound, Value: "未配置"},
+			{Label: dockerBridgeOutbound, Value: "未配置"},
+		}
+	}
+	settings, _, err := readDockerBridge(content)
 	if err != nil {
-		field.Value = "无法判断"
-		field.Detail = err.Error()
-		return field
+		return []ui.CardField{{Label: "Docker 流量放行", Value: "无法判断", Detail: err.Error()}}
 	}
-	if !version.exists || !hasManagedConfig(string(version.content)) {
-		field.Value = "未配置"
-		return field
+	return settings.fields()
+}
+
+func dockerBridgeAction(enabled bool) string {
+	if enabled {
+		return "关闭"
 	}
-	enabled, _, err := readDockerBridge(string(version.content))
-	if err != nil {
-		field.Value = "无法判断"
-		field.Detail = err.Error()
-		return field
-	}
-	field.Value = dockerBridgeLabel(enabled)
-	return field
+	return "开启"
 }
 
 func configureDockerBridge(view *ui.UI) error {
@@ -151,57 +158,54 @@ func configureDockerBridge(view *ui.UI) error {
 		if err != nil {
 			return err
 		}
-		if !version.exists || !hasManagedConfig(string(version.content)) || !strings.Contains(string(version.content), "hook forward") {
-			return fmt.Errorf("请先返回防火墙管理，选择 d 生成本工具防火墙配置，再设置 Docker 流量放行")
+		content := string(version.content)
+		if !version.exists || !hasManagedConfig(content) || !strings.Contains(content, "hook forward") {
+			return errors.New(dockerBridgeNeedsConfig)
 		}
-		enabled, _, err := readDockerBridge(string(version.content))
+		current, _, err := readDockerBridge(content)
 		if err != nil {
 			return err
 		}
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理", "转发规则管理", "Docker 流量放行")
-		ui.PrintInfoCard("Docker 流量放行",
-			ui.CardField{Label: "当前", Value: dockerBridgeLabel(enabled)},
-			ui.CardField{Label: "默认", Value: "关闭"},
-			ui.CardField{Label: "匹配", Value: "docker0、docker_gwbridge、br-*"},
-			ui.CardField{Label: "开启后", Value: "这些网卡的转发不再走端口名单，随后仍由 Docker 自己的防火墙决定"},
-			ui.CardField{Label: "不影响", Value: "入站规则、转发端口名单、连接标记和 DOCKER-USER"},
-			ui.CardField{Label: "前提", Value: "已安装 Docker 才能开启，关闭不受此限制"},
-		)
-		ui.MenuOption("1", "开启")
-		ui.MenuOption("2", "关闭")
+		ui.PrintInfoCard("Docker 流量放行", append(current.fields(),
+			ui.CardField{Label: "入站", Value: "转发到 Docker 网桥，例如访问已发布的容器端口"},
+			ui.CardField{Label: "出站", Value: "从 Docker 网桥发出的转发，例如容器访问外网"},
+			ui.CardField{Label: "匹配网桥", Value: "docker0、docker_gwbridge、br-*"},
+			ui.CardField{Label: "开启后", Value: "匹配方向在转发端口名单前放行，随后由 Docker 的防火墙规则处理"},
+		)...)
+		ui.MenuOption("1", dockerBridgeAction(current.inbound)+" "+dockerBridgeInbound)
+		ui.MenuOption("2", dockerBridgeAction(current.outbound)+" "+dockerBridgeOutbound)
 		ui.MenuExit("0/q", "返回转发规则管理")
-		choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "on", "2": "off"})
+		choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "inbound", "2": "outbound"})
 		if err != nil {
 			return err
 		}
-		target := choice == "on"
-		if target && !enabled {
+		next := current
+		direction, previouslyEnabled := dockerBridgeInbound, current.inbound
+		if choice == "inbound" {
+			next.inbound = !current.inbound
+		} else {
+			direction, previouslyEnabled = dockerBridgeOutbound, current.outbound
+			next.outbound = !current.outbound
+		}
+		if !previouslyEnabled {
 			if err := requireDockerPresent(); err != nil {
 				return err
 			}
 		}
-		updated, changed, err := withDockerBridge(string(version.content), target)
+		updated, _, err := withDockerBridge(content, next)
 		if err != nil {
 			return err
 		}
-		action := "关闭"
-		if target {
-			action = "开启"
-		}
-		if !changed {
-			ui.PrintInfoCard("无需修改", ui.CardField{Label: "Docker 流量放行", Value: dockerBridgeLabel(enabled)})
-			view.Pause()
-			continue
-		}
+		action := dockerBridgeAction(previouslyEnabled)
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理", "转发规则管理", "Docker 流量放行", "确认变更")
-		ui.PrintInfoCard("即将应用的 Docker 流量放行设置",
-			ui.CardField{Label: "当前", Value: dockerBridgeLabel(enabled)},
-			ui.CardField{Label: "操作", Value: action + " Docker 流量放行"},
+		ui.PrintInfoCard("即将应用的 Docker 流量放行设置", append(next.fields(),
+			ui.CardField{Label: "操作", Value: action + " " + direction},
 			ui.CardField{Label: "生效方式", Value: "保存并加载整份当前配置，包括其他待加载修改"},
-		)
-		confirmed, err := confirmMenuChange(view, "确认"+action+" Docker 流量放行并加载当前配置？", "转发规则管理")
+		)...)
+		confirmed, err := confirmMenuChange(view, "确认"+action+" "+direction+"并加载当前配置？", "转发规则管理")
 		if errors.Is(err, shared.ErrReturnToMenu) {
 			continue
 		}
@@ -217,10 +221,9 @@ func configureDockerBridge(view *ui.UI) error {
 		if err := applyConfig([]byte(updated)); err != nil {
 			return fmt.Errorf("Docker 流量放行配置已保存，但未成功加载；原配置已备份，可输入 r 重试: %w", err)
 		}
-		ui.PrintSuccessCard("Docker 流量放行已"+action,
-			ui.CardField{Label: "当前", Value: dockerBridgeLabel(target)},
+		ui.PrintSuccessCard(direction+"已"+action, append(next.fields(),
 			ui.CardField{Label: "生效状态", Value: "配置已保存并加载"},
-		)
+		)...)
 		return nil
 	}
 }

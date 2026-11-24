@@ -404,7 +404,7 @@ func configure(view *ui.UI) error {
 	if err != nil {
 		return err
 	}
-	dockerBridgeEnabled, dockerBridgeFound, err := readDockerBridge(string(version.content))
+	dockerBridge, dockerBridgeFound, err := readDockerBridge(string(version.content))
 	if err != nil {
 		return err
 	}
@@ -514,7 +514,7 @@ func configure(view *ui.UI) error {
 					return err
 				}
 				if dockerBridgeFound {
-					content, _, err = withDockerBridge(content, dockerBridgeEnabled)
+					content, _, err = withDockerBridge(content, dockerBridge)
 					if err != nil {
 						return err
 					}
