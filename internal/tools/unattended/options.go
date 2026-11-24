@@ -27,7 +27,7 @@ var policyOptions = []aptOption{
 	{"关机时安装更新", shutdownKey, "toggle", "false"},
 	{"修复中断的 dpkg", "Unattended-Upgrade::AutoFixInterruptedDpkg", "toggle", "true"},
 	{"仅接通交流电时更新", "Unattended-Upgrade::OnlyOnACPower", "toggle", "true"},
-	{"严格匹配允许名单", "Unattended-Upgrade::Package-Whitelist-Strict", "toggle", "false"},
+	{"软件包允许名单", "Unattended-Upgrade::Package-Whitelist-Strict", "whitelist", "false"},
 	{"按最小步骤升级", "Unattended-Upgrade::MinimalSteps", "toggle", "true"},
 	oldKernelOption,
 	{"移除新产生的无用依赖", "Unattended-Upgrade::Remove-New-Unused-Dependencies", "toggle", "true"},
@@ -52,6 +52,7 @@ func (service manager) optionMenu(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
 		current, err := service.policyValues()
+		whitelist, _, _, whitelistErr := service.loadWhitelist()
 		draw := func() {
 			ui.MenuTitle("系统工具", Title, "APT 策略与开关")
 			if err != nil {
@@ -66,7 +67,13 @@ func (service manager) optionMenu(view *ui.UI) error {
 					ui.MenuSection(section)
 				}
 				status := ""
-				if err == nil {
+				if option.kind == "whitelist" {
+					if whitelistErr != nil {
+						status = "检测失败"
+					} else {
+						status = ui.StateText(whitelist.menuStatus(), len(whitelist.patterns) > 0)
+					}
+				} else if err == nil {
 					value := current[option.key]
 					status = option.display(value, current[intervalKey])
 					isToggle := option.kind == "toggle" || option.kind == "numeric toggle"
@@ -82,8 +89,12 @@ func (service manager) optionMenu(view *ui.UI) error {
 			return err
 		}
 		index, _ := strconv.Atoi(choice)
+		option := policyOptions[index-1]
 		ui.RunAction(view, "修改 APT 策略失败", func() error {
-			return service.editOption(view, policyOptions[index-1])
+			if option.kind == "whitelist" {
+				return service.whitelistMenu(view)
+			}
+			return service.editOption(view, option)
 		})
 	}
 }
