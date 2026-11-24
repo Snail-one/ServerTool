@@ -48,7 +48,9 @@ func TestDockerBridgeStaysOffUntilEnabled(t *testing.T) {
 		t.Fatal(changed, err)
 	}
 	marked, _, err := withDockerForwardMark(opened)
-	if err != nil || strings.Contains(marked, `iifname "docker0" ct mark`) || !strings.Contains(marked, "ct state established,related ct mark set ct mark or 0x00800000 counter accept") {
+	if err != nil || strings.Contains(marked, `iifname "docker0" ct mark`) ||
+		strings.Contains(marked, "ct state established,related "+dockerForwardMarkExpr) ||
+		!strings.Contains(marked, "@snail_forward_public_ipv4_tcp_ports "+dockerForwardMarkExpr) {
 		t.Fatal("compat mark reached the docker bridge chain", err)
 	}
 	legacy := strings.Replace(content, "        "+dockerBridgeBegin+"\n        "+dockerBridgeEnd+"\n", "", 1)

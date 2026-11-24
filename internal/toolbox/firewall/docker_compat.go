@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"snail_tool/internal/log"
 	"snail_tool/internal/shared"
+	"snail_tool/internal/tempguard"
 	"snail_tool/internal/ui"
 )
 
@@ -17,6 +19,7 @@ const (
 	dockerForwardMark     = "0x00800000"
 	dockerForwardMarkExpr = "ct mark set ct mark or 0x00800000"
 	dockerForwardUnit     = "snail-docker-forward.service"
+	dockerForwardComment  = "snail-docker-forward"
 )
 
 // DockerForwardUnitPath is the boot helper that reinstalls the DOCKER-USER rule.
@@ -50,11 +53,19 @@ func addDockerForwardMarkLines(body string) string {
 }
 
 func withDockerForwardMark(content string) (string, bool, error) {
+	return configureDockerForwardMark(content, true)
+}
+
+func configureDockerForwardMark(content string, enabled bool) (string, bool, error) {
 	tokens, err := configTokens(content)
 	if err != nil {
 		return "", false, err
 	}
-	var positions []int
+	type edit struct {
+		start, end  int
+		replacement string
+	}
+	var edits []edit
 	for i := 0; i+3 < len(tokens); i++ {
 		if tokens[i].text != "table" || tokens[i+1].text != "inet" || tokens[i+2].text != "snail" || tokens[i+3].text != "{" {
 			continue
@@ -71,24 +82,37 @@ func withDockerForwardMark(content string) (string, bool, error) {
 			if err != nil {
 				return "", false, err
 			}
-			switch tokens[j+1].text {
-			case "forward", "forward_public_ports", "forward_private_ports", "forward_source_allow":
-				positions = append(positions, dockerForwardMarkPositions(content, tokens[j+3:end])...)
+			chain := tokens[j+1].text
+			if chain == "forward" || !enabled && dockerForwardPolicyChain(chain) {
+				// Older configs also marked the generic established/related rule.
+				start, stop := tokens[j+2].end, tokens[end].start
+				body := withoutDockerForwardMark(content[start:stop])
+				if body != content[start:stop] {
+					edits = append(edits, edit{start, stop, body})
+				}
+			}
+			if enabled && dockerForwardPolicyChain(chain) {
+				for _, at := range dockerForwardMarkPositions(content, tokens[j+3:end]) {
+					edits = append(edits, edit{at, at, dockerForwardMarkExpr + " "})
+				}
 			}
 			j = end
 		}
 		i = close
 	}
-	if len(positions) == 0 {
-		return content, false, nil
+	for i := len(edits) - 1; i >= 0; i-- {
+		change := edits[i]
+		content = content[:change.start] + change.replacement + content[change.end:]
 	}
-	updated := content
-	expr := dockerForwardMarkExpr + " "
-	for i := len(positions) - 1; i >= 0; i-- {
-		at := positions[i]
-		updated = updated[:at] + expr + updated[at:]
+	return content, len(edits) > 0, nil
+}
+
+func dockerForwardPolicyChain(chain string) bool {
+	switch chain {
+	case "forward_public_ports", "forward_private_ports", "forward_source_allow":
+		return true
 	}
-	return updated, true, nil
+	return false
 }
 
 // Insert before each rule's accept verdict, keeping a trailing anonymous
@@ -147,67 +171,190 @@ func hasDockerForwardMark(tokens []nftToken) bool {
 }
 
 func dockerForwardRuleArgs() []string {
-	return []string{"-m", "connmark", "--mark", dockerForwardMark + "/" + dockerForwardMark, "-j", "ACCEPT"}
+	return []string{"-m", "connmark", "--mark", dockerForwardMark + "/" + dockerForwardMark,
+		"-m", "comment", "--comment", dockerForwardComment, "-j", "ACCEPT"}
 }
 
-func dockerUserExists(command string) bool {
-	_, err := commandOutput(command, "-S", "DOCKER-USER")
-	return err == nil
-}
-
-func ensureDockerUserAccept(command string) (bool, error) {
-	if !dockerUserExists(command) {
-		return false, errDockerUserMissing
+func dockerUserAttached(command string) (bool, error) {
+	output, err := commandOutput(command, "-S", "FORWARD")
+	if err != nil {
+		return false, fmt.Errorf("读取 %s FORWARD 失败: %w: %s", command, err, strings.TrimSpace(output))
 	}
-	rule := dockerForwardRuleArgs()
-	if _, err := commandOutput(command, append([]string{"-C", "DOCKER-USER"}, rule...)...); err == nil {
-		return false, nil
-	}
-	if _, err := commandOutput(command, append([]string{"-I", "DOCKER-USER", "1"}, rule...)...); err != nil {
-		return false, fmt.Errorf("写入 %s DOCKER-USER 失败: %w", command, err)
-	}
-	return true, nil
-}
-
-func removeDockerUserAccept(command string) (bool, error) {
-	if !commandExists(command) || !dockerUserExists(command) {
-		return false, nil
-	}
-	rule := dockerForwardRuleArgs()
-	removed := false
-	for {
-		if _, err := commandOutput(command, append([]string{"-C", "DOCKER-USER"}, rule...)...); err != nil {
-			return removed, nil
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Join(strings.Fields(line), " ") == "-A FORWARD -j DOCKER-USER" {
+			return true, nil
 		}
-		if _, err := commandOutput(command, append([]string{"-D", "DOCKER-USER"}, rule...)...); err != nil {
-			return removed, fmt.Errorf("移除 %s DOCKER-USER 规则失败: %w", command, err)
+	}
+	return false, nil
+}
+
+// Inspect only the exact managed rule and its untagged predecessor.
+func dockerUserRules(command string) (rules [][]string, err error) {
+	output, err := commandOutput(command, "-S", "DOCKER-USER")
+	if err != nil {
+		return nil, fmt.Errorf("读取 %s DOCKER-USER 失败: %w: %s", command, err, strings.TrimSpace(output))
+	}
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[0] == "-A" && fields[1] == "DOCKER-USER" {
+			rules = append(rules, fields[2:])
+		}
+	}
+	return rules, nil
+}
+
+func dockerUserManagedRule(rule []string) (owned, tagged bool) {
+	// iptables may print hexadecimal marks without leading zeroes.
+	if len(rule) < 6 || !slices.Equal(rule[:3], []string{"-m", "connmark", "--mark"}) {
+		return false, false
+	}
+	legacy := []string{"-j", "ACCEPT"}
+	tagged = len(rule) == 10 && rule[4] == "-m" && rule[5] == "comment" &&
+		rule[6] == "--comment" && strings.Trim(rule[7], `"`) == dockerForwardComment &&
+		slices.Equal(rule[8:], legacy)
+	if !tagged && !slices.Equal(rule[4:], legacy) {
+		return false, false
+	}
+	value, mask, found := strings.Cut(rule[3], "/")
+	mark, markErr := strconv.ParseUint(value, 0, 32)
+	bits, maskErr := strconv.ParseUint(mask, 0, 32)
+	return found && markErr == nil && maskErr == nil && mark == 0x00800000 && bits == mark, tagged
+}
+
+func dockerUserRulePosition(rules [][]string) (position int, ready bool) {
+	position = 1
+	ruleIndex, managed := 0, 0
+	beforeReturn := true
+	for i, rule := range rules {
+		owned, tagged := dockerUserManagedRule(rule)
+		if owned {
+			managed++
+			if tagged {
+				ruleIndex = i + 1
+			}
+			continue
+		}
+		if slices.Equal(rule, []string{"-j", "RETURN"}) {
+			beforeReturn = false
+		}
+		if beforeReturn {
+			position++
+		}
+	}
+	return position, managed == 1 && ruleIndex == position
+}
+
+func deleteDockerUserRules(command string, rules [][]string) (bool, error) {
+	removed := false
+	for _, rule := range rules {
+		owned, tagged := dockerUserManagedRule(rule)
+		if !owned {
+			continue
+		}
+		args := dockerForwardRuleArgs()
+		if !tagged {
+			args = append(args[:4:4], "-j", "ACCEPT")
+		}
+		if output, err := commandOutput(command, append([]string{"-D", "DOCKER-USER"}, args...)...); err != nil {
+			return removed, fmt.Errorf("移除 %s DOCKER-USER 规则失败: %w: %s", command, err, strings.TrimSpace(output))
 		}
 		removed = true
 	}
+	return removed, nil
 }
 
-func SyncDockerForward() error {
-	var last error
-	for attempt := 0; attempt < dockerForwardAttempts; attempt++ {
-		if dockerUserExists("iptables") {
-			last = nil
-			break
-		}
-		_, last = commandOutput("iptables", "-S", "DOCKER-USER")
-		if attempt+1 == dockerForwardAttempts {
-			return fmt.Errorf("等待 DOCKER-USER 超时: %v", last)
-		}
-		dockerForwardWait()
+func ensureDockerUserAccept(command string) error {
+	rules, err := dockerUserRules(command)
+	if err != nil {
+		return err
 	}
-	if _, err := ensureDockerUserAccept("iptables"); err != nil {
+	position, ready := dockerUserRulePosition(rules)
+	if ready {
+		return nil
+	}
+	if _, err := deleteDockerUserRules(command, rules); err != nil {
+		return err
+	}
+	args := append([]string{"-I", "DOCKER-USER", strconv.Itoa(position)}, dockerForwardRuleArgs()...)
+	if output, err := commandOutput(command, args...); err != nil {
+		return fmt.Errorf("写入 %s DOCKER-USER 失败: %w: %s", command, err, strings.TrimSpace(output))
+	}
+	return nil
+}
+
+func removeDockerUserAccept(command string) (bool, error) {
+	if !commandExists(command) {
+		return false, nil
+	}
+	output, err := commandOutput(command, "-S")
+	if err != nil {
+		return false, fmt.Errorf("读取 %s filter 表失败: %w: %s", command, err, strings.TrimSpace(output))
+	}
+	for _, line := range strings.Split(output, "\n") {
+		if strings.TrimSpace(line) == "-N DOCKER-USER" {
+			rules, err := dockerUserRules(command)
+			if err != nil {
+				return false, err
+			}
+			return deleteDockerUserRules(command, rules)
+		}
+	}
+	return false, nil
+}
+
+func syncDockerUserRules() error {
+	attached, err := dockerUserAttached("iptables")
+	if err != nil {
+		return err
+	}
+	if !attached {
+		return errDockerUserMissing
+	}
+	if err := ensureDockerUserAccept("iptables"); err != nil {
 		return err
 	}
 	if commandExists("ip6tables") {
-		if _, err := ensureDockerUserAccept("ip6tables"); err != nil && !errors.Is(err, errDockerUserMissing) {
+		attached, err := dockerUserAttached("ip6tables")
+		if err != nil {
 			return err
+		}
+		if attached {
+			return ensureDockerUserAccept("ip6tables")
 		}
 	}
 	return nil
+}
+
+func SyncDockerForward() error {
+	release, err := lockDockerForward()
+	if err != nil {
+		return err
+	}
+	defer release()
+	enabled, err := dockerCompatEnabled()
+	if err != nil || !enabled {
+		return err
+	}
+	backend, backendErr := dockerFirewallBackend()
+	if backend != "" && backend != "iptables" {
+		return fmt.Errorf("当前 Docker 防火墙后端是 %s，无法同步 DOCKER-USER", backend)
+	}
+	if err := migrateDockerForwardConfig(); err != nil {
+		return err
+	}
+	for attempt := 0; attempt < dockerForwardAttempts; attempt++ {
+		err := syncDockerUserRules()
+		if !errors.Is(err, errDockerUserMissing) {
+			return err
+		}
+		if attempt+1 < dockerForwardAttempts {
+			dockerForwardWait()
+		}
+	}
+	if backendErr != nil {
+		return fmt.Errorf("等待 FORWARD 跳转到 DOCKER-USER 超时: %w", backendErr)
+	}
+	return fmt.Errorf("等待 FORWARD 跳转到 DOCKER-USER 超时: %w", errDockerUserMissing)
 }
 
 func dockerPresent() bool {
@@ -222,13 +369,10 @@ func requireDockerPresent() error {
 }
 
 func dockerFirewallBackend() (string, error) {
-	if err := requireDockerPresent(); err != nil {
-		return "", err
-	}
 	if !commandExists("docker") {
-		return "", fmt.Errorf("未找到 docker 命令")
+		return "", nil
 	}
-	output, err := commandOutput("docker", "info")
+	output, err := commandOutput("docker", "--host", "unix:///var/run/docker.sock", "info")
 	if err != nil {
 		return "", fmt.Errorf("读取 Docker 信息失败: %w: %s", err, strings.TrimSpace(output))
 	}
@@ -238,7 +382,7 @@ func dockerFirewallBackend() (string, error) {
 			return strings.TrimSpace(value), nil
 		}
 	}
-	return "", fmt.Errorf("docker info 没有 Firewall Backend，无法判断防火墙后端")
+	return "", nil
 }
 
 func dockerCompatEnabled() (bool, error) {
@@ -263,19 +407,108 @@ func dockerCompatEnabled() (bool, error) {
 	return false, nil
 }
 
+func liveDockerForwardConfig() (string, error) {
+	output, err := commandOutput("nft", "-nn", "list", "table", "inet", "snail")
+	if err != nil {
+		if strings.Contains(output, "No such file or directory") {
+			return "", nil
+		}
+		return "", fmt.Errorf("读取内核转发标记失败: %w: %s", err, strings.TrimSpace(output))
+	}
+	// nft prints the symbolic 'or' operator as a vertical bar.
+	return strings.ReplaceAll(output, "ct mark set ct mark | 0x00800000", dockerForwardMarkExpr), nil
+}
+
+func dockerForwardMarksLoaded(expected, live string) bool {
+	if !strings.Contains(live, "hook forward") || strings.Contains(live, "flags dormant") {
+		return false
+	}
+	wanted := strings.Count(expected, dockerForwardMarkExpr)
+	if wanted == 0 || wanted != strings.Count(live, dockerForwardMarkExpr) {
+		return false
+	}
+	_, changed, err := withDockerForwardMark(live)
+	return err == nil && !changed
+}
+
 func dockerCompatStateField() ui.CardField {
 	field := ui.CardField{Label: "Docker 放行标记"}
-	enabled, err := dockerCompatEnabled()
+	label, err := dockerCompatStatus()
+	field.Value = label
 	if err != nil {
-		field.Value = "无法判断"
 		field.Detail = err.Error()
-		return field
-	}
-	field.Value = "已关闭"
-	if enabled {
-		field.Value = ui.PrimaryText("已开启")
 	}
 	return field
+}
+
+func dockerCompatStatus() (string, error) {
+	enabled, err := dockerCompatEnabled()
+	if err != nil {
+		return "无法判断", err
+	}
+	version, err := readConfigVersion()
+	if err != nil {
+		return "无法判断", err
+	}
+	saved := string(version.content)
+	if !enabled {
+		if fileExists(DockerForwardUnitPath) {
+			return "规则未同步", nil
+		}
+		if strings.Contains(saved, dockerForwardMarkExpr) {
+			_, marked, err := configureDockerForwardMark(saved, false)
+			if err != nil {
+				return "无法判断", err
+			}
+			if marked {
+				return "规则未同步", nil
+			}
+		}
+		return "已关闭", nil
+	}
+	if backend, _ := dockerFirewallBackend(); backend != "" && backend != "iptables" {
+		return "后端不兼容（" + backend + "）", nil
+	}
+	expected, changed, err := withDockerForwardMark(saved)
+	if err != nil {
+		return "无法判断", err
+	}
+	if changed || !strings.Contains(expected, dockerForwardMarkExpr) {
+		return "规则未同步", nil
+	}
+	live, err := liveDockerForwardConfig()
+	if err != nil {
+		return "无法判断", err
+	}
+	if !dockerForwardMarksLoaded(expected, live) {
+		return "规则未同步", nil
+	}
+	for _, command := range []string{"iptables", "ip6tables"} {
+		if !commandExists(command) {
+			if command == "iptables" {
+				return "规则未同步", fmt.Errorf("未找到 iptables")
+			}
+			continue
+		}
+		attached, err := dockerUserAttached(command)
+		if err != nil {
+			return "无法判断", err
+		}
+		if !attached {
+			if command == "iptables" {
+				return "等待 Docker 转发链", nil
+			}
+			continue
+		}
+		rules, err := dockerUserRules(command)
+		if err != nil {
+			return "无法判断", err
+		}
+		if _, ready := dockerUserRulePosition(rules); !ready {
+			return "规则未同步", nil
+		}
+	}
+	return ui.PrimaryText("已生效"), nil
 }
 
 func dockerForwardUnitText() (string, error) {
@@ -318,15 +551,23 @@ func installDockerForwardUnit() error {
 	return nil
 }
 
-func removeDockerForwardUnit() error {
+func stopDockerForwardUnit() error {
 	if !commandExists("systemctl") {
-		return nil
+		return fmt.Errorf("未找到 systemctl，无法停止 Docker 放行标记服务")
 	}
-	_, _ = commandOutput("systemctl", "disable", "--now", dockerForwardUnit)
+	if output, err := commandOutput("systemctl", "disable", "--now", dockerForwardUnit); err != nil {
+		return fmt.Errorf("关闭 %s 失败: %w: %s", dockerForwardUnit, err, strings.TrimSpace(output))
+	}
+	return nil
+}
+
+func removeDockerForwardUnit() error {
 	if err := os.Remove(DockerForwardUnitPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("删除 %s 失败: %w", DockerForwardUnitPath, err)
 	}
-	_, _ = commandOutput("systemctl", "daemon-reload")
+	if output, err := commandOutput("systemctl", "daemon-reload"); err != nil {
+		return fmt.Errorf("systemctl daemon-reload 失败: %w: %s", err, strings.TrimSpace(output))
+	}
 	return nil
 }
 
@@ -341,15 +582,30 @@ func applyDockerForwardMarkIfEnabled(content string) (string, error) {
 
 func clearDockerForwardMarks() (bool, error) {
 	version, err := readConfigVersion()
-	if err != nil || !version.exists || !strings.Contains(string(version.content), dockerForwardMarkExpr) {
+	if err != nil || !version.exists || !hasManagedConfig(string(version.content)) {
 		return false, err
 	}
-	updated := withoutDockerForwardMark(string(version.content))
-	if err := writeConfig(updated, version); err != nil {
+	content := string(version.content)
+	updated, changed, err := configureDockerForwardMark(content, false)
+	if err != nil {
 		return false, err
+	}
+	if changed {
+		if err := writeConfig(updated, version); err != nil {
+			return false, err
+		}
+	} else {
+		live, err := liveDockerForwardConfig()
+		if err != nil {
+			return false, err
+		}
+		_, marked, err := configureDockerForwardMark(live, false)
+		if err != nil || !marked {
+			return false, err
+		}
 	}
 	if err := applyConfig([]byte(updated)); err != nil {
-		return true, fmt.Errorf("转发标记已从配置删除，但未成功加载；原配置已备份，可输入 r 重试: %w", err)
+		return false, fmt.Errorf("转发标记已从配置删除，但未成功加载；可重新选择关闭重试: %w", err)
 	}
 	return true, nil
 }
@@ -366,28 +622,71 @@ func prepareDockerForwardConfig() error {
 	if err != nil {
 		return err
 	}
-	if !changed {
-		return nil
+	if !strings.Contains(updated, dockerForwardMarkExpr) {
+		return fmt.Errorf("本工具防火墙配置没有可设置标记的转发规则")
 	}
-	if err := writeConfig(updated, version); err != nil {
-		return err
+	if changed {
+		if err := writeConfig(updated, version); err != nil {
+			return err
+		}
 	}
 	if err := applyConfig([]byte(updated)); err != nil {
-		return fmt.Errorf("转发标记已写入配置，但未成功加载；原配置已备份，可输入 r 重试: %w", err)
+		return fmt.Errorf("转发标记已保存，但未成功加载；可重新选择开启重试: %w", err)
 	}
 	return nil
 }
 
+// Existing installations can still have the broad connection-state mark.
+func migrateDockerForwardConfig() error {
+	version, err := readConfigVersion()
+	if err != nil || !version.exists {
+		return err
+	}
+	content := string(version.content)
+	if !hasManagedConfig(content) || !strings.Contains(content, dockerForwardMarkExpr) {
+		return nil
+	}
+	updated, changed, err := withDockerForwardMark(content)
+	if err != nil || !changed {
+		return err
+	}
+	if err := writeConfig(updated, version); err != nil {
+		return err
+	}
+	return applyConfig([]byte(updated))
+}
+
 func enableDockerCompat() error {
-	backend, err := dockerFirewallBackend()
+	release, err := lockDockerForward()
 	if err != nil {
 		return err
 	}
-	if backend != "iptables" {
-		return fmt.Errorf("当前 Docker 防火墙后端是 %s，没有 DOCKER-USER，暂不能开启这项兼容", backend)
+	defer release()
+	if err := requireDockerPresent(); err != nil {
+		return err
 	}
-	if !commandExists("iptables") {
-		return fmt.Errorf("未找到 iptables，无法写入 DOCKER-USER")
+	if !commandExists("iptables") || !commandExists("systemctl") {
+		return fmt.Errorf("Docker 放行标记需要 iptables 和 systemctl")
+	}
+	backend, backendErr := dockerFirewallBackend()
+	if backend != "" && backend != "iptables" {
+		return fmt.Errorf("当前 Docker 防火墙后端是 %s，无法使用 DOCKER-USER", backend)
+	}
+	attached, err := dockerUserAttached("iptables")
+	if err != nil {
+		return err
+	}
+	if !attached && backend != "iptables" {
+		state, _ := commandOutput("systemctl", "is-active", "docker.service")
+		switch strings.TrimSpace(state) {
+		case "inactive", "activating", "failed":
+			// The boot helper will check the backend and chain before writing.
+		default:
+			if backendErr != nil {
+				return backendErr
+			}
+			return fmt.Errorf("本机 iptables FORWARD 未跳转到 DOCKER-USER，无法确认 Docker 防火墙后端")
+		}
 	}
 	if err := prepareDockerForwardConfig(); err != nil {
 		return err
@@ -395,22 +694,23 @@ func enableDockerCompat() error {
 	if err := installDockerForwardUnit(); err != nil {
 		return err
 	}
-	if _, err := ensureDockerUserAccept("iptables"); err != nil {
-		if errors.Is(err, errDockerUserMissing) {
-			return errDockerUserMissing
-		}
-		return err
-	}
-	if commandExists("ip6tables") {
-		if _, err := ensureDockerUserAccept("ip6tables"); err != nil && !errors.Is(err, errDockerUserMissing) {
-			return err
-		}
-	}
-	return nil
+	return syncDockerUserRules()
 }
 
 func disableDockerCompat() (bool, error) {
+	release, err := lockDockerForward()
+	if err != nil {
+		return false, err
+	}
+	defer release()
 	removed := false
+	// Stop any running boot helper before removing rules it could reinstall.
+	hasUnit := fileExists(DockerForwardUnitPath)
+	if hasUnit {
+		if err := stopDockerForwardUnit(); err != nil {
+			return false, err
+		}
+	}
 	for _, command := range []string{"iptables", "ip6tables"} {
 		done, err := removeDockerUserAccept(command)
 		if err != nil {
@@ -418,21 +718,20 @@ func disableDockerCompat() (bool, error) {
 		}
 		removed = removed || done
 	}
-	enabled, err := dockerCompatEnabled()
-	if err != nil {
-		return removed, err
-	}
-	if enabled || fileExists(DockerForwardUnitPath) {
-		if err := removeDockerForwardUnit(); err != nil {
-			return removed, err
-		}
-		removed = true
-	}
 	cleared, err := clearDockerForwardMarks()
-	if err != nil {
-		return removed, err
+	if err != nil || !hasUnit {
+		return removed || cleared, err
 	}
-	return removed || cleared, nil
+	return true, removeDockerForwardUnit()
+}
+
+func lockDockerForward() (func(), error) {
+	guard := tempguard.Guard{Path: fmt.Sprintf("/tmp/.servertool-docker-forward-%d.lock", os.Geteuid())}
+	release, err := guard.Cleanup()
+	if err != nil {
+		return nil, fmt.Errorf("无法锁定 Docker 放行标记操作，请稍后重试: %w", err)
+	}
+	return release, nil
 }
 
 func fileExists(path string) bool {
@@ -445,23 +744,15 @@ func ConfigureDockerCompat(view *ui.UI) error {
 		return fmt.Errorf("设置 Docker 放行标记需要 root 权限，请使用 sudo 运行本工具")
 	}
 	for {
-		enabled, err := dockerCompatEnabled()
-		if err != nil {
-			return err
-		}
-		state := "已关闭"
-		if enabled {
-			state = ui.PrimaryText("已开启")
-		}
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理", "常用功能设置", "Docker 放行标记")
 		ui.PrintInfoCard("Docker 放行标记",
-			ui.CardField{Label: "开关", Value: state},
-			ui.CardField{Label: "作用", Value: "本工具转发放行后，Docker 不再把这些连接丢掉"},
-			ui.CardField{Label: "做法", Value: "转发放行打连接标记，DOCKER-USER 只接受这个标记"},
+			dockerCompatStateField(),
+			ui.CardField{Label: "作用", Value: "让 Docker 接受命中本工具转发端口或来源放行的连接"},
+			ui.CardField{Label: "做法", Value: "带标记的连接先经过 DOCKER-USER 中已有的过滤规则"},
 			ui.CardField{Label: "开机", Value: "Docker 每次启动后自动补上这条规则"},
 			ui.CardField{Label: "不影响", Value: "没有标记的流量仍走 Docker 原来的规则"},
-			ui.CardField{Label: "前提", Value: "已安装 Docker 才能开启，关闭不受此限制"},
+			ui.CardField{Label: "前提", Value: "需要 Docker 的 iptables 后端"},
 		)
 		ui.MenuOption("1", "开启")
 		ui.MenuOption("2", "关闭")
@@ -487,7 +778,7 @@ func ConfigureDockerCompat(view *ui.UI) error {
 			err = enableDockerCompat()
 			if errors.Is(err, errDockerUserMissing) {
 				ui.PrintSuccessCard("Docker 放行标记已开启",
-					ui.CardField{Label: "当前规则", Value: "DOCKER-USER 还不存在，Docker 启动后自动补上"},
+					ui.CardField{Label: "当前规则", Value: "等待 FORWARD 跳转到 DOCKER-USER，Docker 启动后会尝试同步"},
 					ui.CardField{Label: "开机", Value: dockerForwardUnit},
 				)
 				return nil
@@ -502,7 +793,7 @@ func ConfigureDockerCompat(view *ui.UI) error {
 			)
 			return nil
 		}
-		confirmed, err := confirmFeatureChange(view, "确认关闭 Docker 放行标记？Docker 会重新拦截未被它自己放行的转发。")
+		confirmed, err := confirmFeatureChange(view, "确认关闭 Docker 放行标记？会移除打标规则和 Docker 中对应的接收规则。")
 		if errors.Is(err, shared.ErrReturnToMenu) {
 			continue
 		}

@@ -18,8 +18,20 @@ func TestDockerForwardMarkStaysOnForwardAccepts(t *testing.T) {
 	if err != nil || !changed {
 		t.Fatal(changed, err)
 	}
-	if !strings.Contains(updated, "ct state established,related ct mark set ct mark or 0x00800000 counter accept") {
-		t.Fatal("forward established accept was not marked")
+	if strings.Contains(updated, "ct state established,related "+dockerForwardMarkExpr) {
+		t.Fatal("generic established accept was marked")
+	}
+	if !strings.Contains(updated, "@snail_forward_public_ipv4_tcp_ports "+dockerForwardMarkExpr) {
+		t.Fatal("explicit port allow was not marked")
+	}
+	legacy := strings.Replace(updated, "ct state established,related counter accept\n        jump forward_source_allow",
+		"ct state established,related "+dockerForwardMarkExpr+" counter accept\n        jump forward_source_allow", 1)
+	if legacy == updated {
+		t.Fatal("failed to create legacy rule fixture")
+	}
+	migrated, changed, err := withDockerForwardMark(legacy)
+	if err != nil || !changed || migrated != updated {
+		t.Fatalf("legacy mark was not removed: changed=%v err=%v", changed, err)
 	}
 	if strings.Contains(updated, "iifname \"lo\" ct mark") || strings.Contains(updated, "hook input priority 0; policy drop;\n\n        # 已建立连接、关联流量及回环\n        ct state established,related ct mark") {
 		t.Fatal("input accepts were marked")
@@ -44,6 +56,8 @@ func TestDockerForwardMarkOnlyEditsForwardAcceptVerdicts(t *testing.T) {
 table inet snail {
 	chain forward {
 		type filter hook forward priority -10; policy accept;
+	}
+	chain forward_public_ports {
 		# accept this comment unchanged
 		meta l4proto vmap { tcp : accept, udp : drop }
 		tcp dport 80 ` + dockerForwardMarkExpr + ` accept; tcp dport 443 accept comment "accept"
@@ -69,27 +83,43 @@ func TestSyncDockerForwardInsertsMissingRuleOnly(t *testing.T) {
 	setupTest(t)
 	dockerForwardAttempts = 1
 	t.Cleanup(func() { dockerForwardAttempts = 30 })
+	if err := os.WriteFile(DockerForwardUnitPath, []byte("unit"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	var calls []string
-	commandExists = func(name string) bool { return name == "iptables" || name == "ip6tables" }
+	commandExists = func(name string) bool {
+		return name == "iptables" || name == "ip6tables" || name == "systemctl"
+	}
 	commandOutput = func(name string, args ...string) (string, error) {
 		calls = append(calls, name+" "+strings.Join(args, " "))
-		if name == "ip6tables" && args[0] == "-C" {
+		switch {
+		case name == "systemctl":
+			return "enabled", nil
+		case args[0] == "-S" && args[1] == "FORWARD":
+			return "-A FORWARD -j DOCKER-USER\n", nil
+		case args[0] == "-S" && args[1] == "DOCKER-USER":
+			if name == "ip6tables" {
+				return "-A DOCKER-USER " + strings.Join(dockerForwardRuleArgs(), " ") + "\n", nil
+			}
+			return "-A DOCKER-USER -m connmark --mark 0x800000/0x800000 -j ACCEPT\n" +
+				"-A DOCKER-USER -s 192.0.2.1/32 -j DROP\n-A DOCKER-USER -j RETURN\n", nil
+		case args[0] == "-I" || args[0] == "-D":
+			return "", nil
+		default:
+			t.Fatalf("unexpected command %s %v", name, args)
 			return "", nil
 		}
-		if len(args) > 0 && args[0] == "-C" {
-			return "", errors.New("missing")
-		}
-		return "", nil
 	}
 	if err := SyncDockerForward(); err != nil {
 		t.Fatal(err)
 	}
 	joined := strings.Join(calls, "\n")
-	if !strings.Contains(joined, "iptables -I DOCKER-USER 1 -m connmark --mark 0x00800000/0x00800000 -j ACCEPT") {
-		t.Fatalf("missing insert: %s", joined)
+	if !strings.Contains(joined, "iptables -D DOCKER-USER -m connmark --mark 0x00800000/0x00800000 -j ACCEPT") ||
+		!strings.Contains(joined, "iptables -I DOCKER-USER 2 "+strings.Join(dockerForwardRuleArgs(), " ")) {
+		t.Fatalf("legacy rule was not moved behind the user drop: %s", joined)
 	}
-	if strings.Contains(joined, "ip6tables -I") {
-		t.Fatalf("existing IPv6 rule was inserted again: %s", joined)
+	if strings.Contains(joined, "ip6tables -I") || strings.Contains(joined, "ip6tables -D") {
+		t.Fatalf("existing IPv6 rule was changed: %s", joined)
 	}
 }
 
@@ -117,18 +147,15 @@ func TestEnableDockerCompatWritesUnitAndMarkWithCountersOff(t *testing.T) {
 		case "nft":
 			return "", nil
 		case "iptables":
+			if args[0] == "-S" && args[1] == "FORWARD" {
+				return "-A FORWARD -j DOCKER-USER\n", nil
+			}
 			if args[0] == "-S" {
 				return "-N DOCKER-USER\n", nil
 			}
-			if args[0] == "-C" {
-				return "", errors.New("missing")
-			}
 			return "", nil
 		case "ip6tables":
-			if args[0] == "-S" {
-				return "", errors.New("no chain")
-			}
-			return "", nil
+			return "-P FORWARD ACCEPT\n", nil
 		case "systemctl":
 			return "", nil
 		default:
@@ -203,7 +230,7 @@ func TestDockerMarkExistsOnlyWhileCompatIsOn(t *testing.T) {
 			return "", nil
 		}
 		if name == "iptables" && len(args) > 0 && args[0] == "-S" {
-			return "", errors.New("no chain")
+			return "-P FORWARD ACCEPT\n", nil
 		}
 		t.Fatalf("unexpected command %s %v", name, args)
 		return "", errors.New("unexpected")
@@ -229,7 +256,102 @@ func TestDockerMarkExistsOnlyWhileCompatIsOn(t *testing.T) {
 		return "", errors.New("unexpected")
 	}
 	rebuilt, err := applyDockerForwardMarkIfEnabled(content)
-	if err != nil || !strings.Contains(rebuilt, "ct state established,related "+dockerForwardMarkExpr+" counter accept") {
+	if err != nil || !strings.Contains(rebuilt, "@snail_forward_public_ipv4_tcp_ports "+dockerForwardMarkExpr+" counter accept") {
 		t.Fatalf("rebuild while enabled did not mark forward accepts, err=%v", err)
+	}
+}
+
+func TestDockerCompatRetriesFailedLoadWithLegacyDocker(t *testing.T) {
+	setupTest(t)
+	content, err := buildConfig([]int{22}, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	loads := 0
+	installed, attached := false, true
+	commandExists = func(name string) bool { return name != "ip6tables" }
+	commandOutput = func(name string, args ...string) (string, error) {
+		switch name {
+		case "docker":
+			return "Server Version: 28.5.2\n", nil
+		case "nft":
+			switch args[0] {
+			case "-f":
+				loads++
+				if loads == 1 {
+					return "load failed", errors.New("nft failure")
+				}
+			case "-nn":
+				if loads == 1 {
+					return content, nil
+				}
+				saved, err := os.ReadFile(configPath)
+				return strings.ReplaceAll(string(saved), dockerForwardMarkExpr, "ct mark set ct mark | 0x00800000"), err
+			}
+		case "systemctl":
+			if args[0] == "is-enabled" {
+				return "enabled", nil
+			}
+		case "iptables":
+			switch {
+			case args[0] == "-S" && args[1] == "FORWARD":
+				if attached {
+					return "-A FORWARD -j DOCKER-USER\n", nil
+				}
+				return "-P FORWARD DROP\n", nil
+			case args[0] == "-S" && args[1] == "DOCKER-USER":
+				if installed {
+					return "-A DOCKER-USER " + strings.Join(dockerForwardRuleArgs(), " ") + "\n", nil
+				}
+			case args[0] == "-I":
+				installed = true
+			}
+		default:
+			t.Fatalf("unexpected command %s %v", name, args)
+		}
+		return "", nil
+	}
+
+	if err := enableDockerCompat(); err == nil {
+		t.Fatal("first load should fail")
+	}
+	if field := dockerCompatStateField(); field.Value != "规则未同步" {
+		t.Fatalf("partially applied state = %+v", field)
+	}
+	if err := enableDockerCompat(); err != nil {
+		t.Fatal(err)
+	}
+	if loads != 2 || !installed {
+		t.Fatalf("loads=%d rule installed=%v", loads, installed)
+	}
+	if field := dockerCompatStateField(); !strings.Contains(field.Value, "已生效") {
+		t.Fatalf("applied state = %+v", field)
+	}
+	attached = false
+	if field := dockerCompatStateField(); field.Value != "等待 Docker 转发链" {
+		t.Fatalf("detached status = %+v", field)
+	}
+	attached, installed = true, false
+	if field := dockerCompatStateField(); field.Value != "规则未同步" {
+		t.Fatalf("missing rule status = %+v", field)
+	}
+}
+
+func TestDockerCompatRejectsConfirmedNativeBackend(t *testing.T) {
+	setupTest(t)
+	commandExists = func(string) bool { return true }
+	commandOutput = func(name string, args ...string) (string, error) {
+		if name == "docker" {
+			return "Firewall Backend: nftables\n", nil
+		}
+		t.Fatalf("unexpected command %s %v", name, args)
+		return "", nil
+	}
+	if err := enableDockerCompat(); err == nil || !strings.Contains(err.Error(), "nftables") {
+		t.Fatalf("native backend result = %v", err)
 	}
 }
