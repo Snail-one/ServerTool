@@ -14,7 +14,6 @@ type aptOption struct {
 	label, key, kind, fallback string
 }
 
-var rebootOption = aptOption{"自动重启", rebootKey, "toggle", "false"}
 var oldKernelOption = aptOption{"移除不再使用的内核包", "Unattended-Upgrade::Remove-Unused-Kernel-Packages", "toggle", "true"}
 
 var policyOptions = []aptOption{
@@ -22,7 +21,7 @@ var policyOptions = []aptOption{
 	{"自动更新频率", upgradeKey, "frequency", "1"},
 	{"预下载频率", downloadKey, "interval", "0"},
 	{"APT 定时任务总开关", "APT::Periodic::Enable", "numeric toggle", "1"},
-	rebootOption,
+	{"自动重启", rebootKey, "toggle", "false"},
 	{"允许有用户时重启", "Unattended-Upgrade::Automatic-Reboot-WithUsers", "toggle", "true"},
 	{"自动重启时间", "Unattended-Upgrade::Automatic-Reboot-Time", "reboot time", "now"},
 	{"关机时安装更新", shutdownKey, "toggle", "false"},
@@ -68,7 +67,13 @@ func (service manager) optionMenu(view *ui.UI) error {
 				}
 				status := ""
 				if err == nil {
-					status = option.display(current[option.key], current[intervalKey])
+					value := current[option.key]
+					status = option.display(value, current[intervalKey])
+					isToggle := option.kind == "toggle" || option.kind == "numeric toggle"
+					isInterval := option.kind == "interval" || option.kind == "frequency"
+					if isToggle && strings.HasPrefix(status, "开启") || isInterval && activeInterval(value) {
+						status = ui.PrimaryText(status)
+					}
 				}
 				ui.MenuOptionHint(strconv.Itoa(index+1), option.label, status)
 			}

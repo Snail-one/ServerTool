@@ -246,7 +246,7 @@ func (service manager) scopeMenu(view *ui.UI) error {
 		if err != nil {
 			return err
 		}
-		choices := map[string]string{"1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6", "7": "7"}
+		choices := map[string]string{"1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6"}
 		if scope.Managed {
 			choices["x"] = "x"
 		}
@@ -264,12 +264,10 @@ func (service manager) scopeMenu(view *ui.UI) error {
 			if cleanup.Value == "关闭" {
 				cleanup.Detail = "其他自动依赖清理也可能移除闲置内核"
 			}
-			reboot := rebootOption.display(policy[rebootOption.key], "")
 			fields = append(fields,
 				cleanup,
 				ui.CardField{Label: scopeOptions["5"].label, Value: labels["5"]},
 				ui.CardField{Label: scopeOptions["6"].label, Value: labels["6"]},
-				ui.CardField{Label: "服务器自动重启", Value: reboot},
 			)
 			ui.PrintInfoCard("当前策略", fields...)
 			fmt.Println()
@@ -282,7 +280,6 @@ func (service manager) scopeMenu(view *ui.UI) error {
 			ui.MenuOptionStatus("4", "旧内核清理", badge(cleanup.Value))
 			ui.MenuOptionStatusHint("5", scopeOptions["5"].label, badge(labels["5"]), "包含已配置的 Docker 官方稳定仓库")
 			ui.MenuOptionStatusHint("6", scopeOptions["6"].label, badge(labels["6"]), "检查 Debian 稳定版是否有新大版本")
-			ui.MenuOptionStatus("7", "服务器自动重启", badge(reboot))
 			if scope.Managed {
 				fmt.Println()
 				ui.MenuShortcutHint("x", "恢复原生更新范围", "移除本工具设定的来源和排除规则")
@@ -294,14 +291,10 @@ func (service manager) scopeMenu(view *ui.UI) error {
 			return err
 		}
 		ui.RunAction(view, "修改更新策略失败", func() error {
-			switch choice {
-			case "4":
+			if choice == "4" {
 				return service.editOption(view, oldKernelOption)
-			case "7":
-				return service.editOption(view, rebootOption)
-			default:
-				return service.editScope(view, choice, labels[choice], scope, previous, exists)
 			}
+			return service.editScope(view, choice, labels[choice], scope, previous, exists)
 		})
 	}
 }

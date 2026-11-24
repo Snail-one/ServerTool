@@ -59,7 +59,7 @@ func (service manager) menu(view *ui.UI) error {
 			ui.PrintInfoCard("系统定时器", timers...)
 			fmt.Println()
 			ui.MenuSection("更新设置")
-			ui.MenuOptionHint("1", "更新范围与开关", "安全更新、内核、Docker 与重启")
+			ui.MenuOptionHint("1", "更新范围与开关", "安全更新、内核与 Docker")
 			ui.MenuOptionHint("2", "APT 策略与开关", "更新频率、重启时间、软件包清理、邮件报告")
 			ui.MenuOptionHint("3", "设置定时器", "触发时刻、随机延迟、补跑")
 			fmt.Println()
