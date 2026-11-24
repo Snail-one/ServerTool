@@ -78,7 +78,7 @@ func selectCleanupRuntime(view interface{ Ask(string) (string, error) }, runtime
 func runDockerCleanup(view *ui.UI, rt runtime.Runtime) error {
 	for {
 		ui.ClearScreen()
-		ui.MenuTitle("容器管理", "清理容器资源")
+		ui.MenuTitle("容器管理", "Docker 清理")
 		printContainerDiskUsage(rt, "当前 "+rt.Display+" 磁盘占用")
 		fmt.Println()
 		volumeNote := "仅选项 10 删除；常规与深度系统清理均保留"

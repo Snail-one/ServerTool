@@ -42,12 +42,14 @@ func Run(view *ui.UI) error {
 		fmt.Println()
 		ui.MenuOptionHint("1", "Docker 管理", "查看状态、日志与生命周期操作")
 		ui.MenuOptionHint("2", "Compose", "查看、更新与重建项目")
+		fmt.Println()
 		if hasDocker {
 			ui.MenuOptionHint("3", "Docker 配置", "服务代理、构建与容器代理、日志轮转")
 		} else {
 			ui.MenuOptionHint("3", "Docker 配置", "仅 Docker 可用；代理、日志轮转")
 		}
-		ui.MenuOptionHint("4", "清理容器资源", "容器、网络、镜像、数据卷与构建缓存")
+		fmt.Println()
+		ui.MenuOptionHint("4", "Docker 清理", "容器、网络、镜像、数据卷与构建缓存")
 		ui.MenuOptionHint("5", uninstallName, "可选择保留或永久删除数据")
 		ui.MenuExit("0/q", "返回")
 
