@@ -159,7 +159,7 @@ func configureDockerBridge(view *ui.UI) error {
 			return err
 		}
 		ui.ClearScreen()
-		ui.MenuTitle("防火墙管理", "常用功能设置", "Docker 流量放行")
+		ui.MenuTitle("防火墙管理", "转发规则管理", "Docker 流量放行")
 		ui.PrintInfoCard("Docker 流量放行",
 			ui.CardField{Label: "当前", Value: dockerBridgeLabel(enabled)},
 			ui.CardField{Label: "默认", Value: "关闭"},
@@ -170,7 +170,7 @@ func configureDockerBridge(view *ui.UI) error {
 		)
 		ui.MenuOption("1", "开启")
 		ui.MenuOption("2", "关闭")
-		ui.MenuExit("0/q", "返回常用功能设置")
+		ui.MenuExit("0/q", "返回转发规则管理")
 		choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "on", "2": "off"})
 		if err != nil {
 			return err
@@ -195,13 +195,13 @@ func configureDockerBridge(view *ui.UI) error {
 			continue
 		}
 		ui.ClearScreen()
-		ui.MenuTitle("防火墙管理", "常用功能设置", "Docker 流量放行", "确认变更")
+		ui.MenuTitle("防火墙管理", "转发规则管理", "Docker 流量放行", "确认变更")
 		ui.PrintInfoCard("即将应用的 Docker 流量放行设置",
 			ui.CardField{Label: "当前", Value: dockerBridgeLabel(enabled)},
 			ui.CardField{Label: "操作", Value: action + " Docker 流量放行"},
 			ui.CardField{Label: "生效方式", Value: "保存并加载整份当前配置，包括其他待加载修改"},
 		)
-		confirmed, err := confirmFeatureChange(view, "确认"+action+" Docker 流量放行并加载当前配置？")
+		confirmed, err := confirmMenuChange(view, "确认"+action+" Docker 流量放行并加载当前配置？", "转发规则管理")
 		if errors.Is(err, shared.ErrReturnToMenu) {
 			continue
 		}

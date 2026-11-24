@@ -10,7 +10,7 @@ import (
 func showMenu() {
 	fmt.Println()
 	ui.MenuOptionHint("1", "访问规则管理", "公网 / 内网端口 · 内网 IP 范围 · 规则配置")
-	ui.MenuOptionHint("2", "转发规则管理", "转发端口 · 转发内网范围 · 规则配置")
+	ui.MenuOptionHint("2", "转发规则管理", "转发端口 · 内网范围 · 规则配置 · Docker 放行")
 	ui.MenuOptionHint("3", "端口映射管理", "将本机端口映射到指定 IP 和端口")
 	fmt.Println()
 	ui.MenuOptionHint("4", "查看端口策略", "公网 / 内网 · Docker 发布端口")
@@ -37,7 +37,11 @@ func showMenu() {
 }
 
 func confirmFeatureChange(view *ui.UI, question string) (bool, error) {
-	ui.PrintField("取消", "回车或 n 返回常用功能设置，0/q 返回上一步")
+	return confirmMenuChange(view, question, "常用功能设置")
+}
+
+func confirmMenuChange(view *ui.UI, question, parent string) (bool, error) {
+	ui.PrintField("取消", "回车或 n 返回"+parent+"，0/q 返回上一步")
 	return view.Confirm(question + "(y/N)：")
 }
 
@@ -59,7 +63,7 @@ func runFeatureSettings(view *ui.UI) error {
 		fields = append(fields, echoStateFields(installed, live)...)
 		fields = append(fields, packetCounterStateField(installed, live))
 		fields = append(fields, forwardingStateField(inspectForwarding()))
-		fields = append(fields, sshAccessStateField(), dockerBridgeStateField(), dockerCompatStateField())
+		fields = append(fields, sshAccessStateField())
 		ui.PrintInfoCard("功能状态", fields...)
 		fmt.Println()
 		switch {
@@ -75,11 +79,8 @@ func runFeatureSettings(view *ui.UI) error {
 		ui.MenuOptionHint("4", "内核转发", "分别设置 IPv4 / IPv6 转发")
 		ui.MenuOptionHint("5", "SSH 访问", "分别设置公网 / 内网 SSH 访问")
 		fmt.Println()
-		ui.MenuOptionHint("6", "Docker 流量放行", "由 Docker 管理网桥转发")
-		ui.MenuOptionHint("7", "Docker 放行标记", "让 Docker 接受 ServerTool 已放行的转发")
-		fmt.Println()
 		ui.MenuExit("0/q", "返回防火墙管理")
-		choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "autostart", "2": "ping", "3": "counters", "4": "forwarding", "5": "ssh", "6": "docker", "7": "compat"})
+		choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "autostart", "2": "ping", "3": "counters", "4": "forwarding", "5": "ssh"})
 		if err != nil {
 			return err
 		}
@@ -103,14 +104,6 @@ func runFeatureSettings(view *ui.UI) error {
 		case "ssh":
 			shared.RunAction(view, "设置 SSH 访问失败，已返回常用功能设置", func() error {
 				return configureSSHAccess(view)
-			})
-		case "docker":
-			shared.RunAction(view, "设置 Docker 流量放行失败，已返回常用功能设置", func() error {
-				return configureDockerBridge(view)
-			})
-		case "compat":
-			shared.RunAction(view, "设置 Docker 放行标记失败，已返回常用功能设置", func() error {
-				return ConfigureDockerCompat(view)
 			})
 		}
 	}

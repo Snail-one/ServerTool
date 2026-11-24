@@ -50,6 +50,28 @@ func TestSourceRuleCanChangeBranchAfterReturning(t *testing.T) {
 	}
 }
 
+func TestDockerSettingsOpenFromForwardRuleManager(t *testing.T) {
+	setupTest(t)
+	version := ruleTestConfig(t, nil)
+	view := inputUI(t, "6\nq\n7\nq\nq\nparent-next\n")
+	output := capturePortOutput(t, func() {
+		if err := runForwardRuleManager(view); !errors.Is(err, shared.ErrReturnToMenu) {
+			t.Fatal(err)
+		}
+	})
+	for _, name := range []string{"Docker 流量放行", "Docker 放行标记"} {
+		if !strings.Contains(output, "转发规则管理  ›  "+name) {
+			t.Fatalf("%s did not open under the forward rule manager:\n%s", name, output)
+		}
+	}
+	if next, err := view.ReadLine(); err != nil || next != "parent-next" {
+		t.Fatalf("Docker menu navigation consumed parent input: %q %v", next, err)
+	}
+	if shared.ReadFileString(configPath) != string(version.content) {
+		t.Fatal("opening Docker settings changed the firewall configuration")
+	}
+}
+
 func TestRuleDraftDefaultsToKeepingUnsavedChanges(t *testing.T) {
 	for _, forward := range []bool{false, true} {
 		t.Run(map[bool]string{false: "access", true: "forward"}[forward], func(t *testing.T) {
@@ -101,6 +123,11 @@ func TestRuleDraftShowsDraftActionsOnlyWithChanges(t *testing.T) {
 		if strings.Contains(before, label) || strings.Count(edited, label) != 1 || strings.Contains(restored, label) {
 			t.Fatalf("%q should appear only with unsaved changes:\n%s", label, output)
 		}
+	}
+	const warning = "⚠ 有未保存的修改。"
+	if strings.Contains(before, warning) || strings.Contains(restored, warning) ||
+		!strings.Contains(edited, warning+"输入 s 保存并应用。\n\n❯ 请选择：") {
+		t.Fatalf("the unsaved warning should appear one blank line above the menu prompt only with changes:\n%s", output)
 	}
 	if !strings.Contains(before, "0/q 返回防火墙管理") || !strings.Contains(restored, "0/q 返回防火墙管理") {
 		t.Fatal("a clean draft should offer to return to the firewall menu")

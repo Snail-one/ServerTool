@@ -745,7 +745,7 @@ func ConfigureDockerCompat(view *ui.UI) error {
 	}
 	for {
 		ui.ClearScreen()
-		ui.MenuTitle("防火墙管理", "常用功能设置", "Docker 放行标记")
+		ui.MenuTitle("防火墙管理", "转发规则管理", "Docker 放行标记")
 		ui.PrintInfoCard("Docker 放行标记",
 			dockerCompatStateField(),
 			ui.CardField{Label: "作用", Value: "让 Docker 接受命中本工具转发端口或来源放行的连接"},
@@ -756,7 +756,7 @@ func ConfigureDockerCompat(view *ui.UI) error {
 		)
 		ui.MenuOption("1", "开启")
 		ui.MenuOption("2", "关闭")
-		ui.MenuExit("0/q", "返回常用功能设置")
+		ui.MenuExit("0/q", "返回转发规则管理")
 		choice, err := askRuleChoice(view, "请选择", "", map[string]string{"1": "on", "2": "off"})
 		if err != nil {
 			return err
@@ -765,7 +765,7 @@ func ConfigureDockerCompat(view *ui.UI) error {
 			if err := requireDockerPresent(); err != nil {
 				return err
 			}
-			confirmed, err := confirmFeatureChange(view, "确认开启 Docker 放行标记？会更新防火墙转发规则并加载。")
+			confirmed, err := confirmMenuChange(view, "确认开启 Docker 放行标记？会更新防火墙转发规则并加载。", "转发规则管理")
 			if errors.Is(err, shared.ErrReturnToMenu) {
 				continue
 			}
@@ -793,7 +793,7 @@ func ConfigureDockerCompat(view *ui.UI) error {
 			)
 			return nil
 		}
-		confirmed, err := confirmFeatureChange(view, "确认关闭 Docker 放行标记？会移除打标规则和 Docker 中对应的接收规则。")
+		confirmed, err := confirmMenuChange(view, "确认关闭 Docker 放行标记？会移除打标规则和 Docker 中对应的接收规则。", "转发规则管理")
 		if errors.Is(err, shared.ErrReturnToMenu) {
 			continue
 		}

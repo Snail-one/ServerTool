@@ -67,14 +67,17 @@ func runPolicyRuleManager(view *ui.UI, label string) error {
 		if err != nil {
 			return err
 		}
-		_, err = editPolicyDraft(view, string(version.content), false, func(draft string) (bool, error) {
+		original := string(version.content)
+		draft, err := editPolicyDraft(view, original, false, func(draft string) (bool, error) {
 			return saveAccessRules(version, draft)
 		})
 		if err != nil {
 			return err
 		}
-		ui.PrintSuccessCard(label + "已保存并加载")
-		view.PauseWithPrompt("按回车返回" + sessionTitle() + "…")
+		if draft != original {
+			ui.PrintSuccessCard(label + "已保存并加载")
+			view.PauseWithPrompt("按回车返回" + sessionTitle() + "…")
+		}
 	}
 }
 
@@ -85,9 +88,13 @@ func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string
 // save reports whether the draft was written, even if loading it failed.
 // When unset, the editor returns the draft to the caller for further review.
 func editPolicyDraft(view *ui.UI, original string, generating bool, save func(string) (bool, error)) (string, error) {
-	if activeSession != nil && activeSession.forward {
-		if err := validateForwardConfig(original); err != nil {
-			return "", err
+	forward := activeSession != nil && activeSession.forward
+	showDocker := forward && !generating && save != nil
+	var forwardConfigErr error
+	if forward {
+		forwardConfigErr = validateForwardConfig(original)
+		if forwardConfigErr != nil && !showDocker {
+			return "", forwardConfigErr
 		}
 	} else {
 		if !hasManagedConfig(original) {
@@ -106,30 +113,47 @@ func editPolicyDraft(view *ui.UI, original string, generating bool, save func(st
 		changes := policyChangeFields(original, draft)
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理", sessionTitle())
-		summary := accessSummaryFields(draft)
+		var summary []ui.CardField
 		label := "访问规则"
-		if activeSession != nil && activeSession.forward {
-			summary = forwardSummaryFields(draft)
+		if forward {
 			label = "转发规则"
+			if forwardConfigErr != nil {
+				summary = []ui.CardField{{Label: "配置状态", Value: forwardConfigErr.Error()}}
+			} else {
+				summary = forwardSummaryFields(draft)
+			}
+		} else {
+			summary = accessSummaryFields(draft)
 		}
 		card := label + "草稿（尚未保存）"
 		if !generating && len(changes) == 0 {
 			card = label + "（当前配置）"
 		}
 		ui.PrintInfoCard(card, summary...)
+		if showDocker {
+			ui.PrintInfoCard("Docker 转发状态", dockerBridgeStateField(), dockerCompatStateField())
+		}
 		if notice != "" {
 			fmt.Println()
 			ui.PrintSectionCard("提示", ui.CardField{Value: notice})
 			fmt.Println()
 			notice = ""
 		}
-		ui.MenuOptionHint("1", "端口放行", "同时设置公网和内网端口")
-		ui.MenuOptionHint("2", "公网端口", "单独设置公网开放端口")
-		ui.MenuOptionHint("3", "内网端口", "单独设置内网开放端口")
-		ui.MenuOptionHint("5", "规则配置", "来源、目标、网卡和端口；接受或拒绝")
-		fmt.Println()
-		ui.MenuShortcutHint("l", "内网 IP 范围", "设置哪些 IP / 网段按内网处理")
-		ui.MenuShortcutHint("p", "预览配置", "查看本次变更及完整配置")
+		if forwardConfigErr == nil {
+			ui.MenuOptionHint("1", "端口放行", "同时设置公网和内网端口")
+			ui.MenuOptionHint("2", "公网端口", "单独设置公网开放端口")
+			ui.MenuOptionHint("3", "内网端口", "单独设置内网开放端口")
+			ui.MenuOptionHint("5", "规则配置", "来源、目标、网卡和端口；接受或拒绝")
+		}
+		if showDocker {
+			ui.MenuOptionHint("6", "Docker 流量放行", "由 Docker 管理网桥转发")
+			ui.MenuOptionHint("7", "Docker 放行标记", "让 Docker 接受 ServerTool 已放行的转发")
+		}
+		if forwardConfigErr == nil {
+			fmt.Println()
+			ui.MenuShortcutHint("l", "内网 IP 范围", "设置哪些 IP / 网段按内网处理")
+			ui.MenuShortcutHint("p", "预览配置", "查看本次变更及完整配置")
+		}
 		if len(changes) > 0 {
 			ui.MenuShortcutHint("r", "还原本次草稿", "撤销本次全部修改")
 		}
@@ -146,6 +170,14 @@ func editPolicyDraft(view *ui.UI, original string, generating bool, save func(st
 			exitLabel = "返回配置确认"
 		}
 		ui.MenuExit("0/q", exitLabel)
+		if len(changes) > 0 {
+			warning := "⚠ 有未保存的修改。输入 s 保存并应用。"
+			if generating {
+				warning = "⚠ 有未保存的修改。输入 s 采用草稿，返回配置确认。"
+			}
+			fmt.Println(ui.WarningBoldText(warning))
+			fmt.Println()
+		}
 		choice, err := view.Ask("请选择：")
 		if err != nil {
 			return "", err
@@ -165,6 +197,27 @@ func editPolicyDraft(view *ui.UI, original string, generating bool, save func(st
 			return "", shared.ErrReturnToMenu
 		}
 		choice = strings.ToLower(choice)
+		if showDocker && (choice == "6" || choice == "7") {
+			if len(changes) > 0 {
+				notice = "Docker 设置会立即应用，请先保存或还原转发规则草稿"
+				continue
+			}
+			if choice == "6" {
+				shared.RunAction(view, "设置 Docker 流量放行失败，已返回转发规则管理", func() error {
+					return configureDockerBridge(view)
+				})
+			} else {
+				shared.RunAction(view, "设置 Docker 放行标记失败，已返回转发规则管理", func() error {
+					return ConfigureDockerCompat(view)
+				})
+			}
+			// Reopen the editor with a fresh snapshot after an immediate update.
+			return original, nil
+		}
+		if forwardConfigErr != nil {
+			ui.InvalidChoice()
+			continue
+		}
 		switch choice {
 		case "p":
 			ui.ClearScreen()
@@ -215,7 +268,7 @@ func editPolicyDraft(view *ui.UI, original string, generating bool, save func(st
 			var updated string
 			switch choice {
 			case "1", "2", "3":
-				if activeSession != nil && activeSession.forward {
+				if forward {
 					err = validateForwardConfig(draft)
 				} else {
 					err = validatePolicyConfig(draft)
