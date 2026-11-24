@@ -8,6 +8,7 @@ import (
 	"snail_tool/internal/tools/commands"
 	"snail_tool/internal/tools/golang"
 	"snail_tool/internal/tools/startupinfo"
+	"snail_tool/internal/tools/unattended"
 	"snail_tool/internal/tools/ups"
 	"snail_tool/internal/ui"
 )
@@ -31,7 +32,8 @@ func Run(view *ui.UI, report *startup.Report) error {
 		}
 		ui.MenuOptionStatus("2", "Go 语言环境", ui.SoftwareBadge(goStatus, goVersion != ""))
 		ui.MenuOptionStatus("3", "UPS（NUT）", ui.ConfiguredBadge(ups.IsUPSConfigured()))
-		ui.MenuOption("4", "查看本次启动信息")
+		ui.MenuOption("4", "unattended-upgrades 管理")
+		ui.MenuOption("5", "查看本次启动信息")
 		ui.MenuExit("0/q", "返回")
 
 		choice, err := view.Ask("请选择：")
@@ -57,6 +59,10 @@ func Run(view *ui.UI, report *startup.Report) error {
 				return ups.Run(view)
 			})
 		case "4":
+			ui.RunAction(view, "自动更新管理失败，已返回系统工具菜单", func() error {
+				return unattended.Run(view)
+			})
+		case "5":
 			ui.RunAction(view, "查看启动信息失败，已返回系统工具菜单", func() error {
 				return startupinfo.Show(report)
 			})
