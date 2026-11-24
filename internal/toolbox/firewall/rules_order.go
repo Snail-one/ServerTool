@@ -53,10 +53,12 @@ func reorderAllowRulesDraft(view *ui.UI, rules []allowRule) ([]allowRule, error)
 	for {
 		sourceRulePage("调整规则顺序", allowRule{})
 		state := "与进入本页时的顺序一致"
+		exit := "返回规则配置"
 		if !reflect.DeepEqual(draft, rules) {
 			state = "有未保存的调整"
+			exit = "放弃本次调整并返回"
 		}
-		ui.PrintInfoCard("规则顺序草稿",
+		ui.PrintInfoCard("规则顺序",
 			ui.CardField{Label: "状态", Value: state},
 			ui.CardField{Label: "选中规则", Value: selected},
 			ui.CardField{Label: "匹配顺序", Value: "从上到下；TCP+UDP 规则作为一个整体移动"},
@@ -73,9 +75,9 @@ func reorderAllowRulesDraft(view *ui.UI, rules []allowRule) ([]allowRule, error)
 		ui.MenuShortcutHint("d", "下移", "")
 		ui.MenuShortcutHint("t", "置顶", "")
 		ui.MenuShortcutHint("b", "置底", "")
-		ui.MenuShortcutHint("r", "还原草稿", "")
-		ui.MenuShortcutHint("s", "采用顺序并返回", "加入"+sessionDraftName()+"，最后统一保存")
-		ui.MenuExit("0/q", "放弃草稿并返回")
+		ui.MenuShortcutHint("r", "还原进入本页时的顺序", "")
+		ui.MenuShortcutHint("s", "采用顺序并返回", "返回"+sessionTitle()+"后统一保存")
+		ui.MenuExit("0/q", exit)
 		choice, err := view.Ask("请选择操作或规则：")
 		if err != nil {
 			return nil, err
@@ -108,7 +110,7 @@ func reorderAllowRulesDraft(view *ui.UI, rules []allowRule) ([]allowRule, error)
 			continue
 		case "s":
 			if reflect.DeepEqual(draft, rules) {
-				notice = "顺序未变化，无需保存"
+				notice = "顺序未变化"
 				continue
 			}
 			ui.PrintSuccessCard("规则顺序已加入草稿", ui.CardField{Label: "规则数量", Value: fmt.Sprintf("%d 条", len(draft))})

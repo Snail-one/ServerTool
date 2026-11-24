@@ -179,9 +179,9 @@ func editSourceRulesDraft(view *ui.UI, original string) (string, error) {
 			return "", err
 		}
 		sourceRulePage("", allowRule{})
-		ui.PrintInfoCard("规则配置草稿",
+		ui.PrintInfoCard("规则配置",
 			ui.CardField{Label: "匹配顺序", Value: "从上到下，先命中的规则生效"},
-			ui.CardField{Label: "保存方式", Value: "返回" + sessionTitle() + "后统一保存"},
+			ui.CardField{Label: "保存方式", Value: "修改后返回" + sessionTitle() + "统一保存"},
 		)
 		printRuleOrder(rules, "")
 		ui.MenuShortcutHint("n", "新建规则", "默认放行，拒绝会插到最前面")
@@ -191,7 +191,7 @@ func editSourceRulesDraft(view *ui.UI, original string) (string, error) {
 		if len(rules) > 0 {
 			ui.MenuShortcutHint("f", "按端口查找并删除规则", "")
 		}
-		ui.MenuExit("0/q", "返回"+sessionDraftName())
+		ui.MenuExit("0/q", "返回"+sessionTitle())
 		prompt := "请选择："
 		if len(rules) > 0 {
 			prompt = "请输入规则序号、完整 ID 或操作："

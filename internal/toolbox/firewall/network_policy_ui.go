@@ -75,6 +75,8 @@ func runPolicyRuleManager(view *ui.UI, label string) error {
 			return err
 		}
 		if draft != original {
+			ui.ClearScreen()
+			ui.MenuTitle("防火墙管理", sessionTitle())
 			ui.PrintSuccessCard(label + "已保存并加载")
 			view.PauseWithPrompt("按回车返回" + sessionTitle() + "…")
 		}
@@ -226,7 +228,7 @@ func editPolicyDraft(view *ui.UI, original string, generating bool, save func(st
 				ui.PrintInfoCard("待应用的变更", changes...)
 			}
 			fmt.Println(draft)
-			view.PauseWithPrompt("按回车返回草稿…")
+			view.PauseWithPrompt("按回车返回" + sessionTitle() + "…")
 		case "r":
 			draft = original
 			notice = "已还原本次全部修改"
@@ -275,7 +277,7 @@ func editPolicyDraft(view *ui.UI, original string, generating bool, save func(st
 				}
 				if err != nil {
 					log.Warn(err)
-					view.PauseWithPrompt("按回车返回" + sessionDraftName() + "…")
+					view.PauseWithPrompt("按回车返回" + sessionTitle() + "…")
 					continue
 				}
 				scope := map[string]string{"1": "3", "2": "1", "3": "2"}[choice]
@@ -294,7 +296,7 @@ func editPolicyDraft(view *ui.UI, original string, generating bool, save func(st
 					)
 					ui.MenuOption("1", "IPv4 内网范围")
 					ui.MenuOption("2", "IPv6 内网范围")
-					ui.MenuExit("0/q", "返回"+sessionDraftName())
+					ui.MenuExit("0/q", "返回"+sessionTitle())
 					var family string
 					family, err = askRuleChoice(view, "请选择 IP 版本", "", map[string]string{"1": "ipv4", "2": "ipv6"})
 					if err == nil {
@@ -320,7 +322,7 @@ func editPolicyDraft(view *ui.UI, original string, generating bool, save func(st
 			}
 			if err != nil {
 				log.Warn(err)
-				view.PauseWithPrompt("按回车返回" + sessionDraftName() + "…")
+				view.PauseWithPrompt("按回车返回" + sessionTitle() + "…")
 				continue
 			}
 			if updated != draft {

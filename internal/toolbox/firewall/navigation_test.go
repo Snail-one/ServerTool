@@ -133,3 +133,24 @@ func TestRuleDraftShowsDraftActionsOnlyWithChanges(t *testing.T) {
 		t.Fatal("a clean draft should offer to return to the firewall menu")
 	}
 }
+
+func TestSavedRulePagesUseCurrentConfigurationLabels(t *testing.T) {
+	setupTest(t)
+	ruleTestConfig(t, orderTestRules())
+	acceptRuleCommands(t)
+	view := inputUI(t, "3\n1\n1\n1\n8443\ns\n\n5\no\nq\nq\np\n\nq\n")
+	output := capturePortOutput(t, func() {
+		if err := runAccessRuleManager(view); !errors.Is(err, shared.ErrReturnToMenu) {
+			t.Fatal(err)
+		}
+	})
+	_, saved, found := strings.Cut(output, "访问规则已保存并加载")
+	if !found || !strings.Contains(saved, "访问规则（当前配置）") {
+		t.Fatal("saving did not return to the current configuration")
+	}
+	for _, label := range []string{"草稿", "有未保存的修改"} {
+		if strings.Contains(saved, label) {
+			t.Fatalf("saved rule pages still show %q", label)
+		}
+	}
+}

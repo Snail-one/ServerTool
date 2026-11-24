@@ -39,13 +39,6 @@ func sessionLists() []policyList {
 	return policyLists
 }
 
-func sessionDraftName() string {
-	if activeSession != nil && activeSession.forward {
-		return "转发规则草稿"
-	}
-	return "访问规则草稿"
-}
-
 func useForwardSession() func() {
 	session := policySession{
 		title:   "转发规则管理",
