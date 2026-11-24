@@ -248,7 +248,7 @@ func (service Service) change(view *ui.UI, version configuration.Version, mappin
 
 	Page("确认端口映射变更")
 	ui.PrintInfoCard("端口映射变更",
-		ui.CardField{Label: "操作", Value: action + " " + mapping.description()},
+		ui.CardField{Label: "操作", Value: action + " " + mapping.description(), Changed: updated != string(version.Content)},
 		ui.CardField{Label: "转发条件", Value: "远程目标需要开启内核转发、放行转发后的目标端口，回包须经本机"},
 		ui.CardField{Label: "生效方式", Value: "保存并加载整份防火墙配置，映射用于新连接"},
 	)

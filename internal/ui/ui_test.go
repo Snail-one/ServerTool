@@ -110,7 +110,7 @@ func captureStdout(t *testing.T, run func()) string {
 }
 
 func stripANSI(input string) string {
-	for _, code := range []string{reset, bold, dim, orange, blue, green, yellow, gray, white} {
+	for _, code := range []string{reset, bold, dim, orange, blue, green, yellow, red, gray, lightBlue, white} {
 		input = strings.ReplaceAll(input, code, "")
 	}
 	return input
@@ -290,6 +290,53 @@ func TestSemanticCardsUseSharedLayoutAndColors(t *testing.T) {
 	}
 	if !strings.Contains(output, gray+"实际生效配置"+reset) {
 		t.Fatalf("卡片详情未使用灰色：%q", output)
+	}
+}
+
+func TestCardStatusColors(t *testing.T) {
+	t.Setenv("TERM", "xterm")
+	t.Setenv("CLICOLOR_FORCE", "1")
+	t.Setenv("NO_COLOR", "")
+	os.Unsetenv("NO_COLOR")
+	for _, test := range []struct {
+		value   string
+		changed bool
+		want    string
+	}{
+		{value: "已开启", want: white + "已开启" + reset},
+		{value: "开启（默认）", want: white + "开启（默认）" + reset},
+		{value: "IPv4 已开启 · IPv6 已关闭", want: white + "IPv4 已开启 ·" + gray + " IPv6 已关闭" + white + reset},
+		{value: "已拦截", want: white + gray + "已拦截" + white + reset},
+		{value: "已关闭（默认）", want: white + gray + "已关闭（默认）" + white + reset},
+		{value: "[未安装]", want: white + gray + "[未安装]" + white + reset},
+		{value: "未生效 · 软件包未安装", want: white + gray + "未生效 " + white + "·" + gray + " 软件包未安装" + white + reset},
+		{value: "未生效 · 索引刷新策略未开启", want: white + gray + "未生效 " + white + "·" + gray + " 索引刷新策略未开启" + white + reset},
+		{value: "未找到", want: white + gray + "未找到" + white + reset},
+		{value: "已屏蔽", want: white + gray + "已屏蔽" + white + reset},
+		{value: "无法判断", want: white + yellow + "无法判断" + white + reset},
+		{value: "未知间隔", want: white + yellow + "未知间隔" + white + reset},
+		{value: "规则未同步", want: white + yellow + "规则未同步" + white + reset},
+		{value: "未同步 · 配置与内核规则不同", want: white + yellow + "未同步 " + white + "· 配置与内核规则不同" + reset},
+		{value: "后端不兼容（nftables）", want: white + yellow + "后端不兼容（nftables）" + white + reset},
+		{value: "等待 Docker 转发链", want: white + yellow + "等待 Docker 转发链" + white + reset},
+		{value: "当前系统不支持 APT 更新管理", want: white + yellow + "当前系统不支持 APT 更新管理" + white + reset},
+		{value: "无法确认 · 定时器检测失败", want: white + yellow + "无法确认 " + white + "·" + red + " 定时器检测失败" + white + reset},
+		{value: "检测失败", want: white + red + "检测失败" + white + reset},
+		{value: "APT 策略检测失败", want: white + red + "APT 策略检测失败" + white + reset},
+		{value: "运行失败", want: white + red + "运行失败" + white + reset},
+		{value: "调度已生效 · 每 7 天", want: white + "调度已生效 · 每 7 天" + reset},
+		{value: "已关闭", changed: true, want: lightBlue + "已关闭" + reset},
+		{value: "默认丢弃（drop）", want: white + "默认丢弃（drop）" + reset},
+		{value: "关闭会影响 Docker、VPN 和路由转发；开启后仍受转发规则约束", want: white + "关闭会影响 Docker、VPN 和路由转发；开启后仍受转发规则约束" + reset},
+		{value: "未找到 inet snail；不能据此判断服务器端口全部开放或关闭", want: white + "未找到 inet snail；不能据此判断服务器端口全部开放或关闭" + reset},
+	} {
+		if got := cardValue(test.value, test.changed); got != test.want {
+			t.Errorf("cardValue(%q, %v) = %q, want %q", test.value, test.changed, got, test.want)
+		}
+	}
+	t.Setenv("NO_COLOR", "1")
+	if got := cardValue("IPv4 已开启 · IPv6 已关闭", true); got != "IPv4 已开启 · IPv6 已关闭" {
+		t.Fatalf("cardValue with NO_COLOR = %q", got)
 	}
 }
 

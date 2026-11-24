@@ -339,7 +339,7 @@ func (service Service) Run(view *ui.UI) error {
 		ui.MenuTitle("防火墙管理", "常用功能设置", "数据包统计", "确认变更")
 		ui.PrintInfoCard("即将应用的数据包统计设置",
 			ui.CardField{Label: "当前配置", Value: state},
-			ui.CardField{Label: "操作", Value: action + "数据包统计"},
+			ui.CardField{Label: "操作", Value: action + "数据包统计", Changed: updated != content},
 			ui.CardField{Label: "影响", Value: "保存并加载整份当前配置，现有累计计数可能重置"},
 		)
 		confirmed, err := ui.ConfirmMenuChange(view, "确认"+action+"本工具数据包统计并加载当前配置？", "常用功能设置")

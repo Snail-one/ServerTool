@@ -210,7 +210,7 @@ func (service Service) Run(view *ui.UI) error {
 		operation = "恢复默认：删除配置文件，同时关闭 IPv4 / IPv6 转发（不支持的协议跳过）"
 		successTitle = "内核转发已恢复默认"
 	}
-	fields := []ui.CardField{{Label: "操作", Value: operation}}
+	fields := []ui.CardField{{Label: "操作", Value: operation, Changed: true}}
 	if removeOnly {
 		operation = "仅删除内核转发配置文件"
 		fields[0].Value = operation

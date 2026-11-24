@@ -8,24 +8,102 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"snail_tool/internal/input"
 )
 
 const (
-	reset  = "\033[0m"
-	bold   = "\033[1m"
-	dim    = "\033[2m"
-	orange = "\033[38;5;208m"
-	blue   = "\033[34m"
-	green  = "\033[32m"
-	yellow = "\033[33m"
-	red    = "\033[31m"
-	gray   = "\033[90m"
-	white  = "\033[97m"
+	reset     = "\033[0m"
+	bold      = "\033[1m"
+	dim       = "\033[2m"
+	orange    = "\033[38;5;208m"
+	blue      = "\033[34m"
+	green     = "\033[32m"
+	yellow    = "\033[33m"
+	red       = "\033[31m"
+	gray      = "\033[90m"
+	lightBlue = "\033[94m"
+	white     = "\033[97m"
 )
 
-var terminalStyle = regexp.MustCompile(`\x1b\[[0-9;:]*m`)
+var (
+	terminalStyle = regexp.MustCompile(`\x1b\[[0-9;:]*m`)
+	cardValuePart = regexp.MustCompile(`[^·，\n]+`)
+)
+
+const (
+	cardTonePlain = iota
+	cardToneInactive
+	cardToneUncertain
+	cardToneFailure
+)
+
+// cardStatusWords are short state phrases. A longer explanatory sentence that
+// merely contains one of these words stays white.
+var cardStatusWords = []struct {
+	word string
+	tone int
+}{
+	{"关闭", cardToneInactive},
+	{"已关闭", cardToneInactive},
+	{"未开启", cardToneInactive},
+	{"未启用", cardToneInactive},
+	{"未生效", cardToneInactive},
+	{"已停用", cardToneInactive},
+	{"已禁用", cardToneInactive},
+	{"已拦截", cardToneInactive},
+	{"已禁止", cardToneInactive},
+	{"已停止", cardToneInactive},
+	{"已暂停", cardToneInactive},
+	{"未运行", cardToneInactive},
+	{"未启动", cardToneInactive},
+	{"未设置", cardToneInactive},
+	{"未配置", cardToneInactive},
+	{"未安装", cardToneInactive},
+	{"未接管", cardToneInactive},
+	{"未找到", cardToneInactive},
+	{"未发现", cardToneInactive},
+	{"未检测到", cardToneInactive},
+	{"已屏蔽", cardToneInactive},
+	{"无容器", cardToneInactive},
+	{"未限制", cardToneInactive},
+	{"暂无", cardToneInactive},
+	{"无法确认", cardToneUncertain},
+	{"无法判断", cardToneUncertain},
+	{"无法检测", cardToneUncertain},
+	{"无法比较", cardToneUncertain},
+	{"无法读取", cardToneUncertain},
+	{"无法解析", cardToneUncertain},
+	{"无法获取", cardToneUncertain},
+	{"无法识别", cardToneUncertain},
+	{"未知", cardToneUncertain},
+	{"不支持", cardToneUncertain},
+	{"不兼容", cardToneUncertain},
+	{"部分开启", cardToneUncertain},
+	{"部分开放", cardToneUncertain},
+	{"部分接管", cardToneUncertain},
+	{"部分运行", cardToneUncertain},
+	{"取决于软件包来源", cardToneUncertain},
+	{"由自定义 APT 规则决定", cardToneUncertain},
+	{"未同步", cardToneUncertain},
+	{"规则未同步", cardToneUncertain},
+	{"等待", cardToneUncertain},
+	{"未识别", cardToneUncertain},
+	{"正在启动", cardToneUncertain},
+	{"正在停止", cardToneUncertain},
+	{"配置读取失败", cardToneFailure},
+	{"状态获取失败", cardToneFailure},
+	{"检测失败", cardToneFailure},
+	{"读取失败", cardToneFailure},
+	{"校验失败", cardToneFailure},
+	{"加载失败", cardToneFailure},
+	{"保存失败", cardToneFailure},
+	{"执行失败", cardToneFailure},
+	{"检查失败", cardToneFailure},
+	{"运行失败", cardToneFailure},
+	{"失败", cardToneFailure},
+}
 
 type UI struct {
 	reader     *bufio.Reader
@@ -35,10 +113,12 @@ type UI struct {
 
 // CardField is one labeled value in a terminal information card. Detail is
 // rendered on a muted continuation line and is useful for paths or directives.
+// Changed marks a proposed or pending change to the field value.
 type CardField struct {
-	Label  string
-	Value  string
-	Detail string
+	Label   string
+	Value   string
+	Detail  string
+	Changed bool
 }
 
 func New() *UI {
@@ -382,7 +462,7 @@ func StateText(text string, active bool) string {
 }
 
 // PrintInfoCard and its variants put the card title in the top border.
-// Labeled values use white even when the caller supplies colored badges.
+// Labeled values use the card palette independently of the caller's styling.
 func PrintInfoCard(title string, fields ...CardField) {
 	printCard(title, orange, fields)
 }
@@ -412,14 +492,159 @@ func printCard(title, titleColor string, fields []CardField) {
 		if label == "" {
 			fmt.Println(PrimaryText("│") + " " + value)
 		} else {
-			value = paint(white, strings.TrimSpace(terminalStyle.ReplaceAllString(value, "")))
-			fmt.Println(PrimaryText("│") + " " + InfoText(label+"：") + value)
+			fmt.Println(PrimaryText("│") + " " + InfoText(label+"：") + cardValue(value, field.Changed))
 		}
 		if detail := strings.TrimSpace(field.Detail); detail != "" {
 			fmt.Println(PrimaryText("│") + "   " + MutedText(detail))
 		}
 	}
 	fmt.Println(PrimaryText("╰" + strings.Repeat("─", 46)))
+}
+
+func cardValue(value string, changed bool) string {
+	value = strings.TrimSpace(terminalStyle.ReplaceAllString(value, ""))
+	if value == "" || !colorEnabled() {
+		return value
+	}
+	if changed {
+		return lightBlue + value + reset
+	}
+	value = cardValuePart.ReplaceAllStringFunc(value, func(part string) string {
+		switch cardTone(strings.TrimSpace(part)) {
+		case cardToneInactive:
+			return gray + part + white
+		case cardToneUncertain:
+			return yellow + part + white
+		case cardToneFailure:
+			return red + part + white
+		default:
+			return part
+		}
+	})
+	return white + value + reset
+}
+
+func cardTone(status string) int {
+	status = strings.TrimSpace(status)
+	if strings.HasPrefix(status, "[") && strings.HasSuffix(status, "]") {
+		if tone := cardTone(status[1 : len(status)-1]); tone != cardTonePlain {
+			return tone
+		}
+	}
+	if bare, ok := stripStatusParenthetical(status); ok {
+		if tone := cardToneCore(bare); tone != cardTonePlain {
+			return tone
+		}
+	}
+	if tone := cardToneCore(status); tone != cardTonePlain {
+		return tone
+	}
+	return embeddedStatusTone(status)
+}
+
+func cardToneCore(status string) int {
+	status = strings.TrimSpace(status)
+	if tone := statusWordTone(stripStatusScope(status)); tone != cardTonePlain {
+		return tone
+	}
+	return statusWordTone(status)
+}
+
+func stripStatusScope(status string) string {
+	for _, prefix := range []string{"IPv4", "IPv6", "公网", "局域网", "入站", "出站"} {
+		if !strings.HasPrefix(status, prefix) {
+			continue
+		}
+		rest := strings.TrimPrefix(status, prefix)
+		if rest == "" {
+			continue
+		}
+		first, _ := utf8.DecodeRuneInString(rest)
+		if first != ' ' && !isHan(first) {
+			continue
+		}
+		rest = strings.TrimSpace(rest)
+		if rest != "" {
+			return rest
+		}
+	}
+	return status
+}
+
+func stripStatusParenthetical(status string) (string, bool) {
+	for _, pair := range [][2]string{{"（", "）"}, {"(", ")"}} {
+		if !strings.HasSuffix(status, pair[1]) {
+			continue
+		}
+		start := strings.LastIndex(status, pair[0])
+		if start <= 0 {
+			return status, false
+		}
+		return strings.TrimSpace(status[:start]), true
+	}
+	return status, false
+}
+
+func statusWordTone(status string) int {
+	bestRunes, bestTone := 0, cardTonePlain
+	for _, item := range cardStatusWords {
+		runes := utf8.RuneCountInString(item.word)
+		if runes < bestRunes {
+			continue
+		}
+		matched := false
+		switch {
+		case status == item.word:
+			matched = true
+		case strings.HasPrefix(status, item.word) && shortStatusTail(status[len(item.word):]):
+			matched = true
+		case strings.HasSuffix(status, item.word) && shortStatusHead(status[:len(status)-len(item.word)]):
+			matched = true
+		}
+		if matched && (runes > bestRunes || (runes == bestRunes && item.tone > bestTone)) {
+			bestRunes, bestTone = runes, item.tone
+		}
+	}
+	return bestTone
+}
+
+func embeddedStatusTone(status string) int {
+	if strings.ContainsAny(status, "；。！？，、") || utf8.RuneCountInString(status) > 24 {
+		return cardTonePlain
+	}
+	bestRunes, bestTone := 0, cardTonePlain
+	for _, item := range cardStatusWords {
+		index := strings.Index(status, item.word)
+		if index < 0 {
+			continue
+		}
+		prefix, suffix := status[:index], status[index+len(item.word):]
+		if utf8.RuneCountInString(strings.TrimSpace(prefix)) > 8 || utf8.RuneCountInString(strings.TrimSpace(suffix)) > 12 {
+			continue
+		}
+		if strings.ContainsAny(prefix+suffix, "；。！？，、") {
+			continue
+		}
+		runes := utf8.RuneCountInString(item.word)
+		if runes > bestRunes || (runes == bestRunes && item.tone > bestTone) {
+			bestRunes, bestTone = runes, item.tone
+		}
+	}
+	return bestTone
+}
+
+func shortStatusTail(rest string) bool {
+	rest = strings.TrimSpace(rest)
+	return rest == "" || (!strings.ContainsAny(rest, "；。！？，、") && utf8.RuneCountInString(rest) <= 12)
+}
+
+func shortStatusHead(prefix string) bool {
+	prefix = strings.TrimSpace(prefix)
+	return prefix == "" || (!strings.ContainsAny(prefix, "；。！？，、") && utf8.RuneCountInString(prefix) <= 12)
+}
+
+func isHan(r rune) bool {
+	return r >= 0x2e80
 }
 
 // PrintField applies the shared field-label color outside a card.

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -123,10 +124,11 @@ func (service manager) editSchedule(view *ui.UI, name string, reset bool) error 
 		"\nRandomizedDelaySec=" + strconv.Itoa(delay) + "s\nAccuracySec=" + strconv.Itoa(accuracy) +
 		"s\nPersistent=" + persistent + "\n"
 	ui.PrintInfoCard("将应用的定时设置",
-		ui.CardField{Label: "定时器", Value: name}, ui.CardField{Label: "触发时间", Value: calendar},
-		ui.CardField{Label: "最大随机延迟", Value: fmt.Sprintf("%d 秒", delay)},
-		ui.CardField{Label: "触发精度", Value: fmt.Sprintf("%d 秒", accuracy)},
-		ui.CardField{Label: "补跑错过的任务", Value: persistent})
+		ui.CardField{Label: "定时器", Value: name},
+		ui.CardField{Label: "触发时间", Value: calendar, Changed: !sameCalendar(state.calendar, calendar)},
+		ui.CardField{Label: "最大随机延迟", Value: fmt.Sprintf("%d 秒", delay), Changed: !sameDurationSeconds(state.delay, delay)},
+		ui.CardField{Label: "触发精度", Value: fmt.Sprintf("%d 秒", accuracy), Changed: !sameDurationSeconds(state.accuracy, accuracy)},
+		ui.CardField{Label: "补跑错过的任务", Value: switchLabel(persistent), Changed: switchLabel(persistent) != switchLabel(state.persistent)})
 	if err := confirm(view, "确认保存并重载定时器？(y/N)："); err != nil {
 		return err
 	}
@@ -195,4 +197,87 @@ func (service manager) publishSchedule(name, path string, previous []byte, exist
 		return errors.Join(err, reload())
 	}
 	return err
+}
+
+func sameCalendar(current, next string) bool {
+	next = strings.TrimSpace(next)
+	if next == "" {
+		return false
+	}
+	current = strings.TrimSpace(current)
+	if current == next {
+		return true
+	}
+	found := onCalendars(current)
+	return len(found) == 1 && found[0] == next
+}
+
+func onCalendars(value string) []string {
+	var found []string
+	for _, piece := range strings.FieldsFunc(value, func(r rune) bool { return r == ';' || r == '\n' }) {
+		piece = strings.Trim(piece, " {}\t")
+		expr, ok := strings.CutPrefix(piece, "OnCalendar=")
+		if !ok {
+			continue
+		}
+		expr = strings.TrimSpace(expr)
+		if expr != "" {
+			found = append(found, expr)
+		}
+	}
+	return found
+}
+
+var durationPattern = regexp.MustCompile(`(\d+)\s*(usec|us|msec|ms|seconds|second|sec|s|minutes|minute|min|m|hours|hour|hr|h|days|day|d|weeks|week|w)`)
+
+var durationMicros = map[string]int64{
+	"us": 1, "usec": 1,
+	"ms": 1000, "msec": 1000,
+	"s": 1000000, "sec": 1000000, "second": 1000000, "seconds": 1000000,
+	"m": 60 * 1000000, "min": 60 * 1000000, "minute": 60 * 1000000, "minutes": 60 * 1000000,
+	"h": 3600 * 1000000, "hr": 3600 * 1000000, "hour": 3600 * 1000000, "hours": 3600 * 1000000,
+	"d": 86400 * 1000000, "day": 86400 * 1000000, "days": 86400 * 1000000,
+	"w": 604800 * 1000000, "week": 604800 * 1000000, "weeks": 604800 * 1000000,
+}
+
+func sameDurationSeconds(current string, seconds int) bool {
+	got, ok := systemdSeconds(current)
+	return ok && got == seconds
+}
+
+func systemdSeconds(value string) (int, bool) {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if value == "" {
+		return 0, false
+	}
+	if n, err := strconv.ParseInt(value, 10, 64); err == nil {
+		if n == 0 {
+			return 0, true
+		}
+		if n < 0 || n%1000000 != 0 {
+			return 0, false
+		}
+		return int(n / 1000000), true
+	}
+	matches := durationPattern.FindAllStringSubmatchIndex(value, -1)
+	if len(matches) == 0 {
+		return 0, false
+	}
+	var total int64
+	pos := 0
+	for _, match := range matches {
+		if strings.TrimSpace(value[pos:match[0]]) != "" {
+			return 0, false
+		}
+		number, err := strconv.ParseInt(value[match[2]:match[3]], 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		total += number * durationMicros[value[match[4]:match[5]]]
+		pos = match[1]
+	}
+	if strings.TrimSpace(value[pos:]) != "" || total < 0 || total%1000000 != 0 {
+		return 0, false
+	}
+	return int(total / 1000000), true
 }

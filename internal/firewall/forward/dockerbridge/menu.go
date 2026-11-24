@@ -83,7 +83,10 @@ func run(view *ui.UI, load func() (Snapshot, error), requireDockerPresent func()
 		action := dockerBridgeAction(previouslyEnabled)
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理", "转发规则管理", "Docker 流量放行", "确认变更")
-		ui.PrintInfoCard("即将应用的 Docker 流量放行设置", append(next.Fields(),
+		fields := next.Fields()
+		fields[0].Changed = current.Inbound != next.Inbound
+		fields[1].Changed = current.Outbound != next.Outbound
+		ui.PrintInfoCard("即将应用的 Docker 流量放行设置", append(fields,
 			ui.CardField{Label: "操作", Value: action + " " + direction},
 			ui.CardField{Label: "生效方式", Value: "保存并加载整份当前配置，包括其他待加载修改"},
 		)...)
@@ -104,7 +107,7 @@ func run(view *ui.UI, load func() (Snapshot, error), requireDockerPresent func()
 			}
 			return fmt.Errorf("Docker 流量放行配置已保存，但未成功加载；原配置已备份，可输入 r 重试: %w", err)
 		}
-		ui.PrintSuccessCard(direction+"已"+action, append(next.Fields(),
+		ui.PrintSuccessCard(direction+"已"+action, append(fields,
 			ui.CardField{Label: "生效状态", Value: "配置已保存并加载"},
 		)...)
 		return nil

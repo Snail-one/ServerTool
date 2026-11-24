@@ -300,7 +300,7 @@ selectKey:
 			ui.PrintSuccessCard("SSH 公钥修改完成",
 				ui.CardField{Label: "编号", Value: strconv.Itoa(entry.index)},
 				ui.CardField{Label: "原公钥", Value: summarizeAuthorizedKey(entry.line)},
-				ui.CardField{Label: "新公钥", Value: summarizeAuthorizedKey(pubkey)},
+				ui.CardField{Label: "新公钥", Value: summarizeAuthorizedKey(pubkey), Changed: true},
 				ui.CardField{Label: "配置文件", Value: authKeys},
 			)
 			return nil

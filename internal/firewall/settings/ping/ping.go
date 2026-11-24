@@ -180,14 +180,14 @@ func (service Service) Run(view *ui.UI) error {
 		}
 		ui.PrintInfoCard("即将应用的回显设置",
 			ui.CardField{Label: "当前配置", Value: state},
-			ui.CardField{Label: "操作", Value: operation},
+			ui.CardField{Label: "操作", Value: operation, Changed: updated != string(version.Content)},
 			ui.CardField{Label: "生效方式", Value: "保存并加载整份当前配置，包括其他待加载修改"},
 		)
 		prompt := "确认" + action + "外部 ICMP / ICMPv6 回显请求并加载当前配置？"
 		if choice == "remove" {
 			ui.PrintInfoCard("移除回显配置",
 				ui.CardField{Label: "移除内容", Value: "仅删除专用 ICMP / ICMPv6 回显规则及其标记"},
-				ui.CardField{Label: "移除后", Value: "由原有规则决定，项目默认规则通常仍拦截外部 Ping"},
+				ui.CardField{Label: "移除后", Value: "由原有规则决定，项目默认规则通常仍拦截外部 Ping", Changed: true},
 			)
 			prompt = "确认移除专用回显配置并加载当前配置？"
 		}
@@ -211,7 +211,7 @@ func (service Service) Run(view *ui.UI) error {
 		if choice == "remove" {
 			ui.PrintSuccessCard("回显配置已移除并加载", ui.CardField{Label: "保存的开关", Value: "未设置，沿用原有规则"})
 		} else {
-			ui.PrintSuccessCard("ICMP 回显配置已保存并加载", ui.CardField{Label: "ICMP / ICMPv6 回显", Value: Label(target)})
+			ui.PrintSuccessCard("ICMP 回显配置已保存并加载", ui.CardField{Label: "ICMP / ICMPv6 回显", Value: Label(target), Changed: updated != string(version.Content)})
 		}
 		return nil
 	}

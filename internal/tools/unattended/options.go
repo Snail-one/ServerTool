@@ -186,6 +186,11 @@ func (service manager) editOption(view *ui.UI, option aptOption) error {
 	if err != nil {
 		return err
 	}
+	pending := option.display(value, "")
+	if option.kind == "frequency" && !activeInterval(before) {
+		pending = option.display(before, value)
+	}
+	ui.PrintInfoCard("将应用的设置", ui.CardField{Label: option.label, Value: pending, Changed: pending != option.display(before, preferred)})
 	if err := confirm(view, fmt.Sprintf("确认将%s设为 %q？(y/N)：", option.label, value)); err != nil {
 		return err
 	}

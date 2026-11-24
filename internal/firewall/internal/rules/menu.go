@@ -42,7 +42,7 @@ func (session Session) PolicyChangeFields(before, after string) []ui.CardField {
 	old, next := session.PolicyFields(before), session.PolicyFields(after)
 	for i := range old {
 		if old[i].Value != next[i].Value {
-			fields = append(fields, ui.CardField{Label: next[i].Label, Value: next[i].Value, Detail: "原设置：" + old[i].Value})
+			fields = append(fields, ui.CardField{Label: next[i].Label, Value: next[i].Value, Detail: "原设置：" + old[i].Value, Changed: true})
 		}
 	}
 	return append(fields, session.ruleChangeFields(before, after)...)

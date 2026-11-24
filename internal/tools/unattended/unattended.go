@@ -129,7 +129,7 @@ func (service manager) change(view *ui.UI, enable bool) error {
 	}
 	showPage(title)
 	ui.PrintInfoCard("应用范围",
-		ui.CardField{Label: "操作", Value: message},
+		ui.CardField{Label: "操作", Value: message, Changed: true},
 		ui.CardField{Label: "配置文件", Value: service.path},
 	)
 	fmt.Println()

@@ -294,12 +294,12 @@ func (service manager) scopeMenu(view *ui.UI) error {
 			if choice == "4" {
 				return service.editOption(view, oldKernelOption)
 			}
-			return service.editScope(view, choice, labels[choice], scope, previous, exists)
+			return service.editScope(view, choice, labels, scope, previous, exists)
 		})
 	}
 }
 
-func (service manager) editScope(view *ui.UI, choice, currentLabel string, scope updateScope, previous []byte, exists bool) error {
+func (service manager) editScope(view *ui.UI, choice string, labels map[string]string, scope updateScope, previous []byte, exists bool) error {
 	if !service.root() {
 		return fmt.Errorf("修改更新策略需要 root 权限")
 	}
@@ -316,6 +316,7 @@ func (service manager) editScope(view *ui.UI, choice, currentLabel string, scope
 		return err
 	}
 	option := scopeOptions[choice]
+	currentLabel := labels[choice]
 	value, err := askToggle(view, currentLabel, "on", "off", "", func() {
 		showPage(option.label)
 		ui.PrintInfoCard("当前设置", ui.CardField{Label: option.label, Value: currentLabel})
@@ -332,7 +333,8 @@ func (service manager) editScope(view *ui.UI, choice, currentLabel string, scope
 	if scope.Managed && choice != "6" {
 		fields := []ui.CardField{}
 		for _, key := range []string{"1", "2", "3", "5"} {
-			fields = append(fields, ui.CardField{Label: scopeOptions[key].label, Value: scope.optionLabel(key)})
+			value := scope.optionLabel(key)
+			fields = append(fields, ui.CardField{Label: scopeOptions[key].label, Value: value, Changed: value != labels[key]})
 		}
 		ui.PrintInfoCard("将应用的更新范围", fields...)
 		prompt = "确认应用以上更新范围？(y/N)："

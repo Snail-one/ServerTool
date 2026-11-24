@@ -273,6 +273,33 @@ func aptValues(content string) map[string]string {
 	return values
 }
 
+func TestSchedulePreviewMatchesCurrentTimer(t *testing.T) {
+	current := "{ OnCalendar=*-*-* 06,18:00:00 ; next_elapse=Tue 2026-11-24 18:00:00 PST }"
+	if !sameCalendar(current, "*-*-* 06,18:00:00") || !sameCalendar("*-*-* 18:30:00", "*-*-* 18:30:00") {
+		t.Fatal("same calendar was treated as a change")
+	}
+	if sameCalendar(current, "*-*-* 03:30:00") || sameCalendar("", "*-*-* 03:30:00") {
+		t.Fatal("different calendar was treated as unchanged")
+	}
+	for _, test := range []struct {
+		value   string
+		seconds int
+		same    bool
+	}{
+		{value: "12h", seconds: 43200, same: true},
+		{value: "1min", seconds: 60, same: true},
+		{value: "1min 30s", seconds: 90, same: true},
+		{value: "0", seconds: 0, same: true},
+		{value: "60000000", seconds: 60, same: true},
+		{value: "12h", seconds: 0, same: false},
+		{value: "", seconds: 0, same: false},
+	} {
+		if got := sameDurationSeconds(test.value, test.seconds); got != test.same {
+			t.Errorf("sameDurationSeconds(%q, %d) = %v, want %v", test.value, test.seconds, got, test.same)
+		}
+	}
+}
+
 func TestScheduleRollsBackAndReloadsAfterRestartFailure(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "90-servertool-schedule.conf")
 	previous := timerHeader + "[Timer]\nOnCalendar=daily\n"

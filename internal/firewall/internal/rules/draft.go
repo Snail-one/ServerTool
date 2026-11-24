@@ -49,15 +49,15 @@ func (session Session) ruleChangeFields(before, after string) []ui.CardField {
 	var fields []ui.CardField
 	for _, rule := range old {
 		if _, exists := current[rule.ID]; !exists {
-			fields = append(fields, ui.CardField{Label: "删除放行规则 " + rule.ID, Value: rule.Description()})
+			fields = append(fields, ui.CardField{Label: "删除放行规则 " + rule.ID, Value: rule.Description(), Changed: true})
 		}
 	}
 	for _, rule := range next {
 		prior, exists := previous[rule.ID]
 		if !exists {
-			fields = append(fields, ui.CardField{Label: "添加放行规则 " + rule.ID, Value: rule.Description()})
+			fields = append(fields, ui.CardField{Label: "添加放行规则 " + rule.ID, Value: rule.Description(), Changed: true})
 		} else if prior != rule {
-			fields = append(fields, ui.CardField{Label: "编辑放行规则 " + rule.ID, Value: rule.Description(), Detail: "原设置：" + prior.Description()})
+			fields = append(fields, ui.CardField{Label: "编辑放行规则 " + rule.ID, Value: rule.Description(), Detail: "原设置：" + prior.Description(), Changed: true})
 		}
 	}
 	if !reflect.DeepEqual(oldIDs, nextIDs) {
@@ -68,7 +68,7 @@ func (session Session) ruleChangeFields(before, after string) []ui.CardField {
 		if prior == "" {
 			prior = "无规则配置"
 		}
-		fields = append(fields, ui.CardField{Label: "放行规则顺序", Value: value, Detail: "原顺序：" + prior})
+		fields = append(fields, ui.CardField{Label: "放行规则顺序", Value: value, Detail: "原顺序：" + prior, Changed: true})
 	}
 	return fields
 }
