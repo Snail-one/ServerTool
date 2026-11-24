@@ -229,17 +229,25 @@ func TestSemanticCardsUseSharedLayoutAndColors(t *testing.T) {
 	os.Unsetenv("NO_COLOR")
 
 	output := captureStdout(t, func() {
+		PrintInfoCard("运行状态")
+		PrintSectionCard("当前配置")
 		PrintSuccessCard("配置完成",
 			CardField{Label: "端口", Value: "30948"},
 			CardField{Label: "SSH 配置", Value: "/usr/sbin/sshd -T", Detail: "实际生效配置"},
 		)
+		PrintWarningCard("确认变更")
 		PrintDangerCard("永久删除", CardField{Label: "路径", Value: "/var/lib/docker"})
 	})
-	if !strings.Contains(output, bold+green+"配置完成"+reset) {
-		t.Fatalf("成功卡片标题未使用绿色加粗：%q", output)
-	}
-	if !strings.Contains(output, bold+red+"永久删除"+reset) {
-		t.Fatalf("危险卡片标题未使用红色加粗：%q", output)
+	for _, header := range []string{
+		bold + orange + "╭─ 运行状态" + reset,
+		bold + orange + "╭─ 当前配置" + reset,
+		bold + green + "╭─ 配置完成" + reset,
+		bold + yellow + "╭─ 确认变更" + reset,
+		bold + red + "╭─ 永久删除" + reset,
+	} {
+		if !strings.Contains(output, header+"\n") {
+			t.Fatalf("卡片顶栏缺少 %q：%q", header, output)
+		}
 	}
 	if !strings.Contains(output, orange+"端口："+reset+"30948") {
 		t.Fatalf("卡片字段名未使用橙色主视觉：%q", output)

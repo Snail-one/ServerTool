@@ -133,7 +133,7 @@ func editPolicyDraft(view *ui.UI, original string, generating bool, save func(st
 		}
 		ui.PrintInfoCard(card, summary...)
 		if showDocker {
-			ui.PrintInfoCard("Docker 转发状态", append(dockerBridgeStateFields(original), dockerCompatStateField())...)
+			ui.PrintSectionCard("Docker 转发状态", append(dockerBridgeStateFields(original), dockerCompatStateField())...)
 		}
 		if notice != "" {
 			fmt.Println()

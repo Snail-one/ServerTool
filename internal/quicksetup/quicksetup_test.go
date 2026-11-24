@@ -69,8 +69,7 @@ func TestPrintSetupSummaryCardIncludesEffectiveSSHDetails(t *testing.T) {
 		printSetupSummaryCard(summary)
 	})
 	for _, want := range []string{
-		"╭─ ServerTool",
-		"│ 一键初始化完成",
+		"╭─ 一键初始化完成",
 		"│ 用户：admin",
 		"│ SSH 公钥：[已配置]",
 		"│   /home/admin/.ssh/authorized_keys",

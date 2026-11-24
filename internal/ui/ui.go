@@ -338,38 +338,31 @@ func MutedText(text string) string {
 	return paint(gray, text)
 }
 
-// PrintInfoCard and the semantic variants keep results and key information in
-// one consistent ServerTool card. Values may already contain colored badges.
+// PrintInfoCard and its variants put the card title in the top border.
+// Values may already contain colored badges.
 func PrintInfoCard(title string, fields ...CardField) {
-	printCard(PrimaryBoldText(strings.TrimSpace(title)), fields)
+	printCard(title, orange, fields)
 }
 
-// PrintSectionCard places the section title in the border of an information
-// card, for reports that already have a page-level ServerTool heading.
+// PrintSectionCard prints an information card for a section of a report.
 func PrintSectionCard(title string, fields ...CardField) {
-	fmt.Println(PrimaryBoldText("╭─ " + strings.TrimSpace(title)))
-	printCardFields(fields)
+	PrintInfoCard(title, fields...)
 }
 
 func PrintSuccessCard(title string, fields ...CardField) {
-	printCard(SuccessBoldText(strings.TrimSpace(title)), fields)
+	printCard(title, green, fields)
 }
 
 func PrintWarningCard(title string, fields ...CardField) {
-	printCard(WarningBoldText(strings.TrimSpace(title)), fields)
+	printCard(title, yellow, fields)
 }
 
 func PrintDangerCard(title string, fields ...CardField) {
-	printCard(DangerBoldText(strings.TrimSpace(title)), fields)
+	printCard(title, red, fields)
 }
 
-func printCard(title string, fields []CardField) {
-	fmt.Println(PrimaryBoldText("╭─ ServerTool"))
-	fmt.Println(PrimaryText("│") + " " + title)
-	printCardFields(fields)
-}
-
-func printCardFields(fields []CardField) {
+func printCard(title, titleColor string, fields []CardField) {
+	fmt.Println(paint(bold+titleColor, "╭─ "+strings.TrimSpace(title)))
 	for _, field := range fields {
 		label := strings.TrimSpace(field.Label)
 		value := strings.TrimSpace(field.Value)

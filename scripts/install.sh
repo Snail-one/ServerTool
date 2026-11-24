@@ -45,16 +45,14 @@ init_colors() {
 }
 
 print_banner() {
-	printf '%s%s%s\n' "$BOLD$ORANGE" "╭─ ServerTool" "$RESET"
-	printf '%s│ %s%s\n' "$ORANGE" "$1" "$RESET"
+	printf '%s╭─ %s%s\n' "$BOLD$ORANGE" "$1" "$RESET"
 	printf '%s%s%s\n' "$ORANGE" "╰──────────────────────────────────────────────" "$RESET"
 	printf '\n'
 }
 
 print_card() {
 	printf '\n'
-	printf '%s%s%s\n' "$BOLD$ORANGE" "╭─ ServerTool" "$RESET"
-	printf '%s│ %s%s%s%s\n' "$ORANGE" "$BOLD" "$1" "$2" "$RESET"
+	printf '%s╭─ %s%s\n' "$BOLD$1" "$2" "$RESET"
 	shift 2
 	while [ "$#" -ge 2 ]; do
 		printf '%s│ %s%s：%s%s\n' "$ORANGE" "$BLUE" "$1" "$RESET" "$2"
