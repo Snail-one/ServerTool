@@ -122,10 +122,11 @@ func showMenu(status status.Status) {
 	runtimeConfigured := strings.TrimSpace(status.Runtime) != "" && status.Runtime != "未安装"
 	ui.HomeTitle(version.Version)
 	ui.MenuOption("1", "防火墙管理")
+	fmt.Println()
 	ui.MenuOptionStatus("2", "SSH 管理", ui.ConfiguredBadge(status.SSH))
 	ui.MenuOption("3", "配置管理")
-	ui.MenuOption("4", "系统工具")
 	fmt.Println()
+	ui.MenuOption("4", "系统工具")
 	ui.MenuOptionStatus("5", "WireGuard", wireguard.Badge())
 	ui.MenuOptionStatus("6", "容器管理", ui.SoftwareBadge(defaultStatus(status.Runtime, "未安装"), runtimeConfigured))
 	fmt.Println()
