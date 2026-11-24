@@ -199,16 +199,15 @@ func (service manager) editOption(view *ui.UI, option aptOption) error {
 	return service.saveOptions(previous, exists, options)
 }
 
-func askToggle(view *ui.UI, current, on, off string, drawPage func()) (string, error) {
-	return ui.AskMenuChoice(view, "请选择", "", map[string]string{"1": on, "2": off}, func() {
+func askToggle(view *ui.UI, current, on, off, fallback string, drawPage func()) (string, error) {
+	return ui.AskMenuChoice(view, "请选择", fallback, map[string]string{"1": on, "2": off}, func() {
 		drawPage()
-		for _, item := range []struct{ key, label string }{{"1", "开启"}, {"2", "关闭"}} {
-			status := ""
-			if item.label == current {
-				status = ui.SoftwareBadge("当前", true)
-			}
-			ui.MenuOptionStatus(item.key, item.label, status)
+		ui.MenuOptionStatus("1", "开启", ui.CurrentBadge(current == "开启"))
+		offHint := ""
+		if fallback == "2" {
+			offHint = "回车选择"
 		}
+		ui.MenuOptionStatusHint("2", "关闭", ui.CurrentBadge(current == "关闭"), offHint)
 		ui.MenuExit("0/q", "返回上一步")
 	})
 }
@@ -216,9 +215,9 @@ func askToggle(view *ui.UI, current, on, off string, drawPage func()) (string, e
 func askOption(view *ui.UI, kind, current string, draw func()) (string, error) {
 	switch kind {
 	case "numeric toggle":
-		return askToggle(view, switchLabel(current), "1", "0", draw)
+		return askToggle(view, switchLabel(current), "1", "0", "", draw)
 	case "toggle":
-		return askToggle(view, switchLabel(current), "true", "false", draw)
+		return askToggle(view, switchLabel(current), "true", "false", "", draw)
 	case "report":
 		draw()
 		return ui.AskChoice(view, "输入 1 始终发送、2 有变更时发送、3 仅错误时发送", "", map[string]string{

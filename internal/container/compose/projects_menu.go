@@ -58,6 +58,8 @@ func composeProjectStatusDisplay(project composeProjectInfo) string {
 		return "重启中"
 	case project.Containers.Paused > 0:
 		return "已暂停"
+	case project.Containers.Unknown > 0:
+		return "未知"
 	default:
 		return "已停止"
 	}
@@ -200,8 +202,14 @@ func manageSingleProject(view *ui.UI, compose update.ComposeCommand, dir string)
 		ui.MenuTitle("容器管理", "Compose 项目", filepath.Base(dir))
 		fmt.Printf("项目目录：%s\n", dir)
 		fmt.Println()
-		ui.MenuOptionHint("1", "创建并后台启动", compose.Display+" up -d")
-		ui.MenuOptionHint("2", "停止服务容器", compose.Display+" stop")
+		summary, _, err := composeProjectContainerSummary(compose, dir, true)
+		status := "状态获取失败"
+		if err == nil {
+			status = composeProjectStatusDisplay(composeProjectInfo{Containers: summary})
+		}
+		badge := ui.SoftwareBadge(status, summary.Running > 0)
+		ui.MenuOptionStatusHint("1", "创建并后台启动", badge, compose.Display+" up -d")
+		ui.MenuOptionStatusHint("2", "停止服务容器", badge, compose.Display+" stop")
 		ui.MenuOptionHint("3", "重启服务容器", compose.Display+" restart")
 		ui.MenuOptionHint("4", "删除 Compose 项目资源", compose.Display+" down")
 		ui.MenuExit("0/q", "返回")

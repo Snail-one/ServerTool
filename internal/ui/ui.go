@@ -226,26 +226,33 @@ func menuOptionHint(key, label, hint, style string) {
 
 // MenuOptionStatus keeps status badges in a fixed column across menu rows.
 func MenuOptionStatus(key, label, status string) {
-	status = strings.TrimSpace(status)
-	if status == "" {
-		MenuOption(key, label)
-		return
-	}
-	fmt.Printf("  %s %s%s\n", menuKey(key, bold+blue), padDisplay(label, 18), status)
+	menuOptionStatusHint(key, label, status, "", bold+blue)
 }
 
 // MenuOptionStatusHint combines the global status column with a gray detail
 // column. It is useful when an item has both state and a managed path.
 func MenuOptionStatusHint(key, label, status, hint string) {
+	menuOptionStatusHint(key, label, status, hint, bold+blue)
+}
+
+func MenuShortcutStatusHint(key, label, status, hint string) {
+	menuOptionStatusHint(key, label, status, hint, bold+orange)
+}
+
+func menuOptionStatusHint(key, label, status, hint, style string) {
 	status = strings.TrimSpace(status)
 	hint = strings.TrimSpace(hint)
 	if hint == "" {
-		MenuOptionStatus(key, label, status)
+		if status == "" {
+			menuOptionHint(key, label, "", style)
+		} else {
+			fmt.Printf("  %s %s%s\n", menuKey(key, style), padDisplay(label, 18), status)
+		}
 		return
 	}
 	fmt.Printf(
 		"  %s %s%s%s\n",
-		menuKey(key, bold+blue),
+		menuKey(key, style),
 		padDisplay(label, 18),
 		padDisplay(status, 16),
 		paint(gray, "-- "+hint),
@@ -294,6 +301,20 @@ func SoftwareBadge(text string, installed bool) string {
 		color = orange
 	}
 	return paint(color, "["+text+"]")
+}
+
+func CurrentBadge(current bool) string {
+	if current {
+		return SoftwareBadge("当前", true)
+	}
+	return ""
+}
+
+func SwitchBadge(enabled bool) string {
+	if enabled {
+		return SoftwareBadge("已开启", true)
+	}
+	return SoftwareBadge("已关闭", false)
 }
 
 // ConfiguredBadge keeps configuration status wording and color consistent.

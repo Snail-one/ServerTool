@@ -150,7 +150,7 @@ func (service Service) Run(view *ui.UI) error {
 			sync.Value = ui.PrimaryText(sync.Value)
 		}
 		fields = append(fields, sync)
-		choice, err := Choose(view, fields)
+		choice, err := Choose(view, fields, enabled, found)
 		if err != nil {
 			return err
 		}

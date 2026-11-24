@@ -147,10 +147,11 @@ func (service Service) Run(view *ui.UI) error {
 	ui.ClearScreen()
 	ui.MenuTitle("防火墙管理", "常用功能设置", "内核转发")
 	ui.PrintInfoCard("内核转发", forwardingStateField(states))
-	ui.MenuOptionHint("1", "开启 IPv4 转发", "持久化写入 1，并立即开启")
-	ui.MenuOptionHint("2", "关闭 IPv4 转发", "持久化写入 0，并立即关闭")
-	ui.MenuOptionHint("3", "开启 IPv6 转发", "持久化写入 1，并立即开启")
-	ui.MenuOptionHint("4", "关闭 IPv6 转发", "持久化写入 0，并立即关闭")
+	for index, state := range states {
+		available := state.err == nil && !state.unavailable
+		ui.MenuOptionStatusHint(fmt.Sprint(index*2+1), "开启 "+state.family+" 转发", ui.CurrentBadge(available && state.value == "1"), "持久化写入 1，并立即开启")
+		ui.MenuOptionStatusHint(fmt.Sprint(index*2+2), "关闭 "+state.family+" 转发", ui.CurrentBadge(available && state.value == "0"), "持久化写入 0，并立即关闭")
+	}
 	ui.MenuOptionHint("5", "恢复默认", "删除配置文件，同时关闭 IPv4 / IPv6 转发")
 	ui.MenuOptionHint("6", "仅删除配置文件", "移除持久配置，当前转发状态保持不变")
 	ui.MenuExit("0/q", "返回常用功能设置")

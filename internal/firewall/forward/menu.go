@@ -7,9 +7,17 @@ import (
 const Title = "转发规则管理"
 const Label = "转发规则"
 
-func printDockerOptions() {
-	ui.MenuOptionHint("6", "Docker 流量放行", "分别设置 Docker 网桥入站和出站")
-	ui.MenuOptionHint("7", "Docker 放行标记", "让 Docker 接受 ServerTool 已放行的转发")
+func printDockerOptions(fields []ui.CardField) {
+	states := make(map[string]string, len(fields))
+	for _, field := range fields {
+		states[field.Label] = field.Value
+	}
+	bridge := states["Docker 流量放行"]
+	if bridge == "" {
+		bridge = "入站" + states["Docker 入站放行"] + " · 出站" + states["Docker 出站放行"]
+	}
+	ui.MenuOptionStatusHint("6", "Docker 流量放行", "["+bridge+"]", "分别设置 Docker 网桥入站和出站")
+	ui.MenuOptionStatusHint("7", "Docker 放行标记", "["+states["Docker 放行标记"]+"]", "让 Docker 接受 ServerTool 已放行的转发")
 }
 
 // dockerChoice returns the action and its error text for a Docker menu choice.

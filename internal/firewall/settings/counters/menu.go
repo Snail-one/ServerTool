@@ -16,8 +16,8 @@ func Choose(view *ui.UI, state string, counted, rules int) (string, error) {
 		ui.CardField{Label: "统计内容", Value: "匹配规则的数据包数量和字节数"},
 		ui.CardField{Label: "切换影响", Value: "保存并加载当前完整配置，现有累计计数可能重置"},
 	)
-	ui.MenuOption("1", "开启数据包统计")
-	ui.MenuOption("2", "关闭数据包统计")
+	ui.MenuOptionStatus("1", "开启数据包统计", ui.CurrentBadge(rules > 0 && counted == rules))
+	ui.MenuOptionStatus("2", "关闭数据包统计", ui.CurrentBadge(counted == 0))
 	ui.MenuExit("0/q", "返回常用功能设置")
 	return ui.AskChoice(view, "请选择", "", map[string]string{"1": "on", "2": "off"})
 }

@@ -142,7 +142,7 @@ func sortComposeProjects(projects []composeProjectInfo) []composeProjectInfo {
 
 func enrichComposeProjects(compose update.ComposeCommand, projects []composeProjectInfo) []composeProjectInfo {
 	for i := range projects {
-		summary, projectName, err := composeProjectContainerSummary(compose, projects[i].Dir)
+		summary, projectName, err := composeProjectContainerSummary(compose, projects[i].Dir, false)
 		if err != nil {
 			projects[i].StatusError = err.Error()
 			continue
@@ -155,8 +155,12 @@ func enrichComposeProjects(compose update.ComposeCommand, projects []composeProj
 	return projects
 }
 
-func composeProjectContainerSummary(compose update.ComposeCommand, dir string) (composeContainerSummary, string, error) {
-	output, err := composeOutputInDir(compose, dir, "ps", "--format", "json")
+func composeProjectContainerSummary(compose update.ComposeCommand, dir string, includeStopped bool) (composeContainerSummary, string, error) {
+	args := []string{"ps"}
+	if includeStopped {
+		args = append(args, "--all")
+	}
+	output, err := composeOutputInDir(compose, dir, append(args, "--format", "json")...)
 	if err == nil {
 		summary, projectName, parseErr := parseComposePSJSON(output)
 		if parseErr == nil {
@@ -164,7 +168,7 @@ func composeProjectContainerSummary(compose update.ComposeCommand, dir string) (
 		}
 	}
 
-	output, fallbackErr := composeOutputInDir(compose, dir, "ps")
+	output, fallbackErr := composeOutputInDir(compose, dir, args...)
 	if fallbackErr != nil {
 		if err != nil {
 			return composeContainerSummary{}, "", fmt.Errorf("compose ps 失败: %w", err)

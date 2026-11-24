@@ -56,8 +56,8 @@ func run(view *ui.UI, load func() (Snapshot, error), requireDockerPresent func()
 			ui.CardField{Label: "匹配网桥", Value: "docker0、docker_gwbridge、br-*"},
 			ui.CardField{Label: "开启后", Value: "匹配方向在转发端口名单前放行，随后由 Docker 的防火墙规则处理"},
 		)...)
-		ui.MenuOption("1", dockerBridgeAction(current.Inbound)+" "+InboundLabel)
-		ui.MenuOption("2", dockerBridgeAction(current.Outbound)+" "+OutboundLabel)
+		ui.MenuOptionStatus("1", dockerBridgeAction(current.Inbound)+" "+InboundLabel, ui.SwitchBadge(current.Inbound))
+		ui.MenuOptionStatus("2", dockerBridgeAction(current.Outbound)+" "+OutboundLabel, ui.SwitchBadge(current.Outbound))
 		ui.MenuExit("0/q", "返回转发规则管理")
 		choice, err := ui.AskChoice(view, "请选择", "", map[string]string{"1": "inbound", "2": "outbound"})
 		if err != nil {

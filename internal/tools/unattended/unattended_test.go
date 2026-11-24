@@ -81,7 +81,7 @@ Unattended-Upgrade::Origins-Pattern:: "origin=Debian,codename=${distro_codename}
 		"APT::Periodic::Unattended-Upgrade \"0\";", "\n\n  0/q 返回系统工具",
 		"更新设置\n  1   更新范围与开关", "重启\n  2   APT 策略与开关",
 		"邮件报告\n  3   设置定时器", "补跑\n  4   编辑原生 APT 配置",
-		"其他原生参数\n  5   查看生效配置\n\n运行与日志\n  6   模拟运行",
+		"其他原生参数\n\n  5   查看生效配置\n\n运行与日志\n  6   模拟运行",
 		"哪些更新\n  7   立即执行一次更新\n  8   查看最近更新日志\n\n  a   开启自动更新",
 		"先安装 unattended-upgrades\n  r   刷新状态",
 		"软件包自动更新  ›  开启自动更新", "安装 unattended-upgrades，然后按当前频率及软件源策略开启自动更新",

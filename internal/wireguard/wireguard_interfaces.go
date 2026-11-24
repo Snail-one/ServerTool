@@ -477,6 +477,7 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 		if saved {
 			fields = append(fields, ui.CardField{Label: "配置文件", Value: wireGuardProfilePath(name)})
 		}
+		var autostartStatus string
 		if unit.available && saved {
 			bootState := "已关闭"
 			if unit.state == "enabled-runtime" {
@@ -484,14 +485,15 @@ func runWireGuardInterface(view *ui.UI, name string) error {
 			} else if unit.enabled {
 				bootState = "已开启"
 			}
-			fields = append(fields, ui.CardField{Label: "开机自启", Value: ui.SoftwareBadge(bootState, unit.enabled)})
+			autostartStatus = ui.SoftwareBadge(bootState, unit.enabled)
+			fields = append(fields, ui.CardField{Label: "开机自启", Value: autostartStatus})
 		}
 		if saved || running {
 			fields = append(fields, wireGuardPeerCountField(name, data, saved, running))
 		}
 
 		return interfaces.Snapshot{
-			Fields: fields, Saved: saved, Running: running, AutostartAvailable: unit.available, AutostartEnabled: unit.enabled,
+			Fields: fields, AutostartStatus: autostartStatus, Saved: saved, Running: running, AutostartAvailable: unit.available, AutostartEnabled: unit.enabled,
 			CanChangeRuntime: saved && activeErr == nil && commandExists("wg-quick"),
 			CanRotate:        saved && commandExists("wg"),
 			CanDelete:        activeErr == nil && !running && !unit.active && !unit.enabled,

@@ -9,6 +9,7 @@ import (
 
 type Snapshot struct {
 	Fields                                                []ui.CardField
+	AutostartStatus                                       string
 	Saved, Running, AutostartAvailable, AutostartEnabled  bool
 	CanChangeRuntime, CanRotate, CanDelete                bool
 	Peers, Show, Edit, Autostart, Monitor, Rotate, Delete func() error
@@ -39,10 +40,12 @@ func Run(view *ui.UI, name string, load func() (Snapshot, error)) error {
 		if snapshot.CanChangeRuntime {
 			fmt.Println()
 			label, action := "启动接口", "start"
+			state := "已停止"
 			if snapshot.Running {
 				label, action = "停止接口", "stop"
+				state = "运行中"
 			}
-			ui.MenuShortcutHint("r", label, "")
+			ui.MenuShortcutStatusHint("r", label, ui.SoftwareBadge(state, snapshot.Running), "")
 			actions["r"] = func() error { return snapshot.Runtime(action) }
 			if snapshot.Running {
 				ui.MenuShortcutHint("d", "重启接口", "")
@@ -61,7 +64,7 @@ func Run(view *ui.UI, name string, load func() (Snapshot, error)) error {
 			if snapshot.AutostartEnabled {
 				label = "关闭开机自启"
 			}
-			ui.MenuShortcutHint("a", label, "")
+			ui.MenuShortcutStatusHint("a", label, snapshot.AutostartStatus, "")
 			actions["a"] = snapshot.Autostart
 		}
 		if snapshot.Running {

@@ -150,8 +150,8 @@ func (service Service) runDetails(view *ui.UI, version configuration.Version, ma
 			toggle = "启用"
 		}
 		ui.MenuOption("1", "编辑映射")
-		ui.MenuOption("2", toggle+"映射")
-		ui.MenuOption("3", "SNAT 设置")
+		ui.MenuOptionStatus("2", toggle+"映射", ui.SoftwareBadge(mapping.statusLabel(), !mapping.disabled))
+		ui.MenuOptionStatus("3", "SNAT 设置", mapping.snatBadge())
 		ui.MenuOption("4", "删除映射")
 		ui.MenuExit("0/q", "返回映射列表")
 		action, err := ui.AskChoice(view, "请选择", "", map[string]string{"1": "编辑", "2": toggle, "3": "SNAT", "4": "删除"})

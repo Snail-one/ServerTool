@@ -213,8 +213,11 @@ func TestForwardingMenuAndBothCardsRefreshAfterChange(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	if !strings.Contains(output, "IPv4 已关闭 · IPv6 已关闭") || strings.Count(output, "IPv4 已开启 · IPv6 已关闭") != 3 {
+	if !strings.Contains(output, "IPv4 已关闭 · IPv6 已关闭") || strings.Count(output, "│ 内核转发：IPv4 已开启 · IPv6 已关闭") != 3 {
 		t.Fatalf("both menus must refresh the kernel state after the success card: %s", output)
+	}
+	if !strings.Contains(output, "关闭 IPv4 转发    [当前]") || !strings.Contains(output, "[IPv4 已开启 · IPv6 已关闭]") {
+		t.Fatal("forwarding options do not show the current state")
 	}
 }
 

@@ -19,16 +19,17 @@ func run(view *ui.UI, actions Actions) error {
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理", "转发规则管理", "Docker 放行标记")
+		state := actions.State()
 		ui.PrintInfoCard("Docker 放行标记",
-			actions.State(),
+			state,
 			ui.CardField{Label: "作用", Value: "让 Docker 接受命中本工具转发端口或来源放行的连接"},
 			ui.CardField{Label: "做法", Value: "带标记的连接先经过 DOCKER-USER 中已有的过滤规则"},
 			ui.CardField{Label: "开机", Value: "Docker 每次启动后自动补上这条规则"},
 			ui.CardField{Label: "不影响", Value: "没有标记的流量仍走 Docker 原来的规则"},
 			ui.CardField{Label: "前提", Value: "需要 Docker 的 iptables 后端"},
 		)
-		ui.MenuOption("1", "开启")
-		ui.MenuOption("2", "关闭")
+		ui.MenuOptionStatus("1", "开启", ui.CurrentBadge(state.Value == ui.PrimaryText("已生效")))
+		ui.MenuOptionStatus("2", "关闭", ui.CurrentBadge(state.Value == "已关闭"))
 		ui.MenuExit("0/q", "返回转发规则管理")
 		choice, err := ui.AskChoice(view, "请选择", "", map[string]string{"1": "on", "2": "off"})
 		if err != nil {

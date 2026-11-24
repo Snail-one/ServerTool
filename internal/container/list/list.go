@@ -121,7 +121,13 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 			if action.Key == "down" {
 				command = compose.Display + " " + action.Command
 			}
-			ui.MenuOptionHint(strconv.Itoa(index+1), action.Label, command)
+			key := strconv.Itoa(index + 1)
+			switch action.Key {
+			case "start", "stop", "pause", "unpause":
+				ui.MenuOptionStatusHint(key, action.Label, ui.SoftwareBadge(containerStateDisplay(c.State), c.State == listing.StateRunning), command)
+			default:
+				ui.MenuOptionHint(key, action.Label, command)
+			}
 		}
 		ui.MenuExit("0/q", "返回")
 

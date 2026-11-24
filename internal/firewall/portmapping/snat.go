@@ -50,6 +50,13 @@ func (mapping Mapping) snatEnabled() bool {
 	return !mapping.disabled && mapping.snat.address.IsValid() && !mapping.snat.disabled
 }
 
+func (mapping Mapping) snatBadge() string {
+	if mapping.snatEnabled() {
+		return ui.SwitchBadge(true)
+	}
+	return ui.SoftwareBadge(mapping.snatDescription(), false)
+}
+
 func (mapping Mapping) snatDescription() string {
 	switch {
 	case !mapping.snat.address.IsValid():
@@ -117,7 +124,7 @@ func askPortMappingSNAT(view *ui.UI, mapping Mapping) (portMappingSNAT, string, 
 		if current.disabled {
 			toggle = "启用"
 		}
-		ui.MenuOption("1", toggle+" SNAT")
+		ui.MenuOptionStatus("1", toggle+" SNAT", mapping.snatBadge())
 		ui.MenuOption("2", "修改 SNAT 参数")
 		ui.MenuExit("0/q", "返回映射详情")
 		action, err := ui.AskChoice(view, "请选择", "", map[string]string{"1": "toggle", "2": "edit"})

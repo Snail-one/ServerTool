@@ -23,12 +23,16 @@ func (service manager) menu(view *ui.UI) error {
 		policy, timers := service.overview(current, settingsErr, installed)
 		enable := !installed || !current.automaticUpdatesConfigured()
 		toggleLabel, toggleHint := "关闭自动更新", ""
+		toggleStatus := "已配置"
 		if settingsErr != nil {
 			toggleLabel = "切换自动更新"
+			toggleStatus = "检测失败"
 		} else if enable {
 			toggleLabel = "开启自动更新"
+			toggleStatus = "关闭"
 			if !installed {
 				toggleHint = "先安装 unattended-upgrades"
+				toggleStatus = "未安装"
 			}
 		}
 		scope, _, _, scopeErr := service.readScope()
@@ -63,6 +67,7 @@ func (service manager) menu(view *ui.UI) error {
 				nativeHint = "更新来源由「更新范围与开关」管理"
 			}
 			ui.MenuOptionHint("4", "编辑原生 APT 配置", nativeHint)
+			fmt.Println()
 			ui.MenuOption("5", "查看生效配置")
 			fmt.Println()
 			ui.MenuSection("运行与日志")
@@ -70,7 +75,7 @@ func (service manager) menu(view *ui.UI) error {
 			ui.MenuOption("7", "立即执行一次更新")
 			ui.MenuOption("8", "查看最近更新日志")
 			fmt.Println()
-			ui.MenuShortcutHint("a", toggleLabel, toggleHint)
+			ui.MenuShortcutStatusHint("a", toggleLabel, ui.SoftwareBadge(toggleStatus, toggleStatus == "已配置"), toggleHint)
 			ui.MenuOption("r", "刷新状态")
 			ui.MenuShortcutHint("x", "恢复基础 APT 策略", "更新范围可在「更新范围与开关」中恢复")
 			ui.MenuExit("0/q", "返回系统工具")

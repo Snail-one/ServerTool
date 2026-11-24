@@ -129,8 +129,10 @@ func (session Session) EditPolicyDraft(view *ui.UI, original string, generating 
 			card = label + "（当前配置）"
 		}
 		ui.PrintInfoCard(card, summary...)
+		var dockerFields []ui.CardField
 		if showDocker {
-			ui.PrintSectionCard("Docker 转发状态", session.immediate.Fields(original)...)
+			dockerFields = session.immediate.Fields(original)
+			ui.PrintSectionCard("Docker 转发状态", dockerFields...)
 		}
 		if notice != "" {
 			fmt.Println()
@@ -148,7 +150,7 @@ func (session Session) EditPolicyDraft(view *ui.UI, original string, generating 
 			if forwardConfigErr == nil {
 				fmt.Println()
 			}
-			session.immediate.Print()
+			session.immediate.Print(dockerFields)
 		}
 		if forwardConfigErr == nil {
 			fmt.Println()

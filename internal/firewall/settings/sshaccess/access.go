@@ -181,7 +181,7 @@ func (service Service) Run(view *ui.UI) error {
 		if err != nil {
 			return err
 		}
-		choice, err := Choose(view, PortList(ports), sshAccessLabel(public), sshAccessLabel(private))
+		choice, err := Choose(view, PortList(ports), public, private)
 		if err != nil {
 			return err
 		}

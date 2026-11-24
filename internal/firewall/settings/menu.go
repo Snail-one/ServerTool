@@ -24,18 +24,29 @@ func Run(view *ui.UI, actions Actions) error {
 		snapshot := actions.Inspect()
 		ui.PrintInfoCard("功能状态", snapshot.Fields...)
 		fmt.Println()
+		states := make(map[string]string, len(snapshot.Fields))
+		for _, field := range snapshot.Fields {
+			states[field.Label] = field.Value
+		}
+		status := func(label string) string {
+			if value := states[label]; value != "" {
+				return "[" + value + "]"
+			}
+			return ""
+		}
 		switch {
 		case snapshot.AutostartUnavailable:
-			ui.MenuOptionHint("1", "开机自启设置", "查看状态与原因")
+			ui.MenuOptionStatusHint("1", "开机自启设置", status("开机自启"), "查看状态与原因")
 		case snapshot.AutostartEnabled:
-			ui.MenuOptionHint("1", "关闭开机自启", "当前规则保持生效")
+			ui.MenuOptionStatusHint("1", "关闭开机自启", status("开机自启"), "当前规则保持生效")
 		default:
-			ui.MenuOptionHint("1", "开启开机自启", "开机时加载规则")
+			ui.MenuOptionStatusHint("1", "开启开机自启", status("开机自启"), "开机时加载规则")
 		}
-		ui.MenuOptionHint("2", "ICMP 回显（Ping）", "设置 IPv4 / IPv6 入站 Ping")
-		ui.MenuOptionHint("3", "数据包统计", "统计规则命中的包数与字节数")
-		ui.MenuOptionHint("4", "内核转发", "分别设置 IPv4 / IPv6 转发")
-		ui.MenuOptionHint("5", "SSH 访问", "分别设置公网 / 内网 SSH 访问")
+		ping := "[IPv4 " + states["ICMP 回显"] + " · IPv6 " + states["ICMPv6 回显"] + "]"
+		ui.MenuOptionStatusHint("2", "ICMP 回显（Ping）", ping, "设置 IPv4 / IPv6 入站 Ping")
+		ui.MenuOptionStatusHint("3", "数据包统计", status("数据包统计"), "统计规则命中的包数与字节数")
+		ui.MenuOptionStatusHint("4", "内核转发", status("内核转发"), "分别设置 IPv4 / IPv6 转发")
+		ui.MenuOptionStatusHint("5", "SSH 访问", status("SSH 访问"), "分别设置公网 / 内网 SSH 访问")
 		ui.MenuExit("0/q", "返回防火墙管理")
 		choice, err := ui.AskChoice(view, "请选择", "", map[string]string{"1": "1", "2": "2", "3": "3", "4": "4", "5": "5"})
 		if err != nil {

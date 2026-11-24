@@ -106,7 +106,9 @@ func (service manager) editSchedule(view *ui.UI, name string, reset bool) error 
 			return err
 		}},
 		ui.PromptStep{Run: func() error {
-			persistent, err = ui.AskChoice(view, "补跑关机期间错过的任务？1 开启，2 关闭", "2", map[string]string{"1": "true", "2": "false"})
+			persistent, err = askToggle(view, switchLabel(state.persistent), "true", "false", "2", func() {
+				ui.MenuSection("补跑关机期间错过的任务")
+			})
 			return err
 		}},
 		ui.PromptStep{Run: func() error {

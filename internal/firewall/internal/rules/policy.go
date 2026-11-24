@@ -38,7 +38,7 @@ type Options struct {
 
 type ImmediateActions struct {
 	Fields func(string) []ui.CardField
-	Print  func()
+	Print  func([]ui.CardField)
 	Choose func(*ui.UI, string) (func() error, string)
 }
 

@@ -21,7 +21,7 @@ func Run(view *ui.UI) error {
 		ui.MenuOptionStatus("1", "SSH 公钥", ui.ConfiguredBadge(status.keys))
 		ui.MenuOptionStatus("2", "SSH 安全策略", ui.ConfiguredBadge(status.security))
 		ui.MenuOption("3", "查看生效配置")
-		ui.MenuOption("4", "Root SSH 登录策略")
+		ui.MenuOptionStatus("4", "Root SSH 登录策略", ui.SoftwareBadge(status.rootLogin, status.rootLogin != "检测失败" && status.rootLogin != "未检测到"))
 		ui.MenuExit("0/q", "返回")
 
 		choice, err := view.Ask("请选择：")
@@ -58,13 +58,14 @@ func Run(view *ui.UI) error {
 }
 
 type sshStatus struct {
-	keys     bool
-	security bool
-	fields   []ui.CardField
+	keys      bool
+	security  bool
+	rootLogin string
+	fields    []ui.CardField
 }
 
 func currentStatus() sshStatus {
-	status := sshStatus{security: security.IsConfigured()}
+	status := sshStatus{security: security.IsConfigured(), rootLogin: "未检测到"}
 	userField := ui.CardField{Label: "配置用户", Value: "未检测到"}
 	account, err := system.CurrentTargetUser()
 	if err != nil {
@@ -74,5 +75,14 @@ func currentStatus() sshStatus {
 		status.keys = keys.IsConfigured(account)
 	}
 	status.fields = append([]ui.CardField{userField}, security.SummaryFields()...)
+	for _, field := range status.fields {
+		if field.Label == "Root 登录" {
+			status.rootLogin = field.Value
+		}
+		if field.Label == "配置读取" && field.Value == "失败" {
+			status.rootLogin = "检测失败"
+			break
+		}
+	}
 	return status
 }

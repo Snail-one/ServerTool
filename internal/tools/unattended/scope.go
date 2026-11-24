@@ -323,7 +323,7 @@ func (service manager) editScope(view *ui.UI, choice, currentLabel string, scope
 		return err
 	}
 	option := scopeOptions[choice]
-	value, err := askToggle(view, currentLabel, "on", "off", func() {
+	value, err := askToggle(view, currentLabel, "on", "off", "", func() {
 		showPage(option.label)
 		ui.PrintInfoCard("当前设置", ui.CardField{Label: option.label, Value: currentLabel})
 		fmt.Println()
