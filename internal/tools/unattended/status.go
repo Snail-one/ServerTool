@@ -9,38 +9,38 @@ import (
 	"snail_tool/internal/ui"
 )
 
-// StatusField provides a read-only summary for the system tools menu.
-func StatusField() ui.CardField {
+// StatusField reports the update summary and whether updates are active.
+func StatusField() (ui.CardField, bool) {
 	service := manager{exists: system.CommandExists, query: packagemanager.QueryOutput}
 	return service.statusField()
 }
 
-func (service manager) statusField() ui.CardField {
+func (service manager) statusField() (ui.CardField, bool) {
 	field := ui.CardField{Label: Title}
 	switch {
 	case !service.exists("apt-get") || !service.exists("apt-config"):
 		field.Value = "当前系统不支持 APT 更新管理"
-		return field
+		return field, false
 	case !service.exists("unattended-upgrade"):
 		field.Value = "未安装"
-		return field
+		return field, false
 	}
 	current, err := service.settings()
 	if err != nil {
 		field.Value = "APT 策略检测失败"
-		return field
+		return field, false
 	}
 	if current.shutdown == "true" {
 		field.Value = "已配置关机时安装"
-		return field
+		return field, true
 	}
 	if current.periodic == "0" {
 		field.Value = "APT 定时任务已关闭"
-		return field
+		return field, false
 	}
 	if !activeInterval(current.upgrade) {
 		field.Value = intervalLabel(current.upgrade)
-		return field
+		return field, false
 	}
 	state, err := service.timer(upgradeTimer)
 	if err != nil {
@@ -52,8 +52,9 @@ func (service manager) statusField() ui.CardField {
 		if next := triggerLabel(state.next); next != "暂无" {
 			field.Detail = "下次触发：" + next
 		}
+		return field, true
 	}
-	return field
+	return field, false
 }
 
 func showPage(title string) {

@@ -36,20 +36,23 @@ func Run(view *ui.UI, report *startup.Report) error {
 		if goVersion != "" {
 			goStatus = "已安装 " + goVersion
 		}
+		goBadge := ui.SoftwareBadge(goStatus, goVersion != "")
+		updates, updatesActive := unattended.StatusField()
+		upsBadge := ui.ConfiguredBadge(ups.IsUPSConfigured())
 		ui.PrintInfoCard("当前系统",
 			ui.CardField{Label: "发行版", Value: distribution},
 			ui.CardField{Label: "包管理器", Value: packageManager},
 			ui.CardField{Label: "常用命令行工具", Value: toolStatus},
-			ui.CardField{Label: "Go 语言环境", Value: ui.SoftwareBadge(goStatus, goVersion != "")},
-			unattended.StatusField(),
-			ui.CardField{Label: "UPS（NUT）", Value: ui.ConfiguredBadge(ups.IsUPSConfigured())},
+			ui.CardField{Label: "Go 语言环境", Value: goBadge},
+			updates,
+			ui.CardField{Label: "UPS（NUT）", Value: upsBadge},
 		)
 		fmt.Println()
-		ui.MenuOption("1", "常用命令行工具")
-		ui.MenuOption("2", "Go 语言环境")
-		ui.MenuOption("3", unattended.Title)
+		ui.MenuOptionStatus("1", "常用命令行工具", toolStatus)
+		ui.MenuOptionStatus("2", "Go 语言环境", goBadge)
+		ui.MenuOptionStatus("3", unattended.Title, ui.SoftwareBadge(updates.Value, updatesActive))
 		fmt.Println()
-		ui.MenuOption("4", "UPS（NUT）")
+		ui.MenuOptionStatus("4", "UPS（NUT）", upsBadge)
 		fmt.Println()
 		ui.MenuShortcutHint("c", "查看本次启动信息", "")
 		ui.MenuExit("0/q", "返回")
