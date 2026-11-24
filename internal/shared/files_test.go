@@ -99,7 +99,7 @@ func TestAtomicWriteFailureRollsBackAndCleansTemp(t *testing.T) {
 		_, _ = io.WriteString(writer, "partial")
 		return errors.New("injected write failure")
 	})
-	if err == nil || !strings.Contains(err.Error(), "injected write failure") {
+	if err == nil || !strings.Contains(err.Error(), "injected write failure") || AtomicWriteReplaced(err) {
 		t.Fatalf("error = %v", err)
 	}
 	assertAtomicRollback(t, dir, path)
@@ -118,6 +118,21 @@ func TestAtomicSyncFailureRollsBackAndCleansTemp(t *testing.T) {
 		t.Fatal("expected sync failure")
 	}
 	assertAtomicRollback(t, dir, path)
+}
+
+func TestAtomicDirectorySyncFailureReportsReplacement(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config")
+	cause := errors.New("injected directory sync failure")
+	originalSync := syncAtomicDir
+	syncAtomicDir = func(*os.File) error { return cause }
+	t.Cleanup(func() { syncAtomicDir = originalSync })
+	err := AtomicWriteFile(path, []byte("replacement"), AtomicWriteOptions{Mode: 0644})
+	if !errors.Is(err, cause) || !AtomicWriteReplaced(err) {
+		t.Fatalf("expected a replacement with a sync failure, got %v", err)
+	}
+	if content, err := os.ReadFile(path); err != nil || string(content) != "replacement" {
+		t.Fatalf("replacement missing after sync failure: %q, %v", content, err)
+	}
 }
 
 func TestAtomicWriteRejectsSymlinksAndNonRegularTargets(t *testing.T) {

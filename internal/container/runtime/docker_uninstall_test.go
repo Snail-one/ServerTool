@@ -39,6 +39,10 @@ func TestDockerUninstallPlanDetectsPackagesAndRepositoryFiles(t *testing.T) {
 func TestDockerUninstallCancelChangesNothing(t *testing.T) {
 	uninstaller, calls, removed := fakeDockerUninstaller()
 	uninstaller.confirm = func(dockerUninstallPlan) (bool, error) { return false, nil }
+	uninstaller.removeForwardService = func() error {
+		t.Fatal("canceled uninstall attempted to remove the firewall service")
+		return nil
+	}
 
 	done, err := uninstaller.uninstall()
 	if err != nil {
@@ -54,6 +58,10 @@ func TestDockerUninstallCancelChangesNothing(t *testing.T) {
 
 func TestDockerUninstallDebCompletesInSafeOrder(t *testing.T) {
 	uninstaller, calls, removed := fakeDockerUninstaller()
+	uninstaller.removeForwardService = func() error {
+		*calls = append(*calls, "remove firewall sync service")
+		return nil
+	}
 	done, err := uninstaller.uninstall()
 	if err != nil {
 		t.Fatal(err)
@@ -62,6 +70,7 @@ func TestDockerUninstallDebCompletesInSafeOrder(t *testing.T) {
 		t.Fatal("uninstall did not report completion")
 	}
 	wantCalls := []string{
+		"remove firewall sync service",
 		"systemctl disable --now docker.service docker.socket",
 		"apt-get purge -y docker-ce docker-ce-cli",
 	}
@@ -364,9 +373,10 @@ func fakeDockerUninstaller() (*dockerUninstaller, *[]string, *[]string) {
 			removed = append(removed, path)
 			return nil
 		},
-		removeTree:  func(string) error { return nil },
-		groupExists: func() (bool, error) { return false, nil },
-		confirm:     func(dockerUninstallPlan) (bool, error) { return true, nil },
+		removeTree:           func(string) error { return nil },
+		removeForwardService: func() error { return nil },
+		groupExists:          func() (bool, error) { return false, nil },
+		confirm:              func(dockerUninstallPlan) (bool, error) { return true, nil },
 	}
 	return uninstaller, &calls, &removed
 }

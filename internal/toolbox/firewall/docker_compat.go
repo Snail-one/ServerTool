@@ -22,8 +22,7 @@ const (
 	dockerForwardComment  = "snail-docker-forward"
 )
 
-// DockerForwardUnitPath is the boot helper that reinstalls the DOCKER-USER rule.
-var DockerForwardUnitPath = "/etc/systemd/system/" + dockerForwardUnit
+var dockerForwardUnitPath = "/etc/systemd/system/" + dockerForwardUnit
 
 var (
 	dockerForwardAttempts = 30
@@ -386,7 +385,7 @@ func dockerFirewallBackend() (string, error) {
 }
 
 func dockerCompatEnabled() (bool, error) {
-	info, err := os.Lstat(DockerForwardUnitPath)
+	info, err := os.Lstat(dockerForwardUnitPath)
 	if os.IsNotExist(err) || (err == nil && !info.Mode().IsRegular()) {
 		return false, nil
 	}
@@ -452,7 +451,7 @@ func dockerCompatStatus() (string, error) {
 	}
 	saved := string(version.content)
 	if !enabled {
-		if fileExists(DockerForwardUnitPath) {
+		if fileExists(dockerForwardUnitPath) {
 			return "规则未同步", nil
 		}
 		if strings.Contains(saved, dockerForwardMarkExpr) {
@@ -539,8 +538,8 @@ func installDockerForwardUnit() error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(DockerForwardUnitPath, []byte(text), 0644); err != nil {
-		return fmt.Errorf("写入 %s 失败: %w", DockerForwardUnitPath, err)
+	if err := os.WriteFile(dockerForwardUnitPath, []byte(text), 0644); err != nil {
+		return fmt.Errorf("写入 %s 失败: %w", dockerForwardUnitPath, err)
 	}
 	if output, err := commandOutput("systemctl", "daemon-reload"); err != nil {
 		return fmt.Errorf("systemctl daemon-reload 失败: %w: %s", err, strings.TrimSpace(output))
@@ -562,13 +561,29 @@ func stopDockerForwardUnit() error {
 }
 
 func removeDockerForwardUnit() error {
-	if err := os.Remove(DockerForwardUnitPath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("删除 %s 失败: %w", DockerForwardUnitPath, err)
+	if err := shared.RemoveRegularFile(dockerForwardUnitPath); err != nil {
+		return err
 	}
 	if output, err := commandOutput("systemctl", "daemon-reload"); err != nil {
 		return fmt.Errorf("systemctl daemon-reload 失败: %w: %s", err, strings.TrimSpace(output))
 	}
 	return nil
+}
+
+// RemoveDockerForwardService removes the boot helper before Docker is uninstalled.
+func RemoveDockerForwardService() error {
+	release, err := lockDockerForward()
+	if err != nil {
+		return err
+	}
+	defer release()
+	if !fileExists(dockerForwardUnitPath) {
+		return nil
+	}
+	if err := stopDockerForwardUnit(); err != nil {
+		return err
+	}
+	return removeDockerForwardUnit()
 }
 
 func applyDockerForwardMarkIfEnabled(content string) (string, error) {
@@ -591,18 +606,19 @@ func clearDockerForwardMarks() (bool, error) {
 		return false, err
 	}
 	if changed {
-		if err := writeConfig(updated, version); err != nil {
-			return false, err
+		saved, err := saveAndApplyConfig(version, updated)
+		if err != nil && saved {
+			err = fmt.Errorf("转发标记已从配置删除，但未成功加载；可重新选择关闭重试: %w", err)
 		}
-	} else {
-		live, err := liveDockerForwardConfig()
-		if err != nil {
-			return false, err
-		}
-		_, marked, err := configureDockerForwardMark(live, false)
-		if err != nil || !marked {
-			return false, err
-		}
+		return err == nil, err
+	}
+	live, err := liveDockerForwardConfig()
+	if err != nil {
+		return false, err
+	}
+	_, marked, err := configureDockerForwardMark(live, false)
+	if err != nil || !marked {
+		return false, err
 	}
 	if err := applyConfig([]byte(updated)); err != nil {
 		return false, fmt.Errorf("转发标记已从配置删除，但未成功加载；可重新选择关闭重试: %w", err)
@@ -626,9 +642,11 @@ func prepareDockerForwardConfig() error {
 		return fmt.Errorf("本工具防火墙配置没有可设置标记的转发规则")
 	}
 	if changed {
-		if err := writeConfig(updated, version); err != nil {
-			return err
+		saved, err := saveAndApplyConfig(version, updated)
+		if err != nil && saved {
+			err = fmt.Errorf("转发标记已保存，但未成功加载；可重新选择开启重试: %w", err)
 		}
+		return err
 	}
 	if err := applyConfig([]byte(updated)); err != nil {
 		return fmt.Errorf("转发标记已保存，但未成功加载；可重新选择开启重试: %w", err)
@@ -650,10 +668,8 @@ func migrateDockerForwardConfig() error {
 	if err != nil || !changed {
 		return err
 	}
-	if err := writeConfig(updated, version); err != nil {
-		return err
-	}
-	return applyConfig([]byte(updated))
+	_, err = saveAndApplyConfig(version, updated)
+	return err
 }
 
 func enableDockerCompat() error {
@@ -705,7 +721,7 @@ func disableDockerCompat() (bool, error) {
 	defer release()
 	removed := false
 	// Stop any running boot helper before removing rules it could reinstall.
-	hasUnit := fileExists(DockerForwardUnitPath)
+	hasUnit := fileExists(dockerForwardUnitPath)
 	if hasUnit {
 		if err := stopDockerForwardUnit(); err != nil {
 			return false, err

@@ -131,9 +131,15 @@ go vet ./...
 go test ./...
 ```
 
+防火墙集成测试使用临时网络命名空间、虚拟网卡和实际 nftables 规则检查 Docker 网桥的转发方向、拒绝优先级与连接标记。Linux 环境安装 `nftables`、`iproute2`、`iputils-ping` 和 `procps` 后，可运行下列命令。也可省略 `-exec 'sudo -n'`，由支持非特权用户和网络命名空间的系统运行。
+
+```bash
+go test -tags=integration -exec 'sudo -n' ./internal/toolbox/firewall -run '^TestNftablesForwardingIntegration$' -count=1
+```
+
 ### 自动发布
 
-质量检查统一在 [CI 工作流](.github/workflows/ci.yml) 中，所有分支推送和 Pull Request 会自动检查 Go 格式、执行 `go vet ./...` 和 `go test ./...`，也可手动运行。`gofmt -l cmd internal` 应无输出。
+质量检查统一在 [CI 工作流](.github/workflows/ci.yml) 中，所有分支推送和 Pull Request 会自动检查 Go 格式、运行 `go vet ./...`、单元测试和防火墙集成测试，也可手动运行。`gofmt -l cmd internal` 应无输出。
 
 推送 `v*` 标签后，[发布工作流](.github/workflows/release.yml) 会调用同一 CI 工作流，测试通过后再构建 Linux amd64/arm64 二进制并发布到 GitHub Releases，同时提供 `checksums.txt`。
 

@@ -25,7 +25,7 @@ func TestAccessRulePagesReturnOneLevelAtATime(t *testing.T) {
 			setupTest(t)
 			version := ruleTestConfig(t, orderTestRules())
 			view := inputUI(t, tc.forward+strings.Repeat("q\n", tc.backs)+"parent-next\n")
-			if _, err := editAccessRulesDraft(view, string(version.content), false); !errors.Is(err, shared.ErrReturnToMenu) {
+			if _, err := accessPolicy.editPolicyDraft(view, string(version.content), false, nil); !errors.Is(err, shared.ErrReturnToMenu) {
 				t.Fatalf("back did not leave the first page: %v", err)
 			}
 			if next, err := view.Ask("parent"); err != nil || next != "parent-next" {
@@ -42,7 +42,7 @@ func TestSourceRuleCanChangeBranchAfterReturning(t *testing.T) {
 	// Leave the IPv6 source page, switch to IPv4, then return from protocol.
 	// The skipped IPv6 page must not reappear in the back history.
 	view := inputUI(t, "\n3\n192.0.2.1\nq\nq\n1\n192.0.2.1\n\n\n\n\n\nq\nq\nq\nq\nq\nq\nq\nq\nq\nparent-next\n")
-	if _, err := askAllowRule(view, allowRule{ID: "aaaaaaaa"}); !errors.Is(err, shared.ErrReturnToMenu) {
+	if _, err := accessPolicy.askAllowRule(view, allowRule{ID: "aaaaaaaa"}); !errors.Is(err, shared.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if next, err := view.Ask("parent"); err != nil || next != "parent-next" {
@@ -77,14 +77,15 @@ func TestRuleDraftDefaultsToKeepingUnsavedChanges(t *testing.T) {
 		t.Run(map[bool]string{false: "access", true: "forward"}[forward], func(t *testing.T) {
 			setupTest(t)
 			version := ruleTestConfig(t, nil)
+			session := accessPolicy
 			if forward {
-				defer useForwardSession()()
+				session = forwardPolicy
 			}
 			view := inputUI(t, "3\n1\n1\n1\n8443\n0\n\nq\nq\ns\nparent-next\n")
 			var draft string
 			output := capturePortOutput(t, func() {
 				var err error
-				draft, err = editAccessRulesDraft(view, string(version.content), false)
+				draft, err = session.editPolicyDraft(view, string(version.content), false, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -107,7 +108,7 @@ func TestRuleDraftShowsDraftActionsOnlyWithChanges(t *testing.T) {
 	version := ruleTestConfig(t, nil)
 	output := capturePortOutput(t, func() {
 		view := inputUI(t, "3\n1\n1\n1\n8443\nr\nq\n")
-		if _, err := editAccessRulesDraft(view, string(version.content), false); !errors.Is(err, shared.ErrReturnToMenu) {
+		if _, err := accessPolicy.editPolicyDraft(view, string(version.content), false, nil); !errors.Is(err, shared.ErrReturnToMenu) {
 			t.Fatal(err)
 		}
 	})

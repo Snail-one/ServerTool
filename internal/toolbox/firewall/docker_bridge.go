@@ -215,10 +215,11 @@ func configureDockerBridge(view *ui.UI) error {
 		if !confirmed {
 			return shared.ErrReturnToMenu
 		}
-		if err := writeConfig(updated, version); err != nil {
-			return err
-		}
-		if err := applyConfig([]byte(updated)); err != nil {
+		saved, err := saveAndApplyConfig(version, updated)
+		if err != nil {
+			if !saved {
+				return err
+			}
 			return fmt.Errorf("Docker 流量放行配置已保存，但未成功加载；原配置已备份，可输入 r 重试: %w", err)
 		}
 		ui.PrintSuccessCard(direction+"已"+action, append(next.fields(),

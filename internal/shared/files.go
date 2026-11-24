@@ -1,6 +1,7 @@
 package shared
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -26,6 +27,17 @@ type AtomicWriteOptions struct {
 
 var syncAtomicFile = func(file *os.File) error { return file.Sync() }
 var syncAtomicDir = func(dir *os.File) error { return dir.Sync() }
+
+type atomicWriteReplacedError struct{ cause error }
+
+func (err *atomicWriteReplacedError) Error() string { return err.cause.Error() }
+func (err *atomicWriteReplacedError) Unwrap() error { return err.cause }
+
+// AtomicWriteReplaced reports whether an atomic write error occurred after replacement.
+func AtomicWriteReplaced(err error) bool {
+	var replaced *atomicWriteReplacedError
+	return errors.As(err, &replaced)
+}
 
 // ReadRegularFile refuses symlinks in the file and its ancestors. Missing
 // files and missing parent directories are reported as absent.
@@ -133,11 +145,11 @@ func AtomicWrite(path string, options AtomicWriteOptions, write func(io.Writer) 
 
 	directory, err := os.Open(dir)
 	if err != nil {
-		return fmt.Errorf("打开父目录以同步失败 %s: %w", dir, err)
+		return &atomicWriteReplacedError{fmt.Errorf("打开父目录以同步失败 %s: %w", dir, err)}
 	}
 	defer directory.Close()
 	if err := syncAtomicDir(directory); err != nil {
-		return fmt.Errorf("同步父目录失败 %s: %w", dir, err)
+		return &atomicWriteReplacedError{fmt.Errorf("同步父目录失败 %s: %w", dir, err)}
 	}
 	return nil
 }

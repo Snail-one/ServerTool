@@ -42,7 +42,7 @@ func printRuleOrder(rules []allowRule, selected string) {
 	fmt.Println()
 }
 
-func reorderAllowRulesDraft(view *ui.UI, rules []allowRule) ([]allowRule, error) {
+func (session policySession) reorderAllowRulesDraft(view *ui.UI, rules []allowRule) ([]allowRule, error) {
 	if len(rules) < 2 {
 		ui.PrintInfoCard("无需调整顺序", ui.CardField{Label: "规则数量", Value: "至少需要两条附加规则"})
 		return rules, nil
@@ -51,7 +51,7 @@ func reorderAllowRulesDraft(view *ui.UI, rules []allowRule) ([]allowRule, error)
 	selected := draft[0].ID
 	notice := ""
 	for {
-		sourceRulePage("调整规则顺序", allowRule{})
+		session.sourceRulePage("调整规则顺序", allowRule{})
 		state := "与进入本页时的顺序一致"
 		exit := "返回规则配置"
 		if !reflect.DeepEqual(draft, rules) {
@@ -62,7 +62,7 @@ func reorderAllowRulesDraft(view *ui.UI, rules []allowRule) ([]allowRule, error)
 			ui.CardField{Label: "状态", Value: state},
 			ui.CardField{Label: "选中规则", Value: selected},
 			ui.CardField{Label: "匹配顺序", Value: "从上到下；TCP+UDP 规则作为一个整体移动"},
-			ui.CardField{Label: "调整范围", Value: "采用顺序后返回" + sessionTitle() + "，统一保存才生效"},
+			ui.CardField{Label: "调整范围", Value: "采用顺序后返回" + session.title + "，统一保存才生效"},
 		)
 		printRuleOrder(draft, selected)
 		if notice != "" {
@@ -76,7 +76,7 @@ func reorderAllowRulesDraft(view *ui.UI, rules []allowRule) ([]allowRule, error)
 		ui.MenuShortcutHint("t", "置顶", "")
 		ui.MenuShortcutHint("b", "置底", "")
 		ui.MenuShortcutHint("r", "还原进入本页时的顺序", "")
-		ui.MenuShortcutHint("s", "采用顺序并返回", "返回"+sessionTitle()+"后统一保存")
+		ui.MenuShortcutHint("s", "采用顺序并返回", "返回"+session.title+"后统一保存")
 		ui.MenuExit("0/q", exit)
 		choice, err := view.Ask("请选择操作或规则：")
 		if err != nil {

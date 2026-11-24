@@ -1,13 +1,10 @@
 package firewall
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"unicode"
-
-	"snail_tool/internal/shared"
 )
 
 const (
@@ -35,46 +32,6 @@ var forwardRuleBlock = ruleBlock{
 	begin: forwardRulesBegin, end: forwardRulesEnd,
 	allowChain: "forward_source_allow", baseChain: "forward", hook: "forward",
 	privateChain: "forward_private_ports", publicChain: "forward_public_ports",
-}
-
-func currentRuleBlock() ruleBlock {
-	if activeSession != nil {
-		return activeSession.block
-	}
-	return accessRuleBlock
-}
-
-type configVersion struct {
-	content []byte
-	exists  bool
-}
-
-func readConfigVersion() (configVersion, error) {
-	data, exists, err := shared.ReadRegularFile(configPath)
-	return configVersion{content: data, exists: exists}, err
-}
-
-func checkConfigVersion(expected configVersion) error {
-	latest, err := readConfigVersion()
-	if err != nil {
-		return err
-	}
-	if latest.exists != expected.exists || !bytes.Equal(latest.content, expected.content) {
-		return fmt.Errorf("配置文件已被其他操作修改，未覆盖，请返回后重新操作")
-	}
-	return nil
-}
-
-// Give each firewall edit a distinct backup, including edits in the same second.
-func backupFirewallConfig() (string, error) {
-	version, err := readConfigVersion()
-	if err != nil {
-		return "", err
-	}
-	if !version.exists {
-		return "", fmt.Errorf("备份失败：配置文件不存在")
-	}
-	return (shared.BackupStore{Root: dataDir, Module: "firewall"}).Snapshot(configPath)
 }
 
 type nftToken struct {
@@ -205,7 +162,7 @@ func findRuleChain(content string, block ruleBlock) (int, int, error) {
 }
 
 func managedRules(content string) ([]allowRule, error) {
-	return managedRulesIn(content, currentRuleBlock())
+	return managedRulesIn(content, accessRuleBlock)
 }
 
 func managedRulesIn(content string, block ruleBlock) ([]allowRule, error) {
@@ -286,7 +243,7 @@ func renderRuleBody(rules []allowRule) string {
 }
 
 func replaceManagedRules(content string, rules []allowRule) (string, error) {
-	return replaceManagedRulesIn(content, rules, currentRuleBlock())
+	return replaceManagedRulesIn(content, rules, accessRuleBlock)
 }
 
 func replaceManagedRulesIn(content string, rules []allowRule, section ruleBlock) (string, error) {
@@ -332,16 +289,13 @@ func replaceManagedRulesIn(content string, rules []allowRule, section ruleBlock)
 	return content[:start] + "\n        " + block + "\n" + content[start:], nil
 }
 
-func saveAccessRules(version configVersion, updated string) (bool, error) {
-	if err := writeConfig(updated, version); err != nil {
-		return false, err
-	}
-	if err := applyConfig([]byte(updated)); err != nil {
-		label := "访问规则"
-		if activeSession != nil && activeSession.forward {
-			label = "转发规则"
+func (session policySession) saveRules(version configVersion, updated string) (bool, error) {
+	saved, err := saveAndApplyConfig(version, updated)
+	if err != nil {
+		if !saved {
+			return false, err
 		}
-		return true, fmt.Errorf("%s已保存，但未成功加载；原配置已备份，可输入 r 校验加载配置重试: %w", label, err)
+		return true, fmt.Errorf("%s已保存，但未成功加载；原配置已备份，可输入 r 校验加载配置重试: %w", session.label, err)
 	}
 	return true, nil
 }

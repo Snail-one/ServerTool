@@ -2,9 +2,9 @@ package firewall
 
 import "snail_tool/internal/ui"
 
-func sourceRulePage(stage string, rule allowRule) {
+func (session policySession) sourceRulePage(stage string, rule allowRule) {
 	ui.ClearScreen()
-	ui.MenuTitle("防火墙管理", sessionTitle(), "规则配置", stage)
+	ui.MenuTitle("防火墙管理", session.title, "规则配置", stage)
 	var fields []ui.CardField
 	if rule.ID != "" {
 		fields = append(fields, ui.CardField{Label: "规则 ID", Value: rule.ID})

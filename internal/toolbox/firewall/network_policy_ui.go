@@ -12,9 +12,9 @@ import (
 	"snail_tool/internal/ui"
 )
 
-func policyFields(content string) []ui.CardField {
+func (session policySession) policyFields(content string) []ui.CardField {
 	var fields []ui.CardField
-	for _, list := range sessionLists() {
+	for _, list := range session.lists {
 		value, err := readPolicyValue(content, list)
 		if err != nil {
 			value = err.Error()
@@ -34,33 +34,31 @@ func policyFields(content string) []ui.CardField {
 	return fields
 }
 
-func policyChangeFields(before, after string) []ui.CardField {
+func (session policySession) policyChangeFields(before, after string) []ui.CardField {
 	if before == after {
 		return nil
 	}
 	var fields []ui.CardField
-	old, next := policyFields(before), policyFields(after)
+	old, next := session.policyFields(before), session.policyFields(after)
 	for i := range old {
 		if old[i].Value != next[i].Value {
 			fields = append(fields, ui.CardField{Label: next[i].Label, Value: next[i].Value, Detail: "原设置：" + old[i].Value})
 		}
 	}
-	return append(fields, ruleChangeFields(before, after)...)
+	return append(fields, session.ruleChangeFields(before, after)...)
 }
 
 func runForwardRuleManager(view *ui.UI) error {
-	restore := useForwardSession()
-	defer restore()
-	return runPolicyRuleManager(view, "转发规则")
+	return forwardPolicy.runPolicyRuleManager(view)
 }
 
 func runAccessRuleManager(view *ui.UI) error {
-	return runPolicyRuleManager(view, "访问规则")
+	return accessPolicy.runPolicyRuleManager(view)
 }
 
-func runPolicyRuleManager(view *ui.UI, label string) error {
+func (session policySession) runPolicyRuleManager(view *ui.UI) error {
 	if !isRoot() {
-		return fmt.Errorf("%s管理需要 root 权限，请使用 sudo 运行本工具", label)
+		return fmt.Errorf("%s管理需要 root 权限，请使用 sudo 运行本工具", session.label)
 	}
 	for {
 		version, err := readConfigVersion()
@@ -68,29 +66,25 @@ func runPolicyRuleManager(view *ui.UI, label string) error {
 			return err
 		}
 		original := string(version.content)
-		draft, err := editPolicyDraft(view, original, false, func(draft string) (bool, error) {
-			return saveAccessRules(version, draft)
+		draft, err := session.editPolicyDraft(view, original, false, func(draft string) (bool, error) {
+			return session.saveRules(version, draft)
 		})
 		if err != nil {
 			return err
 		}
 		if draft != original {
 			ui.ClearScreen()
-			ui.MenuTitle("防火墙管理", sessionTitle())
-			ui.PrintSuccessCard(label + "已保存并加载")
-			view.PauseWithPrompt("按回车返回" + sessionTitle() + "…")
+			ui.MenuTitle("防火墙管理", session.title)
+			ui.PrintSuccessCard(session.label + "已保存并加载")
+			view.PauseWithPrompt("按回车返回" + session.title + "…")
 		}
 	}
 }
 
-func editAccessRulesDraft(view *ui.UI, original string, generating bool) (string, error) {
-	return editPolicyDraft(view, original, generating, nil)
-}
-
 // save reports whether the draft was written, even if loading it failed.
 // When unset, the editor returns the draft to the caller for further review.
-func editPolicyDraft(view *ui.UI, original string, generating bool, save func(string) (bool, error)) (string, error) {
-	forward := activeSession != nil && activeSession.forward
+func (session policySession) editPolicyDraft(view *ui.UI, original string, generating bool, save func(string) (bool, error)) (string, error) {
+	forward := session.forward
 	showDocker := forward && !generating && save != nil
 	var forwardConfigErr error
 	if forward {
@@ -112,9 +106,9 @@ func editPolicyDraft(view *ui.UI, original string, generating bool, save func(st
 	draft := original
 	notice := ""
 	for {
-		changes := policyChangeFields(original, draft)
+		changes := session.policyChangeFields(original, draft)
 		ui.ClearScreen()
-		ui.MenuTitle("防火墙管理", sessionTitle())
+		ui.MenuTitle("防火墙管理", session.title)
 		var summary []ui.CardField
 		label := "访问规则"
 		if forward {
@@ -223,12 +217,12 @@ func editPolicyDraft(view *ui.UI, original string, generating bool, save func(st
 		switch choice {
 		case "p":
 			ui.ClearScreen()
-			ui.MenuTitle("防火墙管理", sessionTitle(), "预览配置")
+			ui.MenuTitle("防火墙管理", session.title, "预览配置")
 			if len(changes) > 0 {
 				ui.PrintInfoCard("待应用的变更", changes...)
 			}
 			fmt.Println(draft)
-			view.PauseWithPrompt("按回车返回" + sessionTitle() + "…")
+			view.PauseWithPrompt("按回车返回" + session.title + "…")
 		case "r":
 			draft = original
 			notice = "已还原本次全部修改"
@@ -254,7 +248,7 @@ func editPolicyDraft(view *ui.UI, original string, generating bool, save func(st
 				return draft, nil
 			}
 			ui.ClearScreen()
-			ui.MenuTitle("防火墙管理", sessionTitle(), "确认变更")
+			ui.MenuTitle("防火墙管理", session.title, "确认变更")
 			ui.PrintInfoCard("待应用的变更", changes...)
 			prompt := "确认采用此草稿并返回最终确认页？(y/N，0/q 返回)："
 			confirmed, err := view.Confirm(prompt)
@@ -277,26 +271,26 @@ func editPolicyDraft(view *ui.UI, original string, generating bool, save func(st
 				}
 				if err != nil {
 					log.Warn(err)
-					view.PauseWithPrompt("按回车返回" + sessionTitle() + "…")
+					view.PauseWithPrompt("按回车返回" + session.title + "…")
 					continue
 				}
 				scope := map[string]string{"1": "3", "2": "1", "3": "2"}[choice]
-				_, err = promptPolicyPortScope(view, scope, func(indices []int) error {
+				_, err = session.promptPolicyPortScope(view, scope, func(indices []int) error {
 					var editErr error
-					updated, editErr = changePolicyLists(view, draft, indices)
+					updated, editErr = session.changePolicyLists(view, draft, indices)
 					return editErr
 				})
 			case "l":
 				for {
 					ui.ClearScreen()
-					ui.MenuTitle("防火墙管理", sessionTitle(), "内网 IP 范围")
+					ui.MenuTitle("防火墙管理", session.title, "内网 IP 范围")
 					ui.PrintInfoCard("按来源地址划分内网",
 						ui.CardField{Label: "范围内的来源", Value: "使用内网端口策略"},
 						ui.CardField{Label: "其他来源", Value: "使用公网端口策略"},
 					)
 					ui.MenuOption("1", "IPv4 内网范围")
 					ui.MenuOption("2", "IPv6 内网范围")
-					ui.MenuExit("0/q", "返回"+sessionTitle())
+					ui.MenuExit("0/q", "返回"+session.title)
 					var family string
 					family, err = askRuleChoice(view, "请选择 IP 版本", "", map[string]string{"1": "ipv4", "2": "ipv6"})
 					if err == nil {
@@ -304,7 +298,7 @@ func editPolicyDraft(view *ui.UI, original string, generating bool, save func(st
 						if family == "ipv6" {
 							index = 9
 						}
-						updated, err = changePolicyLists(view, draft, []int{index})
+						updated, err = session.changePolicyLists(view, draft, []int{index})
 					}
 					if errors.Is(err, shared.ErrReturnToMenu) && family != "" {
 						continue
@@ -312,7 +306,7 @@ func editPolicyDraft(view *ui.UI, original string, generating bool, save func(st
 					break
 				}
 			case "5":
-				updated, err = editSourceRulesDraft(view, draft)
+				updated, err = session.editSourceRulesDraft(view, draft)
 			default:
 				ui.InvalidChoice()
 				continue
@@ -322,7 +316,7 @@ func editPolicyDraft(view *ui.UI, original string, generating bool, save func(st
 			}
 			if err != nil {
 				log.Warn(err)
-				view.PauseWithPrompt("按回车返回" + sessionTitle() + "…")
+				view.PauseWithPrompt("按回车返回" + session.title + "…")
 				continue
 			}
 			if updated != draft {
@@ -333,11 +327,7 @@ func editPolicyDraft(view *ui.UI, original string, generating bool, save func(st
 	}
 }
 
-func choosePolicyPortScope(view *ui.UI, scope string) ([]int, error) {
-	return promptPolicyPortScope(view, scope, nil)
-}
-
-func promptPolicyPortScope(view *ui.UI, scope string, edit func([]int) error) ([]int, error) {
+func (session policySession) promptPolicyPortScope(view *ui.UI, scope string, edit func([]int) error) ([]int, error) {
 	selections := []string{scope, "3", "3"}
 	var indices []int
 	updateIndices := func() {
@@ -358,7 +348,7 @@ func promptPolicyPortScope(view *ui.UI, scope string, edit func([]int) error) ([
 		index, option := index, option
 		steps = append(steps, ui.PromptStep{Run: func() error {
 			ui.ClearScreen()
-			ui.MenuTitle("防火墙管理", sessionTitle(), policyScopeTitle(scope), option.title)
+			ui.MenuTitle("防火墙管理", session.title, policyScopeTitle(scope), option.title)
 			ui.PrintInfoCard(policyScopeTitle(scope), ui.CardField{Label: "当前步骤", Value: fmt.Sprintf("%d / 3 · %s", index+1, option.title)})
 			for i, label := range []string{option.a, option.b, option.both} {
 				ruleChoiceOption(strconv.Itoa(i+1), label, "", selections[index+1])
@@ -390,8 +380,8 @@ func policyScopeTitle(scope string) string {
 	return map[string]string{"1": "公网端口", "2": "内网端口", "3": "公网与内网端口"}[scope]
 }
 
-func changePolicyLists(view *ui.UI, content string, indices []int) (string, error) {
-	lists := sessionLists()
+func (session policySession) changePolicyLists(view *ui.UI, content string, indices []int) (string, error) {
+	lists := session.lists
 	list := lists[indices[0]]
 	title := list.label
 	if list.family == 0 {
@@ -412,7 +402,7 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 		if value == "" {
 			if list.keepSSH {
 				value = "无附加业务端口，仅 SSH 端口"
-			} else if activeSession != nil && activeSession.forward {
+			} else if session.forward {
 				value = "无转发端口"
 			} else {
 				value = "无"
@@ -455,7 +445,7 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 	err := ui.RunPromptSteps(
 		ui.PromptStep{Run: func() error {
 			ui.ClearScreen()
-			ui.MenuTitle("防火墙管理", sessionTitle(), title, "选择操作")
+			ui.MenuTitle("防火墙管理", session.title, title, "选择操作")
 			ui.PrintInfoCard("编辑所选列表", fields...)
 			ui.MenuOption("1", "添加")
 			if list.family == 0 {
@@ -463,7 +453,7 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 					ui.MenuOptionHint("2", "删除端口 / 范围", "从业务列表扣除，SSH 端口始终保留")
 					ui.MenuOption("3", "替换全部业务端口")
 					ui.MenuOptionHint("4", "清空业务端口", "只保留 SSH 端口")
-				} else if activeSession != nil && activeSession.forward {
+				} else if session.forward {
 					ui.MenuOptionHint("2", "删除端口 / 范围", "从转发列表扣除")
 					ui.MenuOption("3", "替换全部转发端口")
 					ui.MenuOptionHint("4", "清空转发端口", "清空后新的转发连接全部丢弃")
@@ -493,7 +483,7 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 			current, _ := readPolicyValue(content, list)
 			entries := strings.Split(current, ", ")
 			ui.ClearScreen()
-			ui.MenuTitle("防火墙管理", sessionTitle(), title, "选择编辑条目")
+			ui.MenuTitle("防火墙管理", session.title, title, "选择编辑条目")
 			for i, entry := range entries {
 				ui.MenuOption(strconv.Itoa(i+1), entry)
 			}
@@ -517,7 +507,7 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 		ui.PromptStep{Enabled: func() bool { return operation != "reset" }, Run: func() error {
 			ui.ClearScreen()
 			action := map[string]string{"add": "添加", "remove": "删除", "replace": "替换", "edit": "编辑条目"}[operation]
-			ui.MenuTitle("防火墙管理", sessionTitle(), title, action)
+			ui.MenuTitle("防火墙管理", session.title, title, action)
 			inputFields := append([]ui.CardField(nil), fields...)
 			if list.family == 0 {
 				inputFields[0].Value = "3 / 3 · " + action + "端口"
@@ -556,7 +546,7 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 						continue
 					}
 				}
-				if _, err := withPolicyChanges(content, indices, operation, raw, editIndex); err != nil {
+				if _, err := session.withPolicyChanges(content, indices, operation, raw, editIndex); err != nil {
 					log.Warn(err)
 					continue
 				}
@@ -568,5 +558,5 @@ func changePolicyLists(view *ui.UI, content string, indices []int) (string, erro
 	if err != nil {
 		return "", err
 	}
-	return withPolicyChanges(content, indices, operation, value, editIndex)
+	return session.withPolicyChanges(content, indices, operation, value, editIndex)
 }

@@ -123,7 +123,7 @@ func TestAskRuleSupportsSeparateAndCombinedIPVersions(t *testing.T) {
 		if test.source == "" {
 			current.Kind, current.Ports, current.Protocol = "port", "443", "tcp"
 		}
-		rule, err := askAllowRule(inputUI(t, test.input), current)
+		rule, err := accessPolicy.askAllowRule(inputUI(t, test.input), current)
 		if err != nil || rule.Family != test.family || rule.Source != test.source || rule.SourceIPv6 != test.source6 {
 			t.Fatalf("wrong family/source after input: %+v %v", rule, err)
 		}
@@ -132,7 +132,7 @@ func TestAskRuleSupportsSeparateAndCombinedIPVersions(t *testing.T) {
 
 func TestEditDualStackSourcesToOneVersionKeepsTheChosenAddress(t *testing.T) {
 	current := allowRule{ID: "1234abcd", Kind: "source_port", Family: "both", Source: "192.168.0.0/16", SourceIPv6: "2001:db8::/32", Ports: "443", Protocol: "tcp"}
-	rule, err := askAllowRule(inputUI(t, "\n2\n\n\n\n\n\n\n\n"), current)
+	rule, err := accessPolicy.askAllowRule(inputUI(t, "\n2\n\n\n\n\n\n\n\n"), current)
 	if err != nil || rule.Family != "ipv6" || rule.Source != current.SourceIPv6 || rule.SourceIPv6 != "" {
 		t.Fatalf("switching to IPv6 kept the wrong source: %+v %v", rule, err)
 	}
@@ -162,7 +162,7 @@ func TestDualStackSourceRuleIsSavedMovedQueriedAndDeletedAsOneID(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(rules, []allowRule{target, other}) {
 		t.Fatalf("reordering split dual-stack traffic: %v %v", rules, err)
 	}
-	matches, err := queryRulesByPort(inputUI(t, "443\n"), rules)
+	matches, err := accessPolicy.queryRulesByPort(inputUI(t, "443\n"), rules)
 	if err != nil || !reflect.DeepEqual(matches, []allowRule{target}) {
 		t.Fatalf("query split dual-stack rule: %v %v", matches, err)
 	}

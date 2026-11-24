@@ -8,6 +8,40 @@ import (
 	"testing"
 )
 
+func TestRemoveDockerForwardServiceStopsBeforeDeletingAndIsIdempotent(t *testing.T) {
+	setupTest(t)
+	commandExists = func(name string) bool { return name == "systemctl" }
+	if err := os.WriteFile(dockerForwardUnitPath, []byte("unit"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var calls []string
+	commandOutput = func(name string, args ...string) (string, error) {
+		command := strings.Join(append([]string{name}, args...), " ")
+		calls = append(calls, command)
+		switch command {
+		case "systemctl disable --now snail-docker-forward.service":
+			if !fileExists(dockerForwardUnitPath) {
+				t.Fatal("unit was removed before stopping")
+			}
+		case "systemctl daemon-reload":
+			if fileExists(dockerForwardUnitPath) {
+				t.Fatal("systemd reloaded before the unit was removed")
+			}
+		default:
+			t.Fatalf("unexpected command: %s", command)
+		}
+		return "", nil
+	}
+	for i := 0; i < 2; i++ {
+		if err := RemoveDockerForwardService(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(calls) != 2 {
+		t.Fatalf("unexpected calls: %v", calls)
+	}
+}
+
 func TestDockerForwardMarkStaysOnForwardAccepts(t *testing.T) {
 	content, err := buildConfig([]int{22}, false, false)
 	if err != nil {
@@ -83,7 +117,7 @@ func TestSyncDockerForwardInsertsMissingRuleOnly(t *testing.T) {
 	setupTest(t)
 	dockerForwardAttempts = 1
 	t.Cleanup(func() { dockerForwardAttempts = 30 })
-	if err := os.WriteFile(DockerForwardUnitPath, []byte("unit"), 0644); err != nil {
+	if err := os.WriteFile(dockerForwardUnitPath, []byte("unit"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	var calls []string
@@ -136,9 +170,9 @@ func TestEnableDockerCompatWritesUnitAndMarkWithCountersOff(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
-	previousUnit := DockerForwardUnitPath
-	DockerForwardUnitPath = filepath.Join(t.TempDir(), "snail-docker-forward.service")
-	t.Cleanup(func() { DockerForwardUnitPath = previousUnit })
+	previousUnit := dockerForwardUnitPath
+	dockerForwardUnitPath = filepath.Join(t.TempDir(), "snail-docker-forward.service")
+	t.Cleanup(func() { dockerForwardUnitPath = previousUnit })
 	commandExists = func(string) bool { return true }
 	commandOutput = func(name string, args ...string) (string, error) {
 		switch name {
@@ -188,7 +222,7 @@ func TestEnableDockerCompatWritesUnitAndMarkWithCountersOff(t *testing.T) {
 	if strings.Contains(string(saved), "iifname \"lo\" ct mark") {
 		t.Fatal("input accept was marked")
 	}
-	unit, err := os.ReadFile(DockerForwardUnitPath)
+	unit, err := os.ReadFile(dockerForwardUnitPath)
 	if err != nil || !strings.Contains(string(unit), "sync-docker-forward") || !strings.Contains(string(unit), "WantedBy=docker.service") {
 		t.Fatalf("unit = %s, err=%v", unit, err)
 	}
@@ -244,7 +278,7 @@ func TestDockerMarkExistsOnlyWhileCompatIsOn(t *testing.T) {
 		t.Fatalf("disable left the mark in place, err=%v", err)
 	}
 
-	if err := os.WriteFile(DockerForwardUnitPath, []byte("unit"), 0644); err != nil {
+	if err := os.WriteFile(dockerForwardUnitPath, []byte("unit"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	commandExists = func(name string) bool { return name == "systemctl" }

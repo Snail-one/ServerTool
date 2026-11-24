@@ -57,18 +57,19 @@ type dockerUninstallPlan struct {
 }
 
 type dockerUninstaller struct {
-	removeData    bool
-	osReleasePath string
-	readFile      func(string) ([]byte, error)
-	commandExists func(string) bool
-	output        func(string, ...string) (string, error)
-	run           func(string, ...string) error
-	fileExists    func(string) bool
-	pathExists    func(string) bool
-	removeFile    func(string) error
-	removeTree    func(string) error
-	groupExists   func() (bool, error)
-	confirm       func(dockerUninstallPlan) (bool, error)
+	removeData           bool
+	osReleasePath        string
+	readFile             func(string) ([]byte, error)
+	commandExists        func(string) bool
+	output               func(string, ...string) (string, error)
+	run                  func(string, ...string) error
+	fileExists           func(string) bool
+	pathExists           func(string) bool
+	removeFile           func(string) error
+	removeTree           func(string) error
+	removeForwardService func() error
+	groupExists          func() (bool, error)
+	confirm              func(dockerUninstallPlan) (bool, error)
 }
 
 type dockerUninstallPrompter interface {
@@ -125,11 +126,12 @@ func newDockerUninstaller(view *ui.UI, removeData bool) *dockerUninstaller {
 			_, err := os.Lstat(path)
 			return err == nil
 		},
-		removeFile:  shared.RemoveRegularFile,
-		removeTree:  shared.RemovePathTree,
-		groupExists: dockerGroupExists,
-		confirm:     func(plan dockerUninstallPlan) (bool, error) { return confirmDockerUninstall(view, plan) },
-		removeData:  removeData,
+		removeFile:           shared.RemoveRegularFile,
+		removeTree:           shared.RemovePathTree,
+		removeForwardService: firewall.RemoveDockerForwardService,
+		groupExists:          dockerGroupExists,
+		confirm:              func(plan dockerUninstallPlan) (bool, error) { return confirmDockerUninstall(view, plan) },
+		removeData:           removeData,
 	}
 }
 
@@ -193,14 +195,8 @@ func (uninstaller *dockerUninstaller) uninstall() (bool, error) {
 		return false, nil
 	}
 
-	if uninstaller.fileExists(firewall.DockerForwardUnitPath) {
-		log.Info("[Docker 卸载/Docker 放行标记] 关闭 ", firewall.DockerForwardUnitPath)
-		if err := uninstaller.run("systemctl", "disable", "--now", "snail-docker-forward.service"); err != nil {
-			return false, fmt.Errorf("Docker 卸载在关闭 Docker 放行标记阶段失败: %w", err)
-		}
-		if err := uninstaller.removeFile(firewall.DockerForwardUnitPath); err != nil {
-			return false, fmt.Errorf("Docker 卸载在删除 Docker 放行标记服务阶段失败: %w", err)
-		}
+	if err := uninstaller.removeForwardService(); err != nil {
+		return false, fmt.Errorf("Docker 卸载在清理 Docker 放行标记服务阶段失败: %w", err)
 	}
 
 	if len(plan.packages) > 0 || (plan.removeData && uninstaller.commandExists("docker")) {

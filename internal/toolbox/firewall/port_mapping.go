@@ -628,10 +628,11 @@ func changePortMapping(view *ui.UI, version configVersion, mappings []portMappin
 	if !confirmed {
 		return "", shared.ErrReturnToMenu
 	}
-	if err := writeConfig(updated, version); err != nil {
-		return "", err
-	}
-	if err := applyConfig([]byte(updated)); err != nil {
+	saved, err := saveAndApplyConfig(version, updated)
+	if err != nil {
+		if !saved {
+			return "", err
+		}
 		return updated, fmt.Errorf("端口映射已保存，但未成功加载，可返回防火墙管理输入 r 重试: %w", err)
 	}
 	ui.PrintSuccessCard("端口映射已保存并加载")

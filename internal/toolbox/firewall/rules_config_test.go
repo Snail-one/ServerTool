@@ -129,7 +129,7 @@ func TestSaveAccessRulesValidatesBeforeWriteAndGuardsConcurrentChanges(t *testin
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = saveAccessRules(version, updated)
+			_, err = accessPolicy.saveRules(version, updated)
 			if (err == nil) != (scenario == "success") {
 				t.Fatalf("err=%v for %s", err, scenario)
 			}

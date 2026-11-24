@@ -54,7 +54,7 @@ func TestEditRuleKeepsIDAndCanonicalizesCIDR(t *testing.T) {
 	setupTest(t)
 	initial := []allowRule{{ID: "aaaaaaaa", Kind: "source_port", Source: "192.168.1.0/24", Ports: "443", Protocol: "tcp"}}
 	version := ruleTestConfig(t, initial)
-	rules, err := changeAllowRuleDraft(inputUI(t, "\n\n192.168.1.1/16\n\n\n\n\n21069\n3\n"), initial, "aaaaaaaa")
+	rules, err := accessPolicy.changeAllowRuleDraft(inputUI(t, "\n\n192.168.1.1/16\n\n\n\n\n21069\n3\n"), initial, "aaaaaaaa")
 	if shared.ReadFileString(configPath) != string(version.content) {
 		t.Fatal("editing a draft wrote the configuration")
 	}
@@ -113,7 +113,7 @@ func TestDeleteByNumberUsesTheDisplayedFilteredList(t *testing.T) {
 	}
 	version := ruleTestConfig(t, rules)
 	// The second matching row is rule C, which was third in the full list.
-	got, err := deleteRuleByPortDraft(inputUI(t, "443\n2\n"), rules)
+	got, err := accessPolicy.deleteRuleByPortDraft(inputUI(t, "443\n2\n"), rules)
 	if shared.ReadFileString(configPath) != string(version.content) {
 		t.Fatal("deleting from a draft wrote the configuration")
 	}
@@ -138,7 +138,7 @@ func TestRuleAddCancellationAndDuplicateDoNotChangeConfiguration(t *testing.T) {
 			} else if scenario == "cancel second source" {
 				input = "\n3\n192.168.1.0/24\nq\n"
 			}
-			_, err := changeAllowRuleDraft(inputUI(t, input), rules, "")
+			_, err := accessPolicy.changeAllowRuleDraft(inputUI(t, input), rules, "")
 			if scenario == "duplicate" && (err == nil || !strings.Contains(err.Error(), "完全重复")) {
 				t.Fatalf("normalized duplicate not rejected: %v", err)
 			}
@@ -159,16 +159,16 @@ func TestQueryPortAndDeleteOnlyChosenIDPreservingOtherSources(t *testing.T) {
 	}
 	version := ruleTestConfig(t, rules)
 	// All-port source rules are included because they also allow the queried port.
-	matches, err := queryRulesByPort(inputUI(t, "443\n"), rules)
+	matches, err := accessPolicy.queryRulesByPort(inputUI(t, "443\n"), rules)
 	if err != nil || !reflect.DeepEqual(matches, rules[:3]) {
 		t.Fatalf("query must list each matching rule independently: %v %v", matches, err)
 	}
-	rangeMatches, err := queryRulesByPort(inputUI(t, "8080\n"), rules)
+	rangeMatches, err := accessPolicy.queryRulesByPort(inputUI(t, "8080\n"), rules)
 	if err != nil || len(rangeMatches) != 2 || rangeMatches[1].ID != "dddddddd" {
 		t.Fatalf("port inside range not matched: %v %v", rangeMatches, err)
 	}
 	// dddddddd is not in the query result, so it must not be selected/deleted.
-	got, err := deleteRuleByPortDraft(inputUI(t, "443\ndddddddd\nbbbbbbbb\n"), rules)
+	got, err := accessPolicy.deleteRuleByPortDraft(inputUI(t, "443\ndddddddd\nbbbbbbbb\n"), rules)
 	if shared.ReadFileString(configPath) != string(version.content) {
 		t.Fatal("deleting from a draft wrote the configuration")
 	}
@@ -183,11 +183,11 @@ func TestNewDropRuleIsInsertedAheadOfAllows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rules, err := changeAllowRuleDraft(inputUI(t, "2\n1\n203.0.113.8\n\neth0\n\n\n22\n1\n"), []allowRule{existing}, "")
+	rules, err := accessPolicy.changeAllowRuleDraft(inputUI(t, "2\n1\n203.0.113.8\n\neth0\n\n\n22\n1\n"), []allowRule{existing}, "")
 	if err != nil || len(rules) != 2 || rules[0].Verdict != "drop" || rules[0].Kind != "rule" || rules[0].Iif != "eth0" || rules[1].ID != "aaaaaaaa" {
 		t.Fatalf("drop was not inserted first: %v %v", rules, err)
 	}
-	rules, err = changeAllowRuleDraft(inputUI(t, "\n1\n192.168.1.20\n\n\n\n\n3306\n1\n"), rules, "")
+	rules, err = accessPolicy.changeAllowRuleDraft(inputUI(t, "\n1\n192.168.1.20\n\n\n\n\n3306\n1\n"), rules, "")
 	if err != nil || len(rules) != 3 || rules[0].Verdict != "drop" || rules[2].Kind != "source_port" || rules[2].Ports != "3306" {
 		t.Fatalf("allow was not appended after the drop: %v %v", rules, err)
 	}

@@ -18,36 +18,18 @@ type policyList struct {
 
 type policySession struct {
 	title   string
+	label   string
 	lists   []policyList
 	block   ruleBlock
 	forward bool
 }
 
-var activeSession *policySession
-
-func sessionTitle() string {
-	if activeSession != nil && activeSession.title != "" {
-		return activeSession.title
-	}
-	return "访问规则管理"
+var accessPolicy = policySession{
+	title: "访问规则管理", label: "访问规则", lists: policyLists, block: accessRuleBlock,
 }
 
-func sessionLists() []policyList {
-	if activeSession != nil && len(activeSession.lists) > 0 {
-		return activeSession.lists
-	}
-	return policyLists
-}
-
-func useForwardSession() func() {
-	session := policySession{
-		title:   "转发规则管理",
-		lists:   forwardPolicyLists,
-		block:   forwardRuleBlock,
-		forward: true,
-	}
-	activeSession = &session
-	return func() { activeSession = nil }
+var forwardPolicy = policySession{
+	title: "转发规则管理", label: "转发规则", lists: forwardPolicyLists, block: forwardRuleBlock, forward: true,
 }
 
 var policyLists = []policyList{
@@ -402,9 +384,9 @@ func validateForwardConfig(content string) error {
 
 // Build the complete edit in memory. A failure in any selected list returns
 // no replacement, so a batch never leaves a partially updated parent draft.
-func withPolicyChanges(content string, indices []int, operation, value string, editIndex int) (string, error) {
+func (session policySession) withPolicyChanges(content string, indices []int, operation, value string, editIndex int) (string, error) {
 	updated := content
-	lists := sessionLists()
+	lists := session.lists
 	for _, index := range indices {
 		list := lists[index]
 		current, err := readPolicyValue(updated, list)

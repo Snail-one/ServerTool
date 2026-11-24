@@ -64,9 +64,9 @@ func askRuleChoice(view *ui.UI, prompt, fallback string, choices map[string]stri
 	}
 }
 
-func askRuleSource(view *ui.UI, current, family string) (string, error) {
+func (session policySession) askRuleSource(view *ui.UI, current, family string) (string, error) {
 	hint := "填写访问本机的客户端 IP 或网段"
-	if activeSession != nil && activeSession.forward {
+	if session.forward {
 		hint = "填写经本机转发的来源 IP 或网段"
 	}
 	ui.PrintField("来源说明", hint)
@@ -244,12 +244,12 @@ func askRulePorts(view *ui.UI, current string) (string, error) {
 
 // New rules collect a full match. Enter skips an empty condition. Legacy
 // any-source port rules stay on their original shorter path.
-func askAllowRule(view *ui.UI, current allowRule) (allowRule, error) {
+func (session policySession) askAllowRule(view *ui.UI, current allowRule) (allowRule, error) {
 	rule := current
 	legacy := current.Kind == "port"
 	err := ui.RunPromptSteps(
 		ui.PromptStep{Enabled: func() bool { return legacy }, Run: func() error {
-			sourceRulePage("选择放行类型", rule)
+			session.sourceRulePage("选择放行类型", rule)
 			ruleChoiceOption("1", "改为完整规则", "可以填写来源、目标、网卡和端口", "3")
 			ruleChoiceOption("2", "改为完整规则且不限端口", "去掉这条旧规则上的端口", "3")
 			ruleChoiceOption("3", "保留已有全来源端口例外", "也可通过转入基础端口移除此规则", "3")
@@ -267,7 +267,7 @@ func askAllowRule(view *ui.UI, current allowRule) (allowRule, error) {
 			return err
 		}},
 		ui.PromptStep{Enabled: func() bool { return rule.Kind != "port" }, Run: func() error {
-			sourceRulePage("选择动作", rule)
+			session.sourceRulePage("选择动作", rule)
 			fallback := "1"
 			if current.Verdict == "drop" {
 				fallback = "2"
@@ -284,42 +284,42 @@ func askAllowRule(view *ui.UI, current allowRule) (allowRule, error) {
 			return err
 		}},
 		ui.PromptStep{Run: func() error {
-			updated, err := askRuleFamily(view, current, rule)
+			updated, err := session.askRuleFamily(view, current, rule)
 			if err == nil {
 				rule = updated
 			}
 			return err
 		}},
 		ui.PromptStep{Enabled: func() bool { return rule.Kind != "port" }, Run: func() error {
-			value, err := askMatchSource(view, current, rule, false)
+			value, err := session.askMatchSource(view, current, rule, false)
 			if err == nil {
 				rule.Source, rule.SourceIPv6 = value, ""
 			}
 			return err
 		}},
 		ui.PromptStep{Enabled: func() bool { return rule.Kind != "port" && rule.Family == "both" && rule.Source != "" }, Run: func() error {
-			value, err := askMatchSource(view, current, rule, true)
+			value, err := session.askMatchSource(view, current, rule, true)
 			if err == nil {
 				rule.SourceIPv6 = value
 			}
 			return err
 		}},
 		ui.PromptStep{Enabled: func() bool { return rule.Kind != "port" }, Run: func() error {
-			value, err := askMatchDest(view, current, rule, false)
+			value, err := session.askMatchDest(view, current, rule, false)
 			if err == nil {
 				rule.Dest, rule.DestIPv6 = value, ""
 			}
 			return err
 		}},
 		ui.PromptStep{Enabled: func() bool { return rule.Kind != "port" && rule.Family == "both" && rule.Dest != "" }, Run: func() error {
-			value, err := askMatchDest(view, current, rule, true)
+			value, err := session.askMatchDest(view, current, rule, true)
 			if err == nil {
 				rule.DestIPv6 = value
 			}
 			return err
 		}},
 		ui.PromptStep{Enabled: func() bool { return rule.Kind != "port" }, Run: func() error {
-			sourceRulePage("填写来源网卡", rule)
+			session.sourceRulePage("填写来源网卡", rule)
 			ui.PrintField("说明", "回车跳过。可使用 *，例如 br-*")
 			ui.MenuExit("0/q", "返回上一步")
 			value, err := askOptionalText(view, current.Iif, "来源网卡", normalizeIface)
@@ -329,9 +329,9 @@ func askAllowRule(view *ui.UI, current allowRule) (allowRule, error) {
 			return err
 		}},
 		ui.PromptStep{Enabled: func() bool { return rule.Kind != "port" }, Run: func() error {
-			sourceRulePage("填写目标网卡", rule)
+			session.sourceRulePage("填写目标网卡", rule)
 			hint := "回车跳过。可使用 *，例如 eth0"
-			if activeSession == nil || !activeSession.forward {
+			if !session.forward {
 				hint = "回车跳过。进本机的包通常没有目标网卡，这项多半匹配不到"
 			}
 			ui.PrintField("说明", hint)
@@ -343,7 +343,7 @@ func askAllowRule(view *ui.UI, current allowRule) (allowRule, error) {
 			return err
 		}},
 		ui.PromptStep{Enabled: func() bool { return rule.Kind != "port" }, Run: func() error {
-			sourceRulePage("填写来源端口", rule)
+			session.sourceRulePage("填写来源端口", rule)
 			ui.PrintField("说明", "回车跳过。输入 - 清除。例如 443 或 8000-8100")
 			ui.MenuExit("0/q", "返回上一步")
 			value, err := askOptionalPorts(view, current.Sport, "来源端口")
@@ -353,7 +353,7 @@ func askAllowRule(view *ui.UI, current allowRule) (allowRule, error) {
 			return err
 		}},
 		ui.PromptStep{Enabled: func() bool { return rule.Kind != "port" }, Run: func() error {
-			sourceRulePage("填写目标端口", rule)
+			session.sourceRulePage("填写目标端口", rule)
 			ui.PrintField("说明", "回车跳过。输入 - 清除。空着表示全部目标端口")
 			ui.MenuExit("0/q", "返回上一步")
 			value, err := askOptionalPorts(view, current.Ports, "目标端口")
@@ -363,7 +363,7 @@ func askAllowRule(view *ui.UI, current allowRule) (allowRule, error) {
 			return err
 		}},
 		ui.PromptStep{Enabled: func() bool { return rule.Kind == "port" }, Run: func() error {
-			sourceRulePage("填写允许访问的端口", rule)
+			session.sourceRulePage("填写允许访问的端口", rule)
 			ui.MenuExit("0/q", "返回上一步")
 			value, err := askRulePorts(view, current.Ports)
 			if err == nil {
@@ -372,7 +372,7 @@ func askAllowRule(view *ui.UI, current allowRule) (allowRule, error) {
 			return err
 		}},
 		ui.PromptStep{Run: func() error {
-			updated, err := askRuleProtocol(view, current, rule)
+			updated, err := session.askRuleProtocol(view, current, rule)
 			if err == nil {
 				rule = updated
 			}
@@ -385,7 +385,7 @@ func askAllowRule(view *ui.UI, current allowRule) (allowRule, error) {
 	return normalizeAllowRule(rule)
 }
 
-func askMatchSource(view *ui.UI, current, rule allowRule, second bool) (string, error) {
+func (session policySession) askMatchSource(view *ui.UI, current, rule allowRule, second bool) (string, error) {
 	family := rule.Family
 	fallback := current.Source
 	title := "填写来源地址"
@@ -400,13 +400,13 @@ func askMatchSource(view *ui.UI, current, rule allowRule, second bool) (string, 
 			fallback = current.Source
 		}
 	}
-	sourceRulePage(title, rule)
+	session.sourceRulePage(title, rule)
 	ui.PrintField("说明", "回车跳过表示不限制来源。输入 - 清除")
 	ui.MenuExit("0/q", "返回上一步")
 	return askOptionalAddress(view, fallback, family, "来源", second)
 }
 
-func askMatchDest(view *ui.UI, current, rule allowRule, second bool) (string, error) {
+func (session policySession) askMatchDest(view *ui.UI, current, rule allowRule, second bool) (string, error) {
 	family := rule.Family
 	fallback := current.Dest
 	title := "填写目标地址"
@@ -418,14 +418,14 @@ func askMatchDest(view *ui.UI, current, rule allowRule, second bool) (string, er
 		family = "ipv6"
 		fallback = current.DestIPv6
 	}
-	sourceRulePage(title, rule)
+	session.sourceRulePage(title, rule)
 	ui.PrintField("说明", "回车跳过表示不限制目标。输入 - 清除")
 	ui.MenuExit("0/q", "返回上一步")
 	return askOptionalAddress(view, fallback, family, "", second)
 }
 
-func askRuleFamily(view *ui.UI, current, rule allowRule) (allowRule, error) {
-	sourceRulePage("选择 IP 版本", rule)
+func (session policySession) askRuleFamily(view *ui.UI, current, rule allowRule) (allowRule, error) {
+	session.sourceRulePage("选择 IP 版本", rule)
 	fallback := strconv.Itoa(current.familyMask())
 	if current.Kind == "" {
 		fallback = "1"
@@ -443,8 +443,8 @@ func askRuleFamily(view *ui.UI, current, rule allowRule) (allowRule, error) {
 	return rule, nil
 }
 
-func askRuleProtocol(view *ui.UI, current, rule allowRule) (allowRule, error) {
-	sourceRulePage("选择协议", rule)
+func (session policySession) askRuleProtocol(view *ui.UI, current, rule allowRule) (allowRule, error) {
+	session.sourceRulePage("选择协议", rule)
 	fallback := map[string]string{"tcp": "1", "udp": "2", "both": "3"}[current.Protocol]
 	if fallback == "" {
 		fallback = "1"
@@ -461,7 +461,7 @@ func askRuleProtocol(view *ui.UI, current, rule allowRule) (allowRule, error) {
 	return rule, nil
 }
 
-func changeAllowRuleDraft(view *ui.UI, rules []allowRule, id string) ([]allowRule, error) {
+func (session policySession) changeAllowRuleDraft(view *ui.UI, rules []allowRule, id string) ([]allowRule, error) {
 	current := allowRule{ID: id}
 	if id == "" {
 		var err error
@@ -480,7 +480,7 @@ func changeAllowRuleDraft(view *ui.UI, rules []allowRule, id string) ([]allowRul
 			return nil, fmt.Errorf("规则 ID 不存在，请刷新后重新选择")
 		}
 	}
-	draft, err := askAllowRule(view, current)
+	draft, err := session.askAllowRule(view, current)
 	if err != nil {
 		return nil, err
 	}
@@ -492,7 +492,7 @@ func changeAllowRuleDraft(view *ui.UI, rules []allowRule, id string) ([]allowRul
 	if err != nil {
 		return nil, err
 	}
-	sourceRulePage("检查规则", allowRule{})
+	session.sourceRulePage("检查规则", allowRule{})
 	ui.PrintInfoCard("待加入草稿的规则",
 		ui.CardField{Label: "规则 ID", Value: draft.ID},
 		ui.CardField{Label: "IP 版本", Value: draft.familyLabel()},
@@ -523,8 +523,8 @@ func changeAllowRuleDraft(view *ui.UI, rules []allowRule, id string) ([]allowRul
 	return updated, nil
 }
 
-func queryRulesByPort(view *ui.UI, rules []allowRule) ([]allowRule, error) {
-	sourceRulePage("按端口查询", allowRule{})
+func (session policySession) queryRulesByPort(view *ui.UI, rules []allowRule) ([]allowRule, error) {
+	session.sourceRulePage("按端口查询", allowRule{})
 	ui.MenuExit("0/q", "返回规则配置")
 	ports, err := askRulePorts(view, "")
 	if err != nil {
@@ -538,7 +538,7 @@ func queryRulesByPort(view *ui.UI, rules []allowRule) ([]allowRule, error) {
 			matches = append(matches, rule)
 		}
 	}
-	sourceRulePage("端口查询结果", allowRule{})
+	session.sourceRulePage("端口查询结果", allowRule{})
 	ui.PrintInfoCard("端口查询结果",
 		ui.CardField{Label: "端口 / 范围", Value: ports},
 		ui.CardField{Label: "查询范围", Value: "IPv4 / IPv6、全部协议；IP 放行规则涵盖全部端口，也会列出"},
@@ -547,13 +547,13 @@ func queryRulesByPort(view *ui.UI, rules []allowRule) ([]allowRule, error) {
 	return matches, nil
 }
 
-func deleteRuleByPortDraft(view *ui.UI, rules []allowRule) ([]allowRule, error) {
+func (session policySession) deleteRuleByPortDraft(view *ui.UI, rules []allowRule) ([]allowRule, error) {
 	var candidates []allowRule
 	var id string
 	err := ui.RunPromptSteps(
 		ui.PromptStep{Run: func() error {
 			var err error
-			candidates, err = queryRulesByPort(view, rules)
+			candidates, err = session.queryRulesByPort(view, rules)
 			return err
 		}},
 		ui.PromptStep{Run: func() error {
@@ -566,14 +566,14 @@ func deleteRuleByPortDraft(view *ui.UI, rules []allowRule) ([]allowRule, error) 
 	if err != nil {
 		return nil, err
 	}
-	return deleteAllowRuleDraft(rules, findRuleIndex(rules, id)), nil
+	return session.deleteAllowRuleDraft(rules, findRuleIndex(rules, id)), nil
 }
 
-func deleteAllowRuleDraft(rules []allowRule, index int) []allowRule {
+func (session policySession) deleteAllowRuleDraft(rules []allowRule, index int) []allowRule {
 	target := rules[index]
 	updated := append([]allowRule(nil), rules[:index]...)
 	updated = append(updated, rules[index+1:]...)
-	sourceRulePage("检查删除范围", allowRule{})
+	session.sourceRulePage("检查删除范围", allowRule{})
 	ui.PrintWarningCard("从草稿移除规则",
 		ui.CardField{Label: "规则 ID", Value: target.ID},
 		ui.CardField{Label: "IP 版本", Value: target.familyLabel()},

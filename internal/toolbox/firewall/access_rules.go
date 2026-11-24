@@ -128,9 +128,9 @@ func forwardSummaryFields(content string) []ui.CardField {
 	return fields
 }
 
-func ruleChangeFields(before, after string) []ui.CardField {
-	old, oldErr := managedRules(before)
-	next, nextErr := managedRules(after)
+func (session policySession) ruleChangeFields(before, after string) []ui.CardField {
+	old, oldErr := managedRulesIn(before, session.block)
+	next, nextErr := managedRulesIn(after, session.block)
 	if oldErr != nil || nextErr != nil || reflect.DeepEqual(old, next) {
 		return nil
 	}
@@ -171,17 +171,17 @@ func ruleChangeFields(before, after string) []ui.CardField {
 	return fields
 }
 
-func editSourceRulesDraft(view *ui.UI, original string) (string, error) {
+func (session policySession) editSourceRulesDraft(view *ui.UI, original string) (string, error) {
 	draft := original
 	for {
-		rules, err := managedRules(draft)
+		rules, err := managedRulesIn(draft, session.block)
 		if err != nil {
 			return "", err
 		}
-		sourceRulePage("", allowRule{})
+		session.sourceRulePage("", allowRule{})
 		ui.PrintInfoCard("规则配置",
 			ui.CardField{Label: "匹配顺序", Value: "从上到下，先命中的规则生效"},
-			ui.CardField{Label: "保存方式", Value: "修改后返回" + sessionTitle() + "统一保存"},
+			ui.CardField{Label: "保存方式", Value: "修改后返回" + session.title + "统一保存"},
 		)
 		printRuleOrder(rules, "")
 		ui.MenuShortcutHint("n", "新建规则", "默认放行，拒绝会插到最前面")
@@ -191,7 +191,7 @@ func editSourceRulesDraft(view *ui.UI, original string) (string, error) {
 		if len(rules) > 0 {
 			ui.MenuShortcutHint("f", "按端口查找并删除规则", "")
 		}
-		ui.MenuExit("0/q", "返回"+sessionTitle())
+		ui.MenuExit("0/q", "返回"+session.title)
 		prompt := "请选择："
 		if len(rules) > 0 {
 			prompt = "请输入规则序号、完整 ID 或操作："
@@ -204,7 +204,7 @@ func editSourceRulesDraft(view *ui.UI, original string) (string, error) {
 			return draft, nil
 		}
 		if index := findRuleIndex(rules, choice); index >= 0 {
-			draft, err = editSourceRuleDetails(view, draft, index)
+			draft, err = session.editSourceRuleDetails(view, draft, index)
 			if err != nil {
 				return "", err
 			}
@@ -220,15 +220,15 @@ func editSourceRulesDraft(view *ui.UI, original string) (string, error) {
 			var err error
 			switch choice {
 			case "n":
-				updated, err = changeAllowRuleDraft(view, rules, "")
+				updated, err = session.changeAllowRuleDraft(view, rules, "")
 			case "o":
-				updated, err = reorderAllowRulesDraft(view, rules)
+				updated, err = session.reorderAllowRulesDraft(view, rules)
 			case "f":
-				updated, err = deleteRuleByPortDraft(view, rules)
+				updated, err = session.deleteRuleByPortDraft(view, rules)
 			}
 			if err == nil && !reflect.DeepEqual(rules, updated) {
 				var next string
-				next, err = replaceManagedRules(draft, updated)
+				next, err = replaceManagedRulesIn(draft, updated, session.block)
 				if err == nil {
 					draft = next
 				}
@@ -238,18 +238,18 @@ func editSourceRulesDraft(view *ui.UI, original string) (string, error) {
 	}
 }
 
-func editSourceRuleDetails(view *ui.UI, draft string, index int) (string, error) {
+func (session policySession) editSourceRuleDetails(view *ui.UI, draft string, index int) (string, error) {
 	for {
-		rules, err := managedRules(draft)
+		rules, err := managedRulesIn(draft, session.block)
 		if err != nil {
 			return "", err
 		}
 		rule := rules[index]
-		sourceRulePage(fmt.Sprintf("规则 %d", index+1), rule)
+		session.sourceRulePage(fmt.Sprintf("规则 %d", index+1), rule)
 		ui.MenuOption("1", "编辑规则")
 		ui.MenuOption("2", "删除规则")
 		options := map[string]string{"1": "edit", "2": "delete"}
-		if rule.Kind == "port" && (activeSession == nil || !activeSession.forward) {
+		if rule.Kind == "port" && (!session.forward) {
 			ui.MenuOptionHint("3", "旧规则转入基础端口", "将端口加入公网和内网列表，再移除此规则")
 			options["3"] = "migrate"
 		}
@@ -274,12 +274,12 @@ func editSourceRuleDetails(view *ui.UI, draft string, index int) (string, error)
 				updated = converted
 				ui.PrintInfoCard("转换已加入草稿", ui.CardField{Label: "生效方式", Value: "统一保存后按基础端口及来源分流匹配，仍受其他手写规则约束"})
 			case "delete":
-				updated, err = replaceManagedRules(draft, deleteAllowRuleDraft(rules, index))
+				updated, err = replaceManagedRulesIn(draft, session.deleteAllowRuleDraft(rules, index), session.block)
 			case "edit":
 				var next []allowRule
-				next, err = changeAllowRuleDraft(view, rules, rule.ID)
+				next, err = session.changeAllowRuleDraft(view, rules, rule.ID)
 				if err == nil && !reflect.DeepEqual(rules, next) {
-					updated, err = replaceManagedRules(draft, next)
+					updated, err = replaceManagedRulesIn(draft, next, session.block)
 				}
 			}
 			return err

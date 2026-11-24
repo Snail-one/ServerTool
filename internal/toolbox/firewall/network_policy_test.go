@@ -201,7 +201,7 @@ func TestPolicyBatchSelectorsTargetOnlyChosenLists(t *testing.T) {
 		{"2\n\n\n", []int{4, 5, 6, 7}},
 		{"1\n1\nb\n2\n\n", []int{2, 3}},
 	} {
-		got, err := choosePolicyPortScope(inputUI(t, tc.input[2:]), tc.input[:1])
+		got, err := accessPolicy.promptPolicyPortScope(inputUI(t, tc.input[2:]), tc.input[:1], nil)
 		if err != nil || !reflect.DeepEqual(got, tc.want) {
 			t.Fatalf("%q: got=%v want=%v err=%v", tc.input, got, tc.want, err)
 		}

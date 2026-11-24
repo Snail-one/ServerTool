@@ -86,7 +86,7 @@ func TestReorderDraftCancellationAndBoundariesDoNotWriteOrPause(t *testing.T) {
 			rules := orderTestRules()
 			version := ruleTestConfig(t, rules)
 			view := inputUI(t, input+"next\n")
-			if _, err := reorderAllowRulesDraft(view, rules); !errors.Is(err, shared.ErrReturnToMenu) {
+			if _, err := accessPolicy.reorderAllowRulesDraft(view, rules); !errors.Is(err, shared.ErrReturnToMenu) {
 				t.Fatalf("draft cancellation did not return: %v", err)
 			}
 			if got := shared.ReadFileString(configPath); got != string(version.content) {

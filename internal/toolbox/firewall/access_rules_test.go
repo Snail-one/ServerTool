@@ -104,7 +104,7 @@ func TestNewSourceExceptionsDoNotOfferGlobalPortCreation(t *testing.T) {
 		output := capturePortOutput(t, func() {
 			var err error
 			// Both permissions must remain limited to the source entered first.
-			rule, err = askAllowRule(inputUI(t, tc.input), allowRule{ID: "aaaaaaaa"})
+			rule, err = accessPolicy.askAllowRule(inputUI(t, tc.input), allowRule{ID: "aaaaaaaa"})
 			if err != nil {
 				t.Fatal(err)
 			}

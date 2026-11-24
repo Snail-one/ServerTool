@@ -19,16 +19,16 @@ func setupTest(t *testing.T) {
 	previousDataDir := dataDir
 	previousPreserve := preserveOriginal
 	previousProcRoot, previousForwardingPath := forwardingProcRoot, forwardingConfigPath
-	previousDockerUnit := DockerForwardUnitPath
+	previousDockerUnit := dockerForwardUnitPath
 	preserveOriginal = func() error { return nil }
 	t.Cleanup(func() {
 		commandExists, commandRun, commandOutput, isRoot, configPath = previousExists, previousRun, previousOutput, previousRoot, previousPath
 		dataDir = previousDataDir
 		preserveOriginal = previousPreserve
 		forwardingProcRoot, forwardingConfigPath = previousProcRoot, previousForwardingPath
-		DockerForwardUnitPath = previousDockerUnit
+		dockerForwardUnitPath = previousDockerUnit
 	})
-	DockerForwardUnitPath = filepath.Join(t.TempDir(), "absent-snail-docker-forward.service")
+	dockerForwardUnitPath = filepath.Join(t.TempDir(), "absent-snail-docker-forward.service")
 	t.Setenv("SSH_CONNECTION", "")
 	configPath = filepath.Join(t.TempDir(), "nftables.conf")
 	dataDir = filepath.Join(t.TempDir(), "snailtool")
