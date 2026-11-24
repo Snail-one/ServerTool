@@ -27,7 +27,7 @@ func TestManagementMenuShowsDistinctPolicyAndTimerStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer file.Close()
-	if _, err := file.WriteString("3\nq\n4\nq\n6\n\nq\n"); err != nil {
+	if _, err := file.WriteString("3\nq\n4\nq\n6\n\n10\nq\nq\n"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := file.Seek(0, 0); err != nil {
@@ -43,6 +43,7 @@ func TestManagementMenuShowsDistinctPolicyAndTimerStatus(t *testing.T) {
 	}
 	defer output.Close()
 	service := manager{
+		path:   filepath.Join(t.TempDir(), "policy.conf"),
 		exists: func(command string) bool { return command == "systemctl" },
 		query: func(command string, args ...string) (string, error) {
 			if command == "systemctl" {
@@ -73,7 +74,10 @@ func TestManagementMenuShowsDistinctPolicyAndTimerStatus(t *testing.T) {
 		"索引刷新：已启用 · 已启动", "下次触发：2026-11-24 18:36:09 PST",
 		"周期与调度", "关闭 · 已保存每 7 天", "系统单元：apt-daily.timer", "补跑错过的任务：开启",
 		"APT::Periodic::Unattended-Upgrade \"0\";", "\n\n  0/q 返回系统工具",
-		"查看最近更新日志\n\n  r   刷新状态",
+		"查看最近更新日志\n\n  10  更新范围与开关",
+		"系统安全更新：沿用原生策略", "系统普通更新：沿用原生策略", "Linux 内核更新：沿用原生策略",
+		"旧内核清理：开启（默认）", "Docker Engine 更新：沿用原生策略", "Debian 大版本升级提醒：关闭",
+		"服务器自动重启：关闭（默认）", "\n\n  0/q 返回自动更新管理",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("menu missing %q", want)

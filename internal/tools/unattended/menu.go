@@ -13,11 +13,29 @@ func (service manager) menu(view *ui.UI) error {
 	choices := map[string]string{
 		"1": "enable", "2": "disable", "3": "options", "4": "schedule",
 		"5": "edit", "6": "effective", "7": "simulate", "8": "run",
-		"9": "logs", "r": "refresh", "x": "reset",
+		"9": "logs", "10": "scope", "r": "refresh", "x": "reset",
 	}
+	var releaseNotice ui.CardField
 	for {
 		ui.ClearScreen()
 		policy, timers, installed := service.overview()
+		scope, _, _, scopeErr := service.readScope()
+		if scopeErr != nil {
+			policy = append(policy, ui.CardField{Label: "更新范围", Value: "读取失败", Detail: scopeErr.Error()})
+			releaseNotice = ui.CardField{}
+		} else {
+			if scope.Managed {
+				policy = append(policy, ui.CardField{Label: "更新范围", Value: "使用 ServerTool 策略"})
+			}
+			if scope.Reminder {
+				if releaseNotice.Label == "" {
+					releaseNotice = debianReleaseNotice()
+				}
+				policy = append(policy, releaseNotice)
+			} else {
+				releaseNotice = ui.CardField{}
+			}
+		}
 		draw := func() {
 			ui.MenuTitle("系统工具", Title)
 			ui.PrintInfoCard("更新策略", policy...)
@@ -33,15 +51,21 @@ func (service manager) menu(view *ui.UI) error {
 			fmt.Println()
 			ui.MenuOptionHint("3", "APT 策略与开关", "更新频率、重启、软件包清理、邮件报告")
 			ui.MenuOptionHint("4", "设置定时器", "触发时刻、随机延迟、补跑")
-			ui.MenuOptionHint("5", "编辑原生 APT 配置", "软件源、允许或阻止的软件包及其他原生参数")
+			nativeHint := "软件源、允许或阻止的软件包及其他原生参数"
+			if scope.Managed {
+				nativeHint = "更新来源由选项 10 管理"
+			}
+			ui.MenuOptionHint("5", "编辑原生 APT 配置", nativeHint)
 			ui.MenuOption("6", "查看生效配置")
 			fmt.Println()
 			ui.MenuOptionHint("7", "模拟运行", "查看当前策略会选择哪些更新")
 			ui.MenuOption("8", "立即执行一次更新")
 			ui.MenuOption("9", "查看最近更新日志")
 			fmt.Println()
+			ui.MenuOptionHint("10", "更新范围与开关", "安全更新、内核、Docker 与重启")
+			fmt.Println()
 			ui.MenuOption("r", "刷新状态")
-			ui.MenuShortcutHint("x", "恢复原有 APT 策略", "移除本工具写入的 APT 配置")
+			ui.MenuShortcutHint("x", "恢复基础 APT 策略", "更新范围可在选项 10 中恢复")
 			ui.MenuExit("0/q", "返回系统工具")
 		}
 		choice, err := ui.AskMenuChoice(view, "请选择", "", choices, draw)
@@ -49,6 +73,7 @@ func (service manager) menu(view *ui.UI) error {
 			return err
 		}
 		if choice == "refresh" {
+			releaseNotice = ui.CardField{}
 			continue
 		}
 		ui.RunAction(view, "自动更新操作失败，已返回管理菜单", func() error {
@@ -65,6 +90,8 @@ func (service manager) menu(view *ui.UI) error {
 				return service.runUpdate(view, choice == "simulate")
 			case "logs":
 				return service.showLog()
+			case "scope":
+				return service.scopeMenu(view)
 			case "reset":
 				return service.resetNative(view)
 			}

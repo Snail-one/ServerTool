@@ -14,12 +14,15 @@ type aptOption struct {
 	label, key, kind, fallback string
 }
 
+var rebootOption = aptOption{"自动重启", rebootKey, "toggle", "false"}
+var oldKernelOption = aptOption{"移除不再使用的内核包", "Unattended-Upgrade::Remove-Unused-Kernel-Packages", "toggle", "true"}
+
 var policyOptions = []aptOption{
 	{"软件包索引刷新频率", refreshKey, "interval", "0"},
 	{"自动更新频率", upgradeKey, "frequency", "1"},
 	{"预下载频率", downloadKey, "interval", "0"},
 	{"APT 定时任务总开关", "APT::Periodic::Enable", "numeric toggle", "1"},
-	{"自动重启", rebootKey, "toggle", "false"},
+	rebootOption,
 	{"允许有用户时重启", "Unattended-Upgrade::Automatic-Reboot-WithUsers", "toggle", "true"},
 	{"自动重启时间", "Unattended-Upgrade::Automatic-Reboot-Time", "reboot time", "now"},
 	{"关机时安装更新", shutdownKey, "toggle", "false"},
@@ -27,7 +30,7 @@ var policyOptions = []aptOption{
 	{"仅接通交流电时更新", "Unattended-Upgrade::OnlyOnACPower", "toggle", "true"},
 	{"严格匹配允许名单", "Unattended-Upgrade::Package-Whitelist-Strict", "toggle", "false"},
 	{"按最小步骤升级", "Unattended-Upgrade::MinimalSteps", "toggle", "true"},
-	{"移除不再使用的内核包", "Unattended-Upgrade::Remove-Unused-Kernel-Packages", "toggle", "true"},
+	oldKernelOption,
 	{"移除新产生的无用依赖", "Unattended-Upgrade::Remove-New-Unused-Dependencies", "toggle", "true"},
 	{"移除所有不再使用的依赖", "Unattended-Upgrade::Remove-Unused-Dependencies", "toggle", "false"},
 	{"报告收件地址", "Unattended-Upgrade::Mail", "mail", ""},

@@ -217,14 +217,14 @@ func (service manager) resetNative(view *ui.UI) error {
 	if err != nil {
 		return err
 	}
-	showPage("恢复原有 APT 策略")
+	showPage("恢复基础 APT 策略")
 	if !exists {
-		ui.PrintInfoCard("当前使用原有 APT 策略")
+		ui.PrintInfoCard("当前使用系统基础 APT 策略")
 		return nil
 	}
 	ui.PrintInfoCard("将移除的配置", ui.CardField{Label: "配置文件", Value: service.path})
 	fmt.Println()
-	if err := confirm(view, "确认恢复系统原有的自动更新策略？(y/N)："); err != nil {
+	if err := confirm(view, "确认移除 ServerTool 的基础 APT 策略？(y/N)："); err != nil {
 		return err
 	}
 	return publish(service.path, previous, exists, "", service.validateAPT)
