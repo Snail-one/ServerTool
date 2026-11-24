@@ -131,6 +131,30 @@ func TestNormalizePromptAndConfirmYes(t *testing.T) {
 	}
 }
 
+func TestAskMenuChoiceDoesNotRepeatBufferedInvalidChoices(t *testing.T) {
+	t.Setenv("TERM", "dumb")
+	for _, answer := range []string{"2", "q"} {
+		t.Run(answer, func(t *testing.T) {
+			input := strings.Repeat("invalid\n\n", 20) + answer + "\nnext\n"
+			view := &UI{reader: bufio.NewReader(strings.NewReader(input))}
+			var choice string
+			var err error
+			output := captureStdout(t, func() {
+				choice, err = AskMenuChoice(view, "请选择操作", "", map[string]string{"2": "remove"}, func() { MenuOption("2", "删除") })
+			})
+			if strings.Count(output, "无效选项") != 1 || strings.Count(output, "请选择操作") != 1 {
+				t.Fatalf("retry output repeated: %q", output)
+			}
+			if answer == "q" && err != ErrReturnToMenu || answer == "2" && (err != nil || choice != "remove") {
+				t.Fatalf("choice=%q, err=%v", choice, err)
+			}
+			if next, err := view.ReadLine(); err != nil || next != "next" {
+				t.Fatalf("next input=%q, err=%v", next, err)
+			}
+		})
+	}
+}
+
 func TestPrimaryColorAndRecoverableInputStyle(t *testing.T) {
 	t.Setenv("TERM", "xterm")
 	t.Setenv("CLICOLOR_FORCE", "1")

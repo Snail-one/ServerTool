@@ -442,37 +442,39 @@ func (session Session) changePolicyLists(view *ui.UI, content string, indices []
 	err := ui.RunPromptSteps(
 		ui.PromptStep{Run: func() error {
 			ui.ClearScreen()
-			ui.MenuTitle("防火墙管理", session.title, title, "选择操作")
-			ui.PrintInfoCard("编辑所选列表", fields...)
-			ui.MenuOption("1", "添加")
-			if list.Family == 0 {
-				if list.KeepSSH {
-					ui.MenuOptionHint("2", "删除端口 / 范围", "从业务列表扣除，SSH 端口始终保留")
-					ui.MenuOption("3", "替换全部业务端口")
-					ui.MenuOptionHint("4", "清空业务端口", "只保留 SSH 端口")
-				} else if session.forward {
-					ui.MenuOptionHint("2", "删除端口 / 范围", "从转发列表扣除")
-					ui.MenuOption("3", "替换全部转发端口")
-					ui.MenuOptionHint("4", "清空转发端口", "清空后新的转发连接全部丢弃")
+			draw := func() {
+				ui.MenuTitle("防火墙管理", session.title, title, "选择操作")
+				ui.PrintInfoCard("编辑所选列表", fields...)
+				ui.MenuOption("1", "添加")
+				if list.Family == 0 {
+					if list.KeepSSH {
+						ui.MenuOptionHint("2", "删除端口 / 范围", "从业务列表扣除，SSH 端口始终保留")
+						ui.MenuOption("3", "替换全部业务端口")
+						ui.MenuOptionHint("4", "清空业务端口", "只保留 SSH 端口")
+					} else if session.forward {
+						ui.MenuOptionHint("2", "删除端口 / 范围", "从转发列表扣除")
+						ui.MenuOption("3", "替换全部转发端口")
+						ui.MenuOptionHint("4", "清空转发端口", "清空后新的转发连接全部丢弃")
+					} else {
+						ui.MenuOptionHint("2", "删除端口 / 范围", "从该名单扣除，包括 SSH 端口")
+						ui.MenuOption("3", "替换全部端口")
+						ui.MenuOptionHint("4", "清空端口", "清空后该名单不再放行新连接")
+					}
 				} else {
-					ui.MenuOptionHint("2", "删除端口 / 范围", "从该名单扣除，包括 SSH 端口")
-					ui.MenuOption("3", "替换全部端口")
-					ui.MenuOptionHint("4", "清空端口", "清空后该名单不再放行新连接")
+					ui.MenuOptionHint("2", "删除地址 / 网段", "精确匹配规范化后的地址 / CIDR")
+					ui.MenuOption("3", "替换整个范围")
+					ui.MenuOption("4", "恢复默认内网 IP 范围")
+					ui.MenuOption("5", "按序号编辑单个条目")
+					ui.PrintField("范围说明", "支持单个 IP 和 CIDR，逗号分隔；自动规范化并合并重复及被包含条目；至少保留一项")
 				}
-			} else {
-				ui.MenuOptionHint("2", "删除地址 / 网段", "精确匹配规范化后的地址 / CIDR")
-				ui.MenuOption("3", "替换整个范围")
-				ui.MenuOption("4", "恢复默认内网 IP 范围")
-				ui.MenuOption("5", "按序号编辑单个条目")
-				ui.PrintField("范围说明", "支持单个 IP 和 CIDR，逗号分隔；自动规范化并合并重复及被包含条目；至少保留一项")
+				ui.MenuExit("0/q", "返回上一步")
 			}
-			ui.MenuExit("0/q", "返回上一步")
 			choices := map[string]string{"1": "add", "2": "remove", "3": "replace", "4": "reset"}
 			if list.Family != 0 {
 				choices["5"] = "edit"
 			}
 			var err error
-			operation, err = ui.AskChoice(view, "请选择操作", "", choices)
+			operation, err = ui.AskMenuChoice(view, "请选择操作", "", choices, draw)
 			editIndex = -1
 			return err
 		}},
