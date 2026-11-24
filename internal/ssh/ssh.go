@@ -21,7 +21,8 @@ func Run(view *ui.UI) error {
 		ui.MenuOptionStatus("1", "SSH 公钥", ui.ConfiguredBadge(status.keys))
 		ui.MenuOptionStatus("2", "SSH 安全策略", ui.ConfiguredBadge(status.security))
 		ui.MenuOption("3", "查看生效配置")
-		ui.MenuOptionStatus("4", "Root SSH 登录策略", ui.SoftwareBadge(status.rootLogin, status.rootLogin != "检测失败" && status.rootLogin != "未检测到"))
+		rootLoginEnabled := status.rootLogin == "允许登录" || status.rootLogin == "仅允许密钥登录" || status.rootLogin == "仅允许强制命令"
+		ui.MenuOptionStatus("4", "Root SSH 登录策略", ui.SoftwareBadge(status.rootLogin, rootLoginEnabled))
 		ui.MenuExit("0/q", "返回")
 
 		choice, err := view.Ask("请选择：")

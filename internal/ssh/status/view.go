@@ -28,8 +28,11 @@ func Show(load func() (Report, error)) error {
 
 func PrintRows(rows []Row) {
 	for _, row := range rows {
-		if row.Value == "已开启" {
-			row.Value = ui.PrimaryText(row.Value)
+		switch row.Value {
+		case "已开启", "已允许":
+			row.Value = ui.StateText(row.Value, true)
+		case "已关闭", "已禁用", "已禁止":
+			row.Value = ui.StateText(row.Value, false)
 		}
 		if row.State == "" {
 			fmt.Printf("%s %s：%s\n", ui.PrimaryText("-"), ui.InfoText(row.Name), row.Value)

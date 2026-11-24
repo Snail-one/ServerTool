@@ -418,9 +418,7 @@ func containerDetailStatus(c containerInfo) string {
 func colorContainerState(state, text string) string {
 	switch state {
 	case listing.StateRunning:
-		return ui.SuccessText(text)
-	case listing.StateExited, listing.StatePaused, listing.StateCreated:
-		return ui.WarningText(text)
+		return ui.StateText(text, true)
 	case listing.StateRestarting:
 		return ui.InfoText(text)
 	case listing.StateDead, "removing":

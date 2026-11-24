@@ -77,9 +77,9 @@ func forwardingStateField(states []forwardingState) ui.CardField {
 			label = "检测失败"
 			details = append(details, state.family+": "+state.err.Error())
 		case state.value == "1":
-			label = ui.PrimaryText("已开启")
+			label = "已开启"
 		}
-		labels = append(labels, state.family+" "+label)
+		labels = append(labels, state.family+" "+ui.StateText(label, label == "已开启"))
 	}
 	field.Value, field.Detail = strings.Join(labels, " · "), strings.Join(details, "；")
 	return field
@@ -149,8 +149,8 @@ func (service Service) Run(view *ui.UI) error {
 	ui.PrintInfoCard("内核转发", forwardingStateField(states))
 	for index, state := range states {
 		available := state.err == nil && !state.unavailable
-		ui.MenuOptionStatusHint(fmt.Sprint(index*2+1), "开启 "+state.family+" 转发", ui.CurrentBadge(available && state.value == "1"), "持久化写入 1，并立即开启")
-		ui.MenuOptionStatusHint(fmt.Sprint(index*2+2), "关闭 "+state.family+" 转发", ui.CurrentBadge(available && state.value == "0"), "持久化写入 0，并立即关闭")
+		ui.MenuOptionStatusHint(fmt.Sprint(index*2+1), "开启 "+state.family+" 转发", ui.CurrentBadge(available && state.value == "1", true), "持久化写入 1，并立即开启")
+		ui.MenuOptionStatusHint(fmt.Sprint(index*2+2), "关闭 "+state.family+" 转发", ui.CurrentBadge(available && state.value == "0", false), "持久化写入 0，并立即关闭")
 	}
 	ui.MenuOptionHint("5", "恢复默认", "删除配置文件，同时关闭 IPv4 / IPv6 转发")
 	ui.MenuOptionHint("6", "仅删除配置文件", "移除持久配置，当前转发状态保持不变")

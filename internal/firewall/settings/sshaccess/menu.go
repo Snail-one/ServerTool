@@ -14,10 +14,10 @@ func Choose(view *ui.UI, ports string, public, private sshScopeStatus) (string, 
 		ui.CardField{Label: "作用范围", Value: "所选范围的 TCP / UDP、IPv4 / IPv6 四份入站名单一起切换"},
 		ui.CardField{Label: "不影响", Value: "其他业务端口、转发规则、来源放行，以及 SSH 服务本身"},
 	)
-	ui.MenuOptionStatus("1", "开放公网 SSH", ui.CurrentBadge(public == ScopeOpen))
-	ui.MenuOptionStatus("2", "关闭公网 SSH", ui.CurrentBadge(public == ScopeClosed))
-	ui.MenuOptionStatus("3", "开放局域网 SSH", ui.CurrentBadge(private == ScopeOpen))
-	ui.MenuOptionStatus("4", "关闭局域网 SSH", ui.CurrentBadge(private == ScopeClosed))
+	ui.MenuOptionStatus("1", "开放公网 SSH", ui.CurrentBadge(public == ScopeOpen, true))
+	ui.MenuOptionStatus("2", "关闭公网 SSH", ui.CurrentBadge(public == ScopeClosed, false))
+	ui.MenuOptionStatus("3", "开放局域网 SSH", ui.CurrentBadge(private == ScopeOpen, true))
+	ui.MenuOptionStatus("4", "关闭局域网 SSH", ui.CurrentBadge(private == ScopeClosed, false))
 	ui.MenuExit("0/q", "返回常用功能设置")
 	return ui.AskChoice(view, "请选择", "", map[string]string{
 		"1": "public-on", "2": "public-off", "3": "private-on", "4": "private-off",

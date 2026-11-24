@@ -78,11 +78,11 @@ func StateField(installed, inputActive bool, liveJSON string, liveErr error) ui.
 	}
 	switch {
 	case counted == 0:
-		field.Value = "已关闭"
+		field.Value = ui.StateText("已关闭", false)
 	case counted == rules:
-		field.Value = ui.PrimaryText("已开启")
+		field.Value = ui.StateText("已开启", true)
 	default:
-		field.Value = "部分开启"
+		field.Value = ui.StateText("部分开启", false)
 	}
 	return field
 }

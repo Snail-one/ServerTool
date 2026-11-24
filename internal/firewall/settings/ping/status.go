@@ -224,7 +224,7 @@ func StateFields(installed, inputActive bool, liveJSON string, liveErr error) []
 		default:
 			switch LoadedEchoState(liveJSON, i == 1) {
 			case EchoAllow:
-				fields[i].Value = ui.PrimaryText("已允许")
+				fields[i].Value = "已允许"
 			case EchoBlock:
 				fields[i].Value = ui.PrimaryText("已拦截")
 			case EchoAllow | EchoBlock:
@@ -233,6 +233,7 @@ func StateFields(installed, inputActive bool, liveJSON string, liveErr error) []
 				fields[i].Value = "无法判断"
 			}
 		}
+		fields[i].Value = ui.StateText(fields[i].Value, fields[i].Value == "已允许")
 	}
 	return fields
 }

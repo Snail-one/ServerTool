@@ -300,16 +300,12 @@ func InstallationBadge(installed bool) string {
 // SoftwareBadge colors an installed software name or count orange and a
 // missing software state gray.
 func SoftwareBadge(text string, installed bool) string {
-	color := gray
-	if installed {
-		color = orange
-	}
-	return paint(color, "["+text+"]")
+	return StateText("["+text+"]", installed)
 }
 
-func CurrentBadge(current bool) string {
+func CurrentBadge(current, enabled bool) string {
 	if current {
-		return SoftwareBadge("当前", true)
+		return SoftwareBadge("当前", enabled)
 	}
 	return ""
 }
@@ -375,6 +371,14 @@ func DangerText(text string) string {
 
 func MutedText(text string) string {
 	return paint(gray, text)
+}
+
+// StateText highlights an active setting and mutes other settings.
+func StateText(text string, active bool) string {
+	if active {
+		return PrimaryText(text)
+	}
+	return MutedText(text)
 }
 
 // PrintInfoCard and its variants put the card title in the top border.

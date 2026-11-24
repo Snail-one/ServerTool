@@ -28,8 +28,8 @@ func run(view *ui.UI, actions Actions) error {
 			ui.CardField{Label: "不影响", Value: "没有标记的流量仍走 Docker 原来的规则"},
 			ui.CardField{Label: "前提", Value: "需要 Docker 的 iptables 后端"},
 		)
-		ui.MenuOptionStatus("1", "开启", ui.CurrentBadge(state.Value == ui.PrimaryText("已生效")))
-		ui.MenuOptionStatus("2", "关闭", ui.CurrentBadge(state.Value == "已关闭"))
+		ui.MenuOptionStatus("1", "开启", ui.CurrentBadge(state.Value == ui.PrimaryText("已生效"), true))
+		ui.MenuOptionStatus("2", "关闭", ui.CurrentBadge(state.Value == "已关闭", false))
 		ui.MenuExit("0/q", "返回转发规则管理")
 		choice, err := ui.AskChoice(view, "请选择", "", map[string]string{"1": "on", "2": "off"})
 		if err != nil {

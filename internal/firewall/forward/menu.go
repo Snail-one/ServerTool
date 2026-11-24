@@ -15,9 +15,15 @@ func printDockerOptions(fields []ui.CardField) {
 	bridge := states["Docker 流量放行"]
 	if bridge == "" {
 		bridge = "入站" + states["Docker 入站放行"] + " · 出站" + states["Docker 出站放行"]
+	} else {
+		bridge = ui.MutedText(bridge)
+	}
+	mark := states["Docker 放行标记"]
+	if mark != ui.PrimaryText("已生效") {
+		mark = ui.MutedText(mark)
 	}
 	ui.MenuOptionStatusHint("6", "Docker 流量放行", "["+bridge+"]", "分别设置 Docker 网桥入站和出站")
-	ui.MenuOptionStatusHint("7", "Docker 放行标记", "["+states["Docker 放行标记"]+"]", "让 Docker 接受 ServerTool 已放行的转发")
+	ui.MenuOptionStatusHint("7", "Docker 放行标记", "["+mark+"]", "让 Docker 接受 ServerTool 已放行的转发")
 }
 
 // dockerChoice returns the action and its error text for a Docker menu choice.

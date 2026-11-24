@@ -34,10 +34,7 @@ func inspectFeatureSettings() settings.Snapshot {
 	if installed {
 		live = inspectLiveRules()
 	}
-	autostartLabel := autostart.Label
-	if autostartLabel == "已开启" || autostart.State == "enabled-runtime" {
-		autostartLabel = ui.PrimaryText(autostartLabel)
-	}
+	autostartLabel := ui.StateText(autostart.Label, autostart.Enabled || autostart.State == "enabled-runtime")
 	fields := []ui.CardField{{Label: "开机自启", Value: autostartLabel}}
 	fields = append(fields, echoStateFields(installed, live)...)
 	fields = append(fields, packetCounterStateField(installed, live))

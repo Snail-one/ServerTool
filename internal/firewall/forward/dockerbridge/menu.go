@@ -29,9 +29,9 @@ func (settings State) Fields() []ui.CardField {
 
 func dockerBridgeLabel(enabled bool) string {
 	if enabled {
-		return ui.PrimaryText("已开启")
+		return ui.StateText("已开启", true)
 	}
-	return "已关闭"
+	return ui.StateText("已关闭", false)
 }
 
 func dockerBridgeAction(enabled bool) string {

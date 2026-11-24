@@ -71,9 +71,7 @@ func (service manager) optionMenu(view *ui.UI) error {
 					status = option.display(value, current[intervalKey])
 					isToggle := option.kind == "toggle" || option.kind == "numeric toggle"
 					isInterval := option.kind == "interval" || option.kind == "frequency"
-					if isToggle && strings.HasPrefix(status, "开启") || isInterval && activeInterval(value) {
-						status = ui.PrimaryText(status)
-					}
+					status = ui.StateText(status, isToggle && strings.HasPrefix(status, "开启") || isInterval && activeInterval(value))
 				}
 				ui.MenuOptionHint(strconv.Itoa(index+1), option.label, status)
 			}
@@ -207,12 +205,12 @@ func (service manager) editOption(view *ui.UI, option aptOption) error {
 func askToggle(view *ui.UI, current, on, off, fallback string, drawPage func()) (string, error) {
 	return ui.AskMenuChoice(view, "请选择", fallback, map[string]string{"1": on, "2": off}, func() {
 		drawPage()
-		ui.MenuOptionStatus("1", "开启", ui.CurrentBadge(current == "开启"))
+		ui.MenuOptionStatus("1", "开启", ui.CurrentBadge(current == "开启", true))
 		offHint := ""
 		if fallback == "2" {
 			offHint = "回车选择"
 		}
-		ui.MenuOptionStatusHint("2", "关闭", ui.CurrentBadge(current == "关闭"), offHint)
+		ui.MenuOptionStatusHint("2", "关闭", ui.CurrentBadge(current == "关闭", false), offHint)
 		ui.MenuExit("0/q", "返回上一步")
 	})
 }

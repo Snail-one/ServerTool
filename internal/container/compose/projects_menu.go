@@ -114,11 +114,9 @@ func printComposeProjects(projects []composeProjectInfo) {
 func colorComposeStatus(status string) string {
 	switch status {
 	case "运行中":
-		return ui.SuccessText(status)
+		return ui.StateText(status, true)
 	case "部分运行", "重启中":
 		return ui.InfoText(status)
-	case "已暂停", "已停止", "无容器":
-		return ui.WarningText(status)
 	case "状态获取失败":
 		return ui.DangerText(status)
 	default:

@@ -102,10 +102,10 @@ func printEntries(entries []Mapping) {
 	for i, mapping := range entries {
 		endpoints := mapping.endpointsLabel()
 		if mapping.snat.address.IsValid() {
-			endpoints += " · SNAT " + mapping.snatDescription()
+			endpoints += " · SNAT " + ui.StateText(mapping.snatDescription(), mapping.snatEnabled())
 		}
 		fmt.Println("   " + ui.TableCell(strconv.Itoa(i+1), 6) + ui.TableCell(mapping.familyLabel(), 9) +
-			ui.TableCell(configuration.ProtocolLabel(mapping.protocol), 10) + ui.TableCell(mapping.statusLabel(), 9) + endpoints)
+			ui.TableCell(configuration.ProtocolLabel(mapping.protocol), 10) + ui.TableCell(ui.StateText(mapping.statusLabel(), !mapping.disabled), 9) + endpoints)
 		if matches := mapping.matchLabels(); len(matches) > 0 {
 			fmt.Println("         " + strings.Join(matches, " · "))
 		}

@@ -58,10 +58,7 @@ func ScopeText(status sshScopeStatus) string {
 }
 
 func sshAccessLabel(status sshScopeStatus) string {
-	if status == ScopeOpen {
-		return ui.PrimaryText(ScopeText(status))
-	}
-	return ScopeText(status)
+	return ui.StateText(ScopeText(status), status == ScopeOpen)
 }
 
 // ReplaceAccess adds or removes the recorded SSH service ports on one input

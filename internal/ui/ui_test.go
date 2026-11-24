@@ -235,6 +235,15 @@ func TestInstallationBadgeUsesOrangeAndGray(t *testing.T) {
 	if got := SoftwareBadge("未安装", false); got != gray+"[未安装]"+reset {
 		t.Fatalf("SoftwareBadge(missing) = %q", got)
 	}
+	if got := CurrentBadge(true, true); got != orange+"[当前]"+reset {
+		t.Fatalf("CurrentBadge(enabled) = %q", got)
+	}
+	if got := CurrentBadge(true, false); got != gray+"[当前]"+reset {
+		t.Fatalf("CurrentBadge(disabled) = %q", got)
+	}
+	if got := CurrentBadge(false, true); got != "" {
+		t.Fatalf("CurrentBadge(unselected) = %q", got)
+	}
 	if got := ConfiguredBadge(true); got != orange+"[已配置]"+reset {
 		t.Fatalf("ConfiguredBadge(true) = %q", got)
 	}

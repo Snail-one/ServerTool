@@ -26,8 +26,8 @@ func promptRootLoginPolicy(view *ui.UI, current string) (string, error) {
 	err := ui.RunPromptSteps(
 		ui.PromptStep{Run: func() error {
 			ui.PrintField("当前 Root SSH 登录", current)
-			ui.MenuOptionStatus("1", "仅允许 root 公钥登录", ui.CurrentBadge(current == "仅允许密钥登录"))
-			ui.MenuOptionStatus("2", "禁用 root SSH 登录（包括公钥）", ui.CurrentBadge(current == "已禁止"))
+			ui.MenuOptionStatus("1", "仅允许 root 公钥登录", ui.CurrentBadge(current == "仅允许密钥登录", true))
+			ui.MenuOptionStatus("2", "禁用 root SSH 登录（包括公钥）", ui.CurrentBadge(current == "已禁止", false))
 			ui.MenuExit("0/q", "返回 SSH 管理")
 			for {
 				choice, err := view.Ask("请选择：")

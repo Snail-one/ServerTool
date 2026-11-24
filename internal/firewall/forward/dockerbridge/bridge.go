@@ -118,8 +118,8 @@ func Replace(content string, settings State) (string, bool, error) {
 func (service Service) StateFields(content string) []ui.CardField {
 	if !service.HasManagedConfig(content) {
 		return []ui.CardField{
-			{Label: InboundLabel, Value: "未配置"},
-			{Label: OutboundLabel, Value: "未配置"},
+			{Label: InboundLabel, Value: ui.StateText("未配置", false)},
+			{Label: OutboundLabel, Value: ui.StateText("未配置", false)},
 		}
 	}
 	settings, _, err := Read(content)
