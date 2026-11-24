@@ -459,6 +459,10 @@ func PurpleText(text string) string {
 	return paint(purple, text)
 }
 
+func OrangeText(text string) string {
+	return paint(orange, text)
+}
+
 func DangerText(text string) string {
 	return paint(red, text)
 }

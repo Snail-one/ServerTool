@@ -51,6 +51,7 @@ func TestFormatListenersColorsSocketFields(t *testing.T) {
 		yellow    = "\033[33m"
 		cyan      = "\033[36m"
 		purple    = "\033[35m"
+		orange    = "\033[38;5;208m"
 		lightBlue = "\033[94m"
 	)
 	text := strings.Join(formatListeners(sampleListeners()), "\n")
@@ -61,9 +62,9 @@ func TestFormatListenersColorsSocketFields(t *testing.T) {
 		"[fe80::cd0f:cb16:26e0:87b2]%ens37:" + lightBlue + "546" + reset,
 		"0.0.0.0:*",
 		"[::]:*",
-		`users:(("dhcpcd",pid=` + yellow + "1060" + reset + `,fd=3))`,
-		`users:(("sshd",pid=` + yellow + "900" + reset + `,fd=3),("sshd",pid=` + yellow + "901" + reset + `,fd=4))`,
-		`users:(("nginx",pid=` + yellow + "1" + reset + `,fd=6),("nginx",pid=` + yellow + "2" + reset + `,fd=6))`,
+		`users:(("` + orange + "dhcpcd" + reset + `",pid=` + yellow + "1060" + reset + `,fd=3))`,
+		`users:(("` + orange + "sshd" + reset + `",pid=` + yellow + "900" + reset + `,fd=3),("` + orange + "sshd" + reset + `",pid=` + yellow + "901" + reset + `,fd=4))`,
+		`users:(("` + orange + "nginx" + reset + `",pid=` + yellow + "1" + reset + `,fd=6),("` + orange + "nginx" + reset + `",pid=` + yellow + "2" + reset + `,fd=6))`,
 		"    └─ " + purple + "dhcpcd: [BOOTP proxy] 192.168.59.128" + reset,
 		"    └─ " + purple + "nginx: master process nginx" + reset,
 		"    └─ " + purple + "nginx: worker process" + reset,

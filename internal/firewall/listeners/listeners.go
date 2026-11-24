@@ -24,9 +24,10 @@ type Listener struct {
 }
 
 var (
-	processPattern = regexp.MustCompile(`\("([^"]+)",pid=(\d+),fd=(\d+)\)`)
-	cgroupPattern  = regexp.MustCompile(`\bcgroup:(\S+)`)
-	pidPattern     = regexp.MustCompile(`pid=\d+`)
+	processPattern     = regexp.MustCompile(`\("([^"]+)",pid=(\d+),fd=(\d+)\)`)
+	processNamePattern = regexp.MustCompile(`\("([^"]+)",pid=`)
+	cgroupPattern      = regexp.MustCompile(`\bcgroup:(\S+)`)
+	pidPattern         = regexp.MustCompile(`pid=\d+`)
 )
 
 func Show(commandOutput func(string, ...string) (string, error)) error {
@@ -291,6 +292,16 @@ func colorEndpoint(endpoint string) string {
 }
 
 func colorProcess(process string) string {
+	if process == "" || process == "未知" || process == "进程" {
+		return process
+	}
+	if !strings.Contains(process, `("`) {
+		return ui.OrangeText(process)
+	}
+	process = processNamePattern.ReplaceAllStringFunc(process, func(match string) string {
+		name := strings.TrimSuffix(strings.TrimPrefix(match, `("`), `",pid=`)
+		return `("` + ui.OrangeText(name) + `",pid=`
+	})
 	return pidPattern.ReplaceAllStringFunc(process, func(match string) string {
 		return "pid=" + ui.WarningText(strings.TrimPrefix(match, "pid="))
 	})

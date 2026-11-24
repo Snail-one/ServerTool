@@ -30,6 +30,25 @@ func TestRuntimeStatusFieldsIncludeDockerLogAndProxy(t *testing.T) {
 	}
 }
 
+func TestUninstallMenuLabelPutsDockerFirst(t *testing.T) {
+	docker := []runtime.Runtime{{Name: "docker", Display: "Docker"}}
+	if got := uninstallMenuLabel(docker); got != "Docker 卸载" {
+		t.Fatalf("docker label = %q", got)
+	}
+	abnormal := []runtime.Runtime{{Name: "docker", Display: "Docker（服务异常：daemon 不可达）"}}
+	if got := uninstallMenuLabel(abnormal); got != "Docker 卸载（服务异常：daemon 不可达）" {
+		t.Fatalf("abnormal docker label = %q", got)
+	}
+	podman := []runtime.Runtime{{Name: "podman", Display: "Podman"}}
+	if got := uninstallMenuLabel(podman); got != "卸载 Podman" {
+		t.Fatalf("podman label = %q", got)
+	}
+	both := []runtime.Runtime{{Name: "docker", Display: "Docker"}, {Name: "podman", Display: "Podman"}}
+	if got := uninstallMenuLabel(both); got != "卸载 Docker 或 Podman" {
+		t.Fatalf("both label = %q", got)
+	}
+}
+
 func TestRuntimeStatusFieldsOmitDockerDetailsWithoutDocker(t *testing.T) {
 	fields := runtimeStatusFields(
 		[]runtime.Runtime{{Name: "podman", Display: "Podman"}},

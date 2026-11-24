@@ -29,12 +29,7 @@ func Run(view *ui.UI) error {
 				hasDocker = true
 			}
 		}
-		uninstallName := "容器运行时"
-		if len(installedRuntimes) == 1 {
-			uninstallName = installedRuntimes[0].Display
-		} else if len(installedRuntimes) > 1 {
-			uninstallName = "Docker 或 Podman"
-		}
+		uninstallName := uninstallMenuLabel(installedRuntimes)
 		ui.ClearScreen()
 		ui.MenuTitle("容器管理")
 		logSummary, proxySummary, clientProxySummary := "", "", ""
@@ -45,7 +40,7 @@ func Run(view *ui.UI) error {
 		}
 		ui.PrintInfoCard("容器运行时状态", runtimeStatusFields(installedRuntimes, logSummary, proxySummary, clientProxySummary)...)
 		fmt.Println()
-		ui.MenuOptionHint("1", "管理容器", "查看状态、日志与生命周期操作")
+		ui.MenuOptionHint("1", "Docker 管理", "查看状态、日志与生命周期操作")
 		ui.MenuOptionHint("2", "Compose", "查看、更新与重建项目")
 		if hasDocker {
 			ui.MenuOptionHint("3", "Docker 配置", "服务代理、构建与容器代理、日志轮转")
@@ -53,7 +48,7 @@ func Run(view *ui.UI) error {
 			ui.MenuOptionHint("3", "Docker 配置", "仅 Docker 可用；代理、日志轮转")
 		}
 		ui.MenuOptionHint("4", "清理容器资源", "容器、网络、镜像、数据卷与构建缓存")
-		ui.MenuOptionHint("5", fmt.Sprintf("卸载 %s", uninstallName), "可选择保留或永久删除数据")
+		ui.MenuOptionHint("5", uninstallName, "可选择保留或永久删除数据")
 		ui.MenuExit("0/q", "返回")
 
 		choice, err := view.Ask("请选择：")
@@ -104,6 +99,19 @@ func Run(view *ui.UI) error {
 			view.Pause()
 		}
 	}
+}
+
+func uninstallMenuLabel(installed []runtime.Runtime) string {
+	name := "容器运行时"
+	if len(installed) == 1 {
+		name = installed[0].Display
+	} else if len(installed) > 1 {
+		name = "Docker 或 Podman"
+	}
+	if name == "Docker" || strings.HasPrefix(name, "Docker（") {
+		return "Docker 卸载" + strings.TrimPrefix(name, "Docker")
+	}
+	return "卸载 " + name
 }
 
 func runtimeStatusFields(installedRuntimes []runtime.Runtime, logSummary, proxySummary, clientProxySummary string) []ui.CardField {
