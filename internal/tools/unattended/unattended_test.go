@@ -27,7 +27,7 @@ func TestManagementMenuShowsDistinctPolicyAndTimerStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer file.Close()
-	if _, err := file.WriteString("1\nq\n2\nq\n3\nq\n5\n\na\nn\nq\n"); err != nil {
+	if _, err := file.WriteString("1\n4\nq\n7\nq\nq\n2\nq\n3\nq\n5\n\na\nn\nq\n"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := file.Seek(0, 0); err != nil {
@@ -90,6 +90,8 @@ Unattended-Upgrade::Origins-Pattern:: "origin=Debian,codename=${distro_codename}
 		"服务器自动重启：关闭（默认）", "\n\n  0/q 返回自动更新管理",
 		"1   系统安全更新      [开启]", "4   旧内核清理        [开启（默认）]",
 		"[取决于软件包来源]", "[关闭]", "[关闭（默认）]",
+		"1   开启              [当前]\n  2   关闭\n\n  0/q 返回上一步",
+		"1   开启\n  2   关闭              [当前]\n\n  0/q 返回上一步",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("menu missing %q", want)

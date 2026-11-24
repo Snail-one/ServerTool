@@ -323,10 +323,11 @@ func (service manager) editScope(view *ui.UI, choice, currentLabel string, scope
 		return err
 	}
 	option := scopeOptions[choice]
-	showPage(option.label)
-	ui.PrintInfoCard("当前设置", ui.CardField{Label: option.label, Value: currentLabel})
-	fmt.Println()
-	value, err := ui.AskChoice(view, "输入 1 开启或 2 关闭", "", map[string]string{"1": "on", "2": "off"})
+	value, err := askToggle(view, currentLabel, "on", "off", func() {
+		showPage(option.label)
+		ui.PrintInfoCard("当前设置", ui.CardField{Label: option.label, Value: currentLabel})
+		fmt.Println()
+	})
 	if err != nil {
 		return err
 	}

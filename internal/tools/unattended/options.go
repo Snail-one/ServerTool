@@ -171,13 +171,15 @@ func (service manager) editOption(view *ui.UI, option aptOption) error {
 	if value == "" {
 		value = option.fallback
 	}
-	showPage(option.label)
-	ui.PrintInfoCard("当前设置",
-		ui.CardField{Label: "当前值", Value: option.display(before, preferred)},
-		ui.CardField{Label: "APT 参数", Value: option.key},
-	)
-	fmt.Println()
-	value, err = askOption(view, option.kind, value)
+	draw := func() {
+		showPage(option.label)
+		ui.PrintInfoCard("当前设置",
+			ui.CardField{Label: "当前值", Value: option.display(before, preferred)},
+			ui.CardField{Label: "APT 参数", Value: option.key},
+		)
+		fmt.Println()
+	}
+	value, err = askOption(view, option.kind, value, draw)
 	if err != nil {
 		return err
 	}
@@ -197,18 +199,33 @@ func (service manager) editOption(view *ui.UI, option aptOption) error {
 	return service.saveOptions(previous, exists, options)
 }
 
-func askOption(view *ui.UI, kind, current string) (string, error) {
-	switch kind {
-	case "toggle", "numeric toggle":
-		if kind == "numeric toggle" {
-			return ui.AskChoice(view, "输入 1 开启或 2 关闭", "", map[string]string{"1": "1", "2": "0"})
+func askToggle(view *ui.UI, current, on, off string, drawPage func()) (string, error) {
+	return ui.AskMenuChoice(view, "请选择", "", map[string]string{"1": on, "2": off}, func() {
+		drawPage()
+		for _, item := range []struct{ key, label string }{{"1", "开启"}, {"2", "关闭"}} {
+			status := ""
+			if item.label == current {
+				status = ui.SoftwareBadge("当前", true)
+			}
+			ui.MenuOptionStatus(item.key, item.label, status)
 		}
-		return ui.AskChoice(view, "输入 1 开启或 2 关闭", "", map[string]string{"1": "true", "2": "false"})
+		ui.MenuExit("0/q", "返回上一步")
+	})
+}
+
+func askOption(view *ui.UI, kind, current string, draw func()) (string, error) {
+	switch kind {
+	case "numeric toggle":
+		return askToggle(view, switchLabel(current), "1", "0", draw)
+	case "toggle":
+		return askToggle(view, switchLabel(current), "true", "false", draw)
 	case "report":
+		draw()
 		return ui.AskChoice(view, "输入 1 始终发送、2 有变更时发送、3 仅错误时发送", "", map[string]string{
 			"1": "always", "2": "on-change", "3": "only-on-error",
 		})
 	}
+	draw()
 	prompt := "请输入天数或 always（每次触发）"
 	back := "0/q 返回"
 	switch kind {
