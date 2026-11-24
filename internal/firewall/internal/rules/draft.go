@@ -86,6 +86,7 @@ func (session Session) EditSourceRulesDraft(view *ui.UI, original string) (strin
 			ui.CardField{Label: "保存方式", Value: "修改后返回" + session.title + "统一保存"},
 		)
 		PrintRuleOrder(rules, "")
+		fmt.Println()
 		ui.MenuShortcutHint("n", "新建规则", "默认放行，拒绝会插到最前面")
 		if len(rules) > 1 {
 			ui.MenuShortcutHint("o", "调整规则顺序", "")

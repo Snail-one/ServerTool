@@ -502,8 +502,8 @@ func (session Session) ChangeAllowRuleDraft(view *ui.UI, rules []Rule, id string
 }
 
 func (session Session) QueryRulesByPort(view *ui.UI, rules []Rule) ([]Rule, error) {
-	session.sourceRulePage("按端口查询", Rule{})
-	ui.MenuExit("0/q", "返回规则配置")
+	ui.ClearScreen()
+	ui.MenuExitPage("0/q", "返回规则配置", "防火墙管理", session.title, "规则配置", "按端口查询")
 	ports, err := askRulePorts(view, "")
 	if err != nil {
 		return nil, err

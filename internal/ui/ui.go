@@ -164,6 +164,17 @@ func canClearScreen() bool {
 
 // MenuTitle prints a consistent, color-aware breadcrumb for terminal menus.
 func MenuTitle(parts ...string) {
+	printMenuTitle(parts...)
+	fmt.Println()
+}
+
+// MenuExitPage renders a title followed by a return row on pages without a menu body.
+func MenuExitPage(key, label string, title ...string) {
+	printMenuTitle(title...)
+	MenuExit(key, label)
+}
+
+func printMenuTitle(parts ...string) {
 	clean := make([]string, 0, len(parts)+1)
 	clean = append(clean, "ServerTool")
 	for _, part := range parts {
@@ -174,7 +185,6 @@ func MenuTitle(parts ...string) {
 	title := strings.Join(clean, "  ›  ")
 	fmt.Println(paint(orange, "╭─") + " " + paint(bold+orange, title))
 	fmt.Println(paint(orange, "╰"+strings.Repeat("─", 46)))
-	fmt.Println()
 }
 
 // HomeTitle renders the main-menu banner and build version.
@@ -244,7 +254,7 @@ func MenuOptionStatusHint(key, label, status, hint string) {
 
 // MenuExit renders the return/exit row separately from regular actions.
 func MenuExit(key, label string) {
-	fmt.Printf("  %s %s\n\n", menuKey(key, bold+yellow), paint(dim, label))
+	fmt.Printf("\n  %s %s\n\n", menuKey(key, bold+yellow), paint(dim, label))
 }
 
 // MenuSection renders a consistent heading for choices nested inside a screen.

@@ -15,7 +15,6 @@ func PrintRuleOrder(rules []Rule, selected string) {
 	fmt.Println()
 	if len(rules) == 0 {
 		fmt.Println("暂无附加规则")
-		fmt.Println()
 		return
 	}
 	fmt.Println(ui.InfoText("   " + ui.TableCell("顺序", 6) + ui.TableCell("规则 ID", 11) + ui.TableCell("IP 版本", 12) + ui.TableCell("协议", 10) + ui.TableCell("来源", 43) + "端口"))
@@ -39,7 +38,6 @@ func PrintRuleOrder(rules []Rule, selected string) {
 		}
 		fmt.Println(prefix + ui.TableCell(strconv.Itoa(index+1), 6) + ui.TableCell(rule.ID, 11) + ui.TableCell(rule.FamilyLabel(), 12) + ui.TableCell(configuration.ProtocolLabel(rule.Protocol), 10) + ui.TableCell(source, 43) + " " + ports)
 	}
-	fmt.Println()
 }
 
 func (session Session) ReorderAllowRulesDraft(view *ui.UI, rules []Rule) ([]Rule, error) {
@@ -65,6 +63,7 @@ func (session Session) ReorderAllowRulesDraft(view *ui.UI, rules []Rule) ([]Rule
 			ui.CardField{Label: "调整范围", Value: "采用顺序后返回" + session.title + "，统一保存才生效"},
 		)
 		PrintRuleOrder(draft, selected)
+		fmt.Println()
 		if notice != "" {
 			ui.PrintField("提示", notice)
 			fmt.Println()

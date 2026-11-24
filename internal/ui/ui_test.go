@@ -25,7 +25,7 @@ func TestMenuRowsAlignAndHintUsesGray(t *testing.T) {
 	}
 	plain := stripANSI(output)
 	lines := strings.Split(strings.TrimSuffix(plain, "\n\n"), "\n")
-	if len(lines) != 3 || strings.Index(lines[0], "管理") != strings.Index(lines[2], "返回") {
+	if len(lines) != 4 || lines[2] != "" || strings.Index(lines[0], "管理") != strings.Index(lines[3], "返回") {
 		t.Fatalf("菜单文字未对齐：%q", plain)
 	}
 	firstHint := strings.Index(lines[0], "--")

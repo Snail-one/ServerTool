@@ -53,7 +53,9 @@ func Run(view *ui.UI, name string, load func() (Snapshot, error)) error {
 		if !snapshot.Saved && !snapshot.Running {
 			return ui.ErrReturnToMenu
 		}
-		fmt.Println()
+		if snapshot.Running || snapshot.Saved && (snapshot.AutostartAvailable || snapshot.CanRotate || snapshot.CanDelete) {
+			fmt.Println()
+		}
 		if snapshot.Saved && snapshot.AutostartAvailable {
 			label := "开启开机自启"
 			if snapshot.AutostartEnabled {

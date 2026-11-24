@@ -160,7 +160,6 @@ func (session Session) EditPolicyDraft(view *ui.UI, original string, generating 
 		} else if len(changes) > 0 {
 			ui.MenuShortcutHint("s", "保存并立即生效", "校验、备份并应用全部修改")
 		}
-		fmt.Println()
 		exitLabel := "返回防火墙管理"
 		if len(changes) > 0 {
 			exitLabel = "放弃草稿并返回"
@@ -467,7 +466,6 @@ func (session Session) changePolicyLists(view *ui.UI, content string, indices []
 					ui.MenuOption("5", "按序号编辑单个条目")
 					ui.PrintField("范围说明", "支持单个 IP 和 CIDR，逗号分隔；自动规范化并合并重复及被包含条目；至少保留一项")
 				}
-					fmt.Println()
 				ui.MenuExit("0/q", "返回上一步")
 			}
 			choices := map[string]string{"1": "add", "2": "remove", "3": "replace", "4": "reset"}

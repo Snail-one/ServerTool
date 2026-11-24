@@ -36,7 +36,6 @@ func Run(view *ui.UI, actions Actions) error {
 		ui.MenuOptionHint("3", "数据包统计", "统计规则命中的包数与字节数")
 		ui.MenuOptionHint("4", "内核转发", "分别设置 IPv4 / IPv6 转发")
 		ui.MenuOptionHint("5", "SSH 访问", "分别设置公网 / 内网 SSH 访问")
-		fmt.Println()
 		ui.MenuExit("0/q", "返回防火墙管理")
 		choice, err := ui.AskChoice(view, "请选择", "", map[string]string{"1": "1", "2": "2", "3": "3", "4": "4", "5": "5"})
 		if err != nil {
