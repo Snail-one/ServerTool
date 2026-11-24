@@ -467,6 +467,7 @@ func (session Session) changePolicyLists(view *ui.UI, content string, indices []
 					ui.MenuOption("5", "按序号编辑单个条目")
 					ui.PrintField("范围说明", "支持单个 IP 和 CIDR，逗号分隔；自动规范化并合并重复及被包含条目；至少保留一项")
 				}
+					fmt.Println()
 				ui.MenuExit("0/q", "返回上一步")
 			}
 			choices := map[string]string{"1": "add", "2": "remove", "3": "replace", "4": "reset"}
