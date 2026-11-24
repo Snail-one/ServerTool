@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"snail_tool/internal/container/internal/listing"
 	"snail_tool/internal/container/runtime"
 	"snail_tool/internal/system"
 )
@@ -108,80 +109,17 @@ func containersFromJSONObjects(rows []map[string]any) []containerInfo {
 	conts := make([]containerInfo, 0, len(rows))
 	for _, row := range rows {
 		c := containerInfo{
-			ID:         jsonStringField(row, "ID", "Id", "id", "ContainerID"),
-			Name:       jsonStringField(row, "Names", "Name", "names", "name"),
-			Ports:      jsonStringField(row, "Ports", "ports"),
-			Status:     jsonStringField(row, "Status", "status"),
-			State:      jsonStringField(row, "State", "state"),
-			CreatedAt:  jsonStringField(row, "CreatedAt", "Created", "createdAt", "created"),
-			RunningFor: jsonStringField(row, "RunningFor", "runningFor"),
+			ID:         listing.JsonStringField(row, "ID", "Id", "id", "ContainerID"),
+			Name:       listing.JsonStringField(row, "Names", "Name", "names", "name"),
+			Ports:      listing.JsonStringField(row, "Ports", "ports"),
+			Status:     listing.JsonStringField(row, "Status", "status"),
+			State:      listing.JsonStringField(row, "State", "state"),
+			CreatedAt:  listing.JsonStringField(row, "CreatedAt", "Created", "createdAt", "created"),
+			RunningFor: listing.JsonStringField(row, "RunningFor", "runningFor"),
 		}
 		conts = append(conts, normalizeContainer(c))
 	}
 	return conts
-}
-
-func jsonStringField(row map[string]any, keys ...string) string {
-	for _, key := range keys {
-		if value, ok := row[key]; ok {
-			return strings.TrimSpace(jsonValueString(value))
-		}
-	}
-	return ""
-}
-
-func jsonValueString(value any) string {
-	switch v := value.(type) {
-	case nil:
-		return ""
-	case string:
-		return v
-	case []any:
-		parts := make([]string, 0, len(v))
-		for _, item := range v {
-			text := strings.TrimSpace(jsonValueString(item))
-			if text != "" {
-				parts = append(parts, text)
-			}
-		}
-		return strings.Join(parts, ", ")
-	case map[string]any:
-		if text := formatPortMap(v); text != "" {
-			return text
-		}
-		raw, err := json.Marshal(v)
-		if err != nil {
-			return fmt.Sprint(v)
-		}
-		return string(raw)
-	default:
-		return fmt.Sprint(v)
-	}
-}
-
-func formatPortMap(port map[string]any) string {
-	containerPort := jsonStringField(port, "container_port", "ContainerPort", "containerPort")
-	hostPort := jsonStringField(port, "host_port", "HostPort", "hostPort")
-	hostIP := jsonStringField(port, "host_ip", "HostIP", "hostIp")
-	protocol := jsonStringField(port, "protocol", "Protocol")
-
-	if containerPort == "" && hostPort == "" {
-		return ""
-	}
-	if protocol == "" {
-		protocol = "tcp"
-	}
-	target := containerPort
-	if target != "" {
-		target += "/" + protocol
-	}
-	if hostPort == "" {
-		return target
-	}
-	if hostIP != "" {
-		return fmt.Sprintf("%s:%s->%s", hostIP, hostPort, target)
-	}
-	return fmt.Sprintf("%s->%s", hostPort, target)
 }
 
 func normalizeContainer(c containerInfo) containerInfo {
@@ -189,38 +127,9 @@ func normalizeContainer(c containerInfo) containerInfo {
 	c.Name = strings.TrimSpace(c.Name)
 	c.Ports = strings.TrimSpace(c.Ports)
 	c.Status = strings.TrimSpace(c.Status)
-	c.State = normalizeContainerState(c.State, c.Status)
+	c.State = listing.NormalizeContainerState(c.State, c.Status)
 	c.CreatedAt = strings.TrimSpace(c.CreatedAt)
 	c.RunningFor = strings.TrimSpace(c.RunningFor)
-	c.IsRunning = c.State == containerStateRunning
+	c.IsRunning = c.State == listing.StateRunning
 	return c
-}
-
-func normalizeContainerState(state, status string) string {
-	lowerState := strings.ToLower(strings.TrimSpace(state))
-	switch lowerState {
-	case containerStateRunning, containerStateExited, containerStatePaused, containerStateCreated, containerStateRestarting:
-		return lowerState
-	case "dead", "removing":
-		return lowerState
-	}
-
-	lowerStatus := strings.ToLower(strings.TrimSpace(status))
-	switch {
-	case strings.Contains(lowerStatus, "paused"):
-		return containerStatePaused
-	case strings.Contains(lowerStatus, "restarting"):
-		return containerStateRestarting
-	case strings.HasPrefix(lowerStatus, "up") || strings.Contains(lowerStatus, "running"):
-		return containerStateRunning
-	case strings.HasPrefix(lowerStatus, "exited") || strings.HasPrefix(lowerStatus, "dead"):
-		if strings.HasPrefix(lowerStatus, "dead") {
-			return containerStateDead
-		}
-		return containerStateExited
-	case strings.HasPrefix(lowerStatus, "created"):
-		return containerStateCreated
-	default:
-		return containerStateUnknown
-	}
 }

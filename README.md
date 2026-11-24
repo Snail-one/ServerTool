@@ -134,7 +134,7 @@ go test ./...
 防火墙集成测试使用临时网络命名空间、虚拟网卡和实际 nftables 规则检查 Docker 网桥的转发方向、拒绝优先级与连接标记。Linux 环境安装 `nftables`、`iproute2`、`iputils-ping` 和 `procps` 后，可运行下列命令。也可省略 `-exec 'sudo -n'`，由支持非特权用户和网络命名空间的系统运行。
 
 ```bash
-go test -tags=integration -exec 'sudo -n' ./internal/toolbox/firewall -run '^TestNftablesForwardingIntegration$' -count=1
+go test -tags=integration -exec 'sudo -n' ./internal/firewall -run '^TestNftablesForwardingIntegration$' -count=1
 ```
 
 ### 自动发布
@@ -153,26 +153,55 @@ git push origin v1.0.0
 ### 项目结构
 
 ```text
-cmd/snail_tool/       程序入口
-internal/app/         交互菜单与流程编排
-internal/quicksetup/  一键初始化
-internal/ssh/         SSH 公钥与安全配置
-internal/common/      配置管理菜单及 Vim、Bash、代理、tmux、UPS 配置
-internal/container/   容器与 Compose 管理
-internal/environment/ Go 环境管理
-internal/toolbox/     系统工具与启动信息
-internal/cleanup/     清理本工具配置
-internal/status/      菜单状态检测
-internal/startup/     本次启动信息记录
-internal/selfupdate/  程序更新与卸载入口
-internal/shared/      跨模块辅助能力
-internal/system/      系统命令、用户、端口与文件操作
-internal/ui/          菜单、输入、确认与进度显示
-internal/log/         日志输出
-internal/version/     版本与构建信息
-scripts/              安装、更新、构建与发布说明脚本
-docs/                 使用说明与开发规范
+cmd/snail_tool/           CLI 入口与命令分发
+internal/
+  app/                    主菜单，含 startup/ 启动报告和 status/ 状态检测
+  firewall/               防火墙管理
+    access/               访问端口名单、规则摘要和旧规则迁移
+    configuration/        查看、编辑和加载配置，含 generate/ 生成与 restore/ 清理恢复
+    forward/              转发规则管理，含 dockerbridge/ 流量放行和 dockermark/ 放行标记
+    portmapping/          端口映射与 SNAT 设置、校验及规则生成
+    portpolicy/           查看端口策略、解析规则和识别 Docker 发布端口
+    loadedrules/          查看全部已加载规则
+    settings/             常用功能设置，含自启、Ping、计数、内核转发和 SSH 访问
+    internal/rules/       访问与转发共用的规则编辑、校验和配置渲染
+    traffic/              实时查看规则
+  ssh/                    SSH 管理
+    keys/                 SSH 公钥
+    security/             SSH 安全策略
+    status/               查看生效配置
+    rootlogin/            Root SSH 登录策略
+  configuration/          一键初始化、Bash、补全、Vim、tmux 和用户代理
+  tools/                  系统工具菜单
+    commands/             常用命令行工具
+    golang/               Go 环境管理
+    ups/                  NUT 安装、配置、服务及备份恢复
+    startupinfo/          查看本次启动信息
+  wireguard/              WireGuard 管理
+    interfaces/           接口菜单，含 runtime/ 运行状态和 peers/ 对端管理
+      peers/quickconfig/  对端快速配置
+  container/              容器管理
+    list/                 管理容器
+    compose/              Compose 项目，含 update/ 更新和重建
+    dockerconfig/         Docker 配置，含代理与日志轮转
+    cleanup/              清理容器资源
+    runtime/              容器运行时安装和卸载
+  cleanup/                跨模块清理菜单
+    backups/              清理备份
+    softwaredata/         删除软件数据目录
+    temps/                清理中断临时文件
+  selfupdate/             程序更新与卸载
+  storage/                数据路径、备份、原子文件操作和托管配置块
+  system/                 系统命令、用户、端口和包管理器
+  ui/、input/、log/        终端界面、输入校验和日志
+  tempguard/、version/    临时资源锁和构建版本
+scripts/                  安装、卸载、构建与发布说明脚本
+docs/                     使用说明与开发规范
 ```
+
+独立子菜单在父菜单目录下有对应的 Go 包。参数输入、确认和列表详情由所属页面处理。访问与转发规则共用草稿编辑器及防火墙配置存储，清理菜单调用各模块的清理入口。测试和模板位于其所验证的实现旁。
+
+`internal/firewall/` 根包负责菜单编排、规则解析和生成、功能之间的配置衔接。这里的测试覆盖菜单往返、旧配置兼容、保存失败和规则加载。配置模板与文件存储实现在 `internal/firewall/configuration/`。
 
 ### 开发计划
 

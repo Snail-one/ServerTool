@@ -10,7 +10,7 @@ import (
 
 	"snail_tool/internal/input"
 	"snail_tool/internal/log"
-	"snail_tool/internal/shared"
+	"snail_tool/internal/storage"
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
 )
@@ -45,10 +45,6 @@ var authorizedKeyTypes = map[string]struct{}{
 	"ecdsa-sha2-nistp256-cert-v01@openssh.com": {},
 	"ecdsa-sha2-nistp384-cert-v01@openssh.com": {},
 	"ecdsa-sha2-nistp521-cert-v01@openssh.com": {},
-}
-
-func Markers() (string, string) {
-	return sshAuthorizedKeysBegin, sshAuthorizedKeysEnd
 }
 
 func Run(view *ui.UI) error {
@@ -104,9 +100,9 @@ func ensureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 			return err
 		}
 		fmt.Println()
-		if shared.IsReturnChoice(choice) {
+		if ui.IsReturnChoice(choice) {
 			log.Info("已取消一键初始化")
-			return shared.ErrReturnToMenu
+			return ui.ErrReturnToMenu
 		}
 
 		switch strings.ToLower(choice) {
@@ -116,7 +112,7 @@ func ensureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 			}
 		case "2":
 			if _, err := openAuthorizedKeysWithPreferredEditor(view, account); err != nil {
-				if errors.Is(err, shared.ErrReturnToMenu) {
+				if errors.Is(err, ui.ErrReturnToMenu) {
 					continue
 				}
 				return err
@@ -137,7 +133,7 @@ func pasteRequiredSSHAuthorizedKey(view *ui.UI, account *system.Account) error {
 		if err != nil {
 			return err
 		}
-		if shared.IsReturnChoice(pubkey) {
+		if ui.IsReturnChoice(pubkey) {
 			return nil
 		}
 		if strings.TrimSpace(pubkey) == "" {
@@ -185,8 +181,8 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		}
 		fmt.Println()
 
-		if shared.IsReturnChoice(choice) {
-			return shared.ErrReturnToMenu
+		if ui.IsReturnChoice(choice) {
+			return ui.ErrReturnToMenu
 		}
 		var actionErr error
 		switch strings.ToLower(choice) {
@@ -204,7 +200,7 @@ func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		}
 		// Cancelling a key operation belongs to this menu; only its own
 		// return choice should propagate navigation to the SSH menu.
-		if actionErr != nil && !errors.Is(actionErr, shared.ErrReturnToMenu) {
+		if actionErr != nil && !errors.Is(actionErr, ui.ErrReturnToMenu) {
 			return actionErr
 		}
 		fmt.Println()
@@ -237,8 +233,8 @@ selectKey:
 		if err != nil {
 			return err
 		}
-		if strings.TrimSpace(rawSelection) == "" || shared.IsReturnChoice(rawSelection) {
-			return shared.ErrReturnToMenu
+		if strings.TrimSpace(rawSelection) == "" || ui.IsReturnChoice(rawSelection) {
+			return ui.ErrReturnToMenu
 		}
 
 		index, err := parseSingleAuthorizedKeyIndex(rawSelection, len(entries))
@@ -258,7 +254,7 @@ selectKey:
 			if err != nil {
 				return err
 			}
-			if strings.TrimSpace(pubkey) == "" || shared.IsReturnChoice(pubkey) {
+			if strings.TrimSpace(pubkey) == "" || ui.IsReturnChoice(pubkey) {
 				continue selectKey
 			}
 			if err := system.ValidateSSHPublicKey(pubkey); err != nil {
@@ -269,7 +265,7 @@ selectKey:
 				log.Info("公钥未变化")
 				return nil
 			}
-			if shared.ContainsLine(content, pubkey) {
+			if storage.ContainsLine(content, pubkey) {
 				log.Warn("该 SSH 公钥已存在")
 				continue
 			}
@@ -282,7 +278,7 @@ selectKey:
 			fmt.Println()
 
 			confirmed, err := view.Confirm("确认替换选中的 SSH 公钥？(y/N)：")
-			if errors.Is(err, shared.ErrReturnToMenu) {
+			if errors.Is(err, ui.ErrReturnToMenu) {
 				continue
 			}
 			if err != nil {
@@ -297,7 +293,7 @@ selectKey:
 			if err := checkAuthorizedKeysVersion(authKeys, content); err != nil {
 				return err
 			}
-			if err := shared.AtomicWriteFile(authKeys, []byte(updated), shared.AtomicWriteOptions{Mode: 0600, ForceMode: true}); err != nil {
+			if err := storage.AtomicWriteFile(authKeys, []byte(updated), storage.AtomicWriteOptions{Mode: 0600, ForceMode: true}); err != nil {
 				return err
 			}
 
@@ -318,8 +314,8 @@ func addSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		if err != nil {
 			return err
 		}
-		if strings.TrimSpace(pubkey) == "" || shared.IsReturnChoice(pubkey) {
-			return shared.ErrReturnToMenu
+		if strings.TrimSpace(pubkey) == "" || ui.IsReturnChoice(pubkey) {
+			return ui.ErrReturnToMenu
 		}
 		if err := system.ValidateSSHPublicKey(pubkey); err != nil {
 			log.Warn(err)
@@ -358,8 +354,8 @@ func deleteSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		if err != nil {
 			return err
 		}
-		if strings.TrimSpace(rawSelection) == "" || shared.IsReturnChoice(rawSelection) {
-			return shared.ErrReturnToMenu
+		if strings.TrimSpace(rawSelection) == "" || ui.IsReturnChoice(rawSelection) {
+			return ui.ErrReturnToMenu
 		}
 
 		indexes, err := parseAuthorizedKeySelection(rawSelection, len(entries))
@@ -377,7 +373,7 @@ func deleteSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		fmt.Println()
 
 		confirmed, err := view.Confirm("确认删除选中的 SSH 公钥？(y/N)：")
-		if errors.Is(err, shared.ErrReturnToMenu) {
+		if errors.Is(err, ui.ErrReturnToMenu) {
 			continue
 		}
 		if err != nil {
@@ -409,14 +405,14 @@ func removeSelectedAuthorizedKeys(path, original string, selected map[int]struct
 		return err
 	}
 	cleaned := removeAuthorizedKeyIndexes(original, selected)
-	return shared.AtomicWriteFile(path, []byte(cleaned), shared.AtomicWriteOptions{Mode: 0600, ForceMode: true})
+	return storage.AtomicWriteFile(path, []byte(cleaned), storage.AtomicWriteOptions{Mode: 0600, ForceMode: true})
 }
 
 func checkAuthorizedKeysVersion(path, original string) error {
-	if _, err := shared.RemoveManagedBlockChecked(original, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd); err != nil {
+	if _, err := storage.RemoveManagedBlockChecked(original, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd); err != nil {
 		return err
 	}
-	latest, exists, err := shared.ReadRegularFile(path)
+	latest, exists, err := storage.ReadRegularFile(path)
 	if err != nil {
 		return err
 	}
@@ -473,7 +469,7 @@ func openAuthorizedKeysWithEditor(view *ui.UI, account *system.Account, editor s
 	if err := runEditor(editor, authKeys); err != nil {
 		if system.IsInterrupted(err) {
 			log.Info("已取消编辑")
-			return shared.ErrReturnToMenu
+			return ui.ErrReturnToMenu
 		}
 		log.Warn("打开 ", editor, " 失败：", err)
 		return nil
@@ -517,8 +513,8 @@ func ensureAuthorizedKeysFile(account *system.Account) (string, error) {
 	if err := os.MkdirAll(sshDir, 0700); err != nil {
 		return "", err
 	}
-	if err := shared.EnsureFileWithOptions(authKeys, shared.AtomicWriteOptions{
-		Mode: 0600, Owner: &shared.FileOwner{UID: account.UID, GID: account.GID},
+	if err := storage.EnsureFileWithOptions(authKeys, storage.AtomicWriteOptions{
+		Mode: 0600, Owner: &storage.FileOwner{UID: account.UID, GID: account.GID},
 	}); err != nil {
 		return "", err
 	}
@@ -546,7 +542,7 @@ func installAuthorizedKey(account *system.Account, pubkey string) error {
 	if err != nil {
 		return err
 	}
-	if !shared.ContainsLine(string(data), pubkey) {
+	if !storage.ContainsLine(string(data), pubkey) {
 		if err := writeManagedAuthorizedKey(authKeys, string(data), pubkey); err != nil {
 			return err
 		}
@@ -559,19 +555,19 @@ func installAuthorizedKey(account *system.Account, pubkey string) error {
 }
 
 func writeManagedAuthorizedKey(path, content, pubkey string) error {
-	cleaned, err := shared.RemoveManagedBlockChecked(content, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd)
+	cleaned, err := storage.RemoveManagedBlockChecked(content, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd)
 	if err != nil {
 		return err
 	}
 	keys := managedAuthorizedKeys(content)
 	keys = append(keys, pubkey)
 
-	block := shared.FormatManagedBlock(sshAuthorizedKeysBegin, strings.Join(keys, "\n"), sshAuthorizedKeysEnd)
-	return shared.AtomicWriteFile(path, []byte(shared.AppendBlock(cleaned, block)), shared.AtomicWriteOptions{Mode: 0600, ForceMode: true})
+	block := storage.FormatManagedBlock(sshAuthorizedKeysBegin, strings.Join(keys, "\n"), sshAuthorizedKeysEnd)
+	return storage.AtomicWriteFile(path, []byte(storage.AppendBlock(cleaned, block)), storage.AtomicWriteOptions{Mode: 0600, ForceMode: true})
 }
 
 func managedAuthorizedKeys(content string) []string {
-	block, ok := shared.ManagedBlockContent(content, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd)
+	block, ok := storage.ManagedBlockContent(content, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd)
 	if !ok {
 		return nil
 	}
@@ -714,13 +710,13 @@ func removeAuthorizedKeyIndexes(content string, selected map[int]struct{}) strin
 	}
 
 	cleaned := removeEmptyManagedAuthorizedKeyBlock(builder.String())
-	return shared.NormalizeCleanedContent(cleaned)
+	return storage.NormalizeCleanedContent(cleaned)
 }
 
 func removeEmptyManagedAuthorizedKeyBlock(content string) string {
-	block, ok := shared.ManagedBlockContent(content, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd)
+	block, ok := storage.ManagedBlockContent(content, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd)
 	if ok && len(authorizedKeyEntries(block)) == 0 {
-		return shared.RemoveManagedBlock(content, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd)
+		return storage.RemoveManagedBlock(content, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd)
 	}
 	return content
 }

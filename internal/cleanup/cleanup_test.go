@@ -9,7 +9,8 @@ import (
 	"syscall"
 	"testing"
 
-	"snail_tool/internal/shared"
+	"snail_tool/internal/cleanup/softwaredata"
+	"snail_tool/internal/storage"
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
 )
@@ -36,7 +37,7 @@ func TestCancelledCleanupDoesNotConsumeAnotherInput(t *testing.T) {
 				ran = true
 				return nil
 			}}
-			shared.RunAction(view, "清理失败", func() error {
+			ui.RunAction(view, "清理失败", func() error {
 				return runCleanupStepWithConfirm(view, &system.Account{}, step)
 			})
 			if ran {
@@ -53,7 +54,7 @@ func TestAllConfigurationCleanupDeletesEntireDataDirectoryOnlyAfterSuccess(t *te
 	for _, scenario := range []string{"success", "failed configuration cleanup", "locked data directory"} {
 		t.Run(scenario, func(t *testing.T) {
 			root := seedSoftwareData(t)
-			info, err := inspectSoftwareData(root)
+			info, err := softwaredata.Inspect(root)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -75,7 +76,7 @@ func TestAllConfigurationCleanupDeletesEntireDataDirectoryOnlyAfterSuccess(t *te
 			var calls []string
 			steps := []cleanupStep{{name: "test", run: func(*system.Account) error {
 				calls = append(calls, "configuration")
-				if got := shared.ReadFileString(filepath.Join(root, "backups/ups/config.original.json")); got != "keep until confirmed" {
+				if got := storage.ReadFileString(filepath.Join(root, "backups/ups/config.original.json")); got != "keep until confirmed" {
 					t.Fatal("restoration data deleted before configuration cleanup finished")
 				}
 				if scenario == "failed configuration cleanup" {
@@ -85,7 +86,7 @@ func TestAllConfigurationCleanupDeletesEntireDataDirectoryOnlyAfterSuccess(t *te
 			}}}
 			err = runAllCleanupSteps(&system.Account{}, steps, func() error {
 				calls = append(calls, "data")
-				return deleteSoftwareData(root, info)
+				return softwaredata.Delete(root, info)
 			})
 			want := []string{"configuration", "data"}
 			if scenario == "failed configuration cleanup" {
@@ -98,13 +99,13 @@ func TestAllConfigurationCleanupDeletesEntireDataDirectoryOnlyAfterSuccess(t *te
 				if _, err := os.Lstat(root); !os.IsNotExist(err) {
 					t.Fatalf("entire data directory remains: %v", err)
 				}
-			} else if got := shared.ReadFileString(filepath.Join(root, ".hidden")); got != "keep until confirmed" {
+			} else if got := storage.ReadFileString(filepath.Join(root, ".hidden")); got != "keep until confirmed" {
 				t.Fatal("failed cleanup partially removed software data")
 			}
 			if scenario == "locked data directory" && !strings.Contains(err.Error(), "配置已清理，但软件数据目录删除未完成") {
 				t.Fatal("directory deletion failure must report completed configuration cleanup")
 			}
-			if shared.ReadFileString(outside) != "unrelated data" {
+			if storage.ReadFileString(outside) != "unrelated data" {
 				t.Fatal("cleanup affected files outside the software data directory")
 			}
 		})
@@ -123,4 +124,22 @@ func TestCleanupStopsAtFirstFailure(t *testing.T) {
 	if !reflect.DeepEqual(calls, []string{"failed"}) {
 		t.Fatalf("deletion continued after failure: %v", calls)
 	}
+}
+
+func seedSoftwareData(t *testing.T) string {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), "snailtool")
+	for _, name := range []string{"backups/firewall/etc/config.bak.1", "backups/firewall/etc/.snailtool-backup.lock", "backups/ups/config.original.json", ".hidden", "other/state.json"} {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("keep until confirmed"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(root, "empty", "nested"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	return root
 }

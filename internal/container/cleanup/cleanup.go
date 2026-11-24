@@ -9,7 +9,6 @@ import (
 	"snail_tool/internal/container/runtime"
 	"snail_tool/internal/input"
 	"snail_tool/internal/log"
-	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
 )
@@ -44,7 +43,7 @@ func cleanupDetectedRuntimes(view interface{ Ask(string) (string, error) }, runt
 			return err
 		}
 		err = clean(rt)
-		if len(runtimes) > 1 && errors.Is(err, shared.ErrReturnToMenu) {
+		if len(runtimes) > 1 && errors.Is(err, ui.ErrReturnToMenu) {
 			continue
 		}
 		return err
@@ -65,8 +64,8 @@ func selectCleanupRuntime(view interface{ Ask(string) (string, error) }, runtime
 		if err != nil {
 			return runtime.Runtime{}, err
 		}
-		if shared.IsReturnChoice(choice) {
-			return runtime.Runtime{}, shared.ErrReturnToMenu
+		if ui.IsReturnChoice(choice) {
+			return runtime.Runtime{}, ui.ErrReturnToMenu
 		}
 		index, err := input.Number(choice, 1, len(runtimes))
 		if err == nil && index > 0 && index <= len(runtimes) {
@@ -105,8 +104,8 @@ func runDockerCleanup(view *ui.UI, rt runtime.Runtime) error {
 			return err
 		}
 		fmt.Println()
-		if shared.IsReturnChoice(choice) {
-			return shared.ErrReturnToMenu
+		if ui.IsReturnChoice(choice) {
+			return ui.ErrReturnToMenu
 		}
 
 		plan, err := cleanupPlanForRuntime(choice, rt.Name)
@@ -131,7 +130,7 @@ func runDockerCleanup(view *ui.UI, rt runtime.Runtime) error {
 		)
 		executed, err := executeDockerCleanupPlan(plan, view.Confirm, system.Run, rt.Name)
 		if err != nil {
-			if errors.Is(err, shared.ErrReturnToMenu) {
+			if errors.Is(err, ui.ErrReturnToMenu) {
 				continue
 			}
 			if executed {

@@ -6,14 +6,14 @@ import (
 	"strings"
 
 	"snail_tool/internal/app"
-	"snail_tool/internal/cleanup"
+	"snail_tool/internal/app/startup"
 	cleanupbackups "snail_tool/internal/cleanup/backups"
+	"snail_tool/internal/cleanup/softwaredata"
+	"snail_tool/internal/firewall"
 	"snail_tool/internal/input"
 	"snail_tool/internal/log"
 	"snail_tool/internal/selfupdate"
-	"snail_tool/internal/startup"
 	"snail_tool/internal/system"
-	"snail_tool/internal/toolbox/firewall"
 	"snail_tool/internal/ui"
 	"snail_tool/internal/version"
 )
@@ -90,7 +90,7 @@ func handleArgs(args []string) bool {
 			log.Error("删除软件数据目录需要 root 权限，请使用 sudo snail clean-data --yes")
 			os.Exit(1)
 		}
-		if err := cleanup.DeleteSoftwareData(); err != nil {
+		if err := softwaredata.DeleteDefault(); err != nil {
 			log.Error(err)
 			os.Exit(1)
 		}

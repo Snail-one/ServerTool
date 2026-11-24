@@ -6,13 +6,13 @@ import (
 	"strings"
 
 	containercleanup "snail_tool/internal/container/cleanup"
-	"snail_tool/internal/container/clientproxy"
-	"snail_tool/internal/container/daemonlog"
-	"snail_tool/internal/container/daemonproxy"
+	"snail_tool/internal/container/compose"
+	"snail_tool/internal/container/dockerconfig"
+	"snail_tool/internal/container/dockerconfig/clientproxy"
+	"snail_tool/internal/container/dockerconfig/daemonlog"
+	"snail_tool/internal/container/dockerconfig/daemonproxy"
 	"snail_tool/internal/container/list"
 	"snail_tool/internal/container/runtime"
-	"snail_tool/internal/container/update"
-	"snail_tool/internal/shared"
 	"snail_tool/internal/ui"
 )
 
@@ -62,18 +62,18 @@ func Run(view *ui.UI) error {
 		}
 		fmt.Println()
 
-		if shared.IsReturnChoice(choice) {
-			return shared.ErrReturnToMenu
+		if ui.IsReturnChoice(choice) {
+			return ui.ErrReturnToMenu
 		}
 
 		switch strings.ToLower(choice) {
 		case "1":
-			shared.RunAction(view, "容器列表与操作失败，已返回容器管理", func() error {
+			ui.RunAction(view, "容器列表与操作失败，已返回容器管理", func() error {
 				return list.Run(view)
 			})
 		case "2":
-			shared.RunAction(view, "Compose 项目失败，已返回容器管理", func() error {
-				return runComposeMenu(view)
+			ui.RunAction(view, "Compose 项目失败，已返回容器管理", func() error {
+				return compose.Run(view)
 			})
 		case "3":
 			if !hasDocker {
@@ -81,23 +81,23 @@ func Run(view *ui.UI) error {
 				view.Pause()
 				continue
 			}
-			shared.RunAction(view, "Docker 配置失败，已返回容器管理", func() error {
-				return runDockerConfigMenu(view)
+			ui.RunAction(view, "Docker 配置失败，已返回容器管理", func() error {
+				return dockerconfig.Run(view)
 			})
 		case "4":
-			shared.RunAction(view, "容器资源清理失败，已返回容器管理", func() error {
+			ui.RunAction(view, "容器资源清理失败，已返回容器管理", func() error {
 				return containercleanup.Run(view)
 			})
 		case "5":
 			uninstalled, err := runtime.Uninstall(view)
 			if err != nil {
-				if errors.Is(err, shared.ErrReturnToMenu) {
+				if errors.Is(err, ui.ErrReturnToMenu) {
 					continue
 				}
 				return err
 			}
 			if uninstalled {
-				return shared.ErrReturnToMenu
+				return ui.ErrReturnToMenu
 			}
 		default:
 			ui.InvalidChoice()
@@ -122,107 +122,4 @@ func runtimeStatusFields(installedRuntimes []runtime.Runtime, logSummary, proxyS
 		)
 	}
 	return fields
-}
-
-func runComposeMenu(view *ui.UI) error {
-	for {
-		ui.ClearScreen()
-		ui.MenuTitle("容器管理", "Compose")
-		ui.MenuOptionHint("1", "管理运行中项目", "docker compose ls")
-		ui.MenuOptionHint("2", "扫描 Compose 项目", "扫描 Compose 配置目录")
-		ui.MenuOptionHint("3", "更新运行中应用", "docker compose pull && docker compose up -d")
-		ui.MenuOptionHint("4", "重建运行中项目", "docker compose down && docker compose up -d")
-		ui.MenuExit("0/q", "返回")
-
-		choice, err := view.Ask("请选择：")
-		if err != nil {
-			return err
-		}
-		fmt.Println()
-
-		if shared.IsReturnChoice(choice) {
-			return shared.ErrReturnToMenu
-		}
-		switch strings.ToLower(choice) {
-		case "1":
-			shared.RunAction(view, "Compose 项目管理失败，已返回 Compose", func() error {
-				return list.ManageComposeLS(view)
-			})
-		case "2":
-			shared.RunAction(view, "Compose 项目管理失败，已返回 Compose", func() error {
-				return list.ManageComposeScan(view)
-			})
-		case "3":
-			shared.RunAction(view, "Compose 应用更新失败，已返回 Compose", func() error {
-				return update.Run(view)
-			})
-		case "4":
-			shared.RunAction(view, "Compose 项目重建失败，已返回 Compose", func() error {
-				return update.RebuildRunningComposeProjects(view)
-			})
-		default:
-			ui.InvalidChoice()
-			view.Pause()
-		}
-	}
-}
-
-func runDockerConfigMenu(view *ui.UI) error {
-	for {
-		ui.ClearScreen()
-		ui.MenuTitle("容器管理", "Docker 配置")
-		ui.PrintSectionCard("当前配置",
-			ui.CardField{Label: "服务代理", Value: daemonproxy.CurrentSummary()},
-			ui.CardField{Label: "构建与容器代理", Value: clientproxy.CurrentSummary()},
-			ui.CardField{Label: "日志轮转", Value: daemonlog.CurrentSummary()},
-		)
-		fmt.Println()
-		ui.MenuOptionHint("1", "配置服务代理", "systemd 服务代理")
-		ui.MenuOptionHint("2", "配置构建与容器代理", "用户配置；用于后续构建及新建容器，无需重启 Docker")
-		ui.MenuOptionHint("3", "配置日志轮转", "/etc/docker/daemon.json")
-		fmt.Println()
-		ui.MenuOptionHint("4", "移除服务代理", "移除后重新加载 systemd，并尝试重启 Docker")
-		ui.MenuOptionHint("5", "移除构建与容器代理", "用于后续构建及新建容器，无需重启 Docker")
-		ui.MenuOptionHint("6", "移除日志轮转", "恢复默认日志设置，并尝试重启 Docker")
-		ui.MenuExit("0/q", "返回")
-
-		choice, err := view.Ask("请选择：")
-		if err != nil {
-			return err
-		}
-		fmt.Println()
-
-		if shared.IsReturnChoice(choice) {
-			return shared.ErrReturnToMenu
-		}
-		switch strings.ToLower(choice) {
-		case "1":
-			shared.RunAction(view, "Docker 服务代理配置失败，已返回 Docker 配置", func() error {
-				return daemonproxy.Run(view)
-			})
-		case "2":
-			shared.RunAction(view, "Docker 构建与容器代理配置失败，已返回 Docker 配置", func() error {
-				return clientproxy.Run(view)
-			})
-		case "3":
-			shared.RunAction(view, "Docker 日志轮转配置失败，已返回 Docker 配置", func() error {
-				return daemonlog.Run(view)
-			})
-		case "4":
-			shared.RunAction(view, "Docker 服务代理移除失败，已返回 Docker 配置", func() error {
-				return daemonproxy.Remove(view)
-			})
-		case "5":
-			shared.RunAction(view, "Docker 构建与容器代理移除失败，已返回 Docker 配置", func() error {
-				return clientproxy.Remove(view)
-			})
-		case "6":
-			shared.RunAction(view, "Docker 日志轮转移除失败，已返回 Docker 配置", func() error {
-				return daemonlog.Remove(view)
-			})
-		default:
-			ui.InvalidChoice()
-			view.Pause()
-		}
-	}
 }

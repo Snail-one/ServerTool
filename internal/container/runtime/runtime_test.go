@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"snail_tool/internal/shared"
+	"snail_tool/internal/storage"
 )
 
 func TestEnsureContainerRuntimeAbsent(t *testing.T) {
@@ -106,7 +106,7 @@ func TestConfigureDockerRepositories(t *testing.T) {
 			installer := &dockerInstaller{
 				output:   func(string, ...string) (string, error) { return "amd64\n", nil },
 				mkdirAll: func(string, os.FileMode) error { return nil },
-				writeFile: func(path string, data []byte, _ shared.AtomicWriteOptions) error {
+				writeFile: func(path string, data []byte, _ storage.AtomicWriteOptions) error {
 					writes[path] = string(data)
 					return nil
 				},
@@ -226,7 +226,7 @@ func fakeDockerInstaller(t *testing.T) (*dockerInstaller, *[]string) {
 			return dockerFirewallReport{}, nil
 		},
 		repositoryCheck: func(dockerDistribution) error { return nil },
-		writeFile: func(path string, _ []byte, _ shared.AtomicWriteOptions) error {
+		writeFile: func(path string, _ []byte, _ storage.AtomicWriteOptions) error {
 			calls = append(calls, "write "+path)
 			return nil
 		},

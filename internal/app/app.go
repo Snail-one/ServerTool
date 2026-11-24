@@ -6,19 +6,18 @@ import (
 	"strings"
 	"time"
 
+	"snail_tool/internal/app/startup"
+	"snail_tool/internal/app/status"
 	"snail_tool/internal/cleanup"
-	"snail_tool/internal/common"
+	"snail_tool/internal/configuration"
 	"snail_tool/internal/container"
-	"snail_tool/internal/shared"
+	"snail_tool/internal/firewall"
 	"snail_tool/internal/ssh"
-	"snail_tool/internal/startup"
-	"snail_tool/internal/status"
 	"snail_tool/internal/system"
-	"snail_tool/internal/toolbox"
-	"snail_tool/internal/toolbox/firewall"
-	toolpackages "snail_tool/internal/toolbox/packages"
+	"snail_tool/internal/tools"
 	"snail_tool/internal/ui"
 	"snail_tool/internal/version"
+	"snail_tool/internal/wireguard"
 )
 
 type App struct {
@@ -55,37 +54,37 @@ func (a *App) Run() error {
 		}
 		fmt.Println()
 
-		if shared.IsReturnChoice(choice) {
+		if ui.IsReturnChoice(choice) {
 			break
 		}
 
 		switch strings.ToLower(choice) {
 		case "1":
-			shared.RunAction(a.ui, "防火墙配置失败，已返回菜单", func() error {
+			ui.RunAction(a.ui, "防火墙配置失败，已返回菜单", func() error {
 				return firewall.Run(a.ui)
 			})
 		case "2":
-			shared.RunAction(a.ui, "SSH 管理失败，已返回菜单", func() error {
+			ui.RunAction(a.ui, "SSH 管理失败，已返回菜单", func() error {
 				return ssh.Run(a.ui)
 			})
 		case "3":
-			shared.RunAction(a.ui, "配置管理失败，已返回菜单", func() error {
-				return common.Run(a.ui)
+			ui.RunAction(a.ui, "配置管理失败，已返回菜单", func() error {
+				return configuration.Run(a.ui)
 			})
 		case "4":
-			shared.RunAction(a.ui, "系统工具菜单执行失败，已返回菜单", func() error {
-				return toolbox.Run(a.ui, a.startup)
+			ui.RunAction(a.ui, "系统工具菜单执行失败，已返回菜单", func() error {
+				return tools.Run(a.ui, a.startup)
 			})
 		case "5":
-			shared.RunAction(a.ui, "WireGuard 管理失败，已返回菜单", func() error {
-				return toolpackages.RunWireGuard(a.ui)
+			ui.RunAction(a.ui, "WireGuard 管理失败，已返回菜单", func() error {
+				return wireguard.Run(a.ui)
 			})
 		case "6":
-			shared.RunAction(a.ui, "容器管理失败，已返回菜单", func() error {
+			ui.RunAction(a.ui, "容器管理失败，已返回菜单", func() error {
 				return container.Run(a.ui)
 			})
 		case "c":
-			shared.RunAction(a.ui, "清理配置失败，已返回菜单", func() error {
+			ui.RunAction(a.ui, "清理配置失败，已返回菜单", func() error {
 				return cleanup.Run(a.ui)
 			})
 		default:
@@ -127,7 +126,7 @@ func showMenu(status status.Status) {
 	ui.MenuOption("3", "配置管理")
 	ui.MenuOption("4", "系统工具")
 	fmt.Println()
-	ui.MenuOptionStatus("5", "WireGuard", toolpackages.WireGuardBadge())
+	ui.MenuOptionStatus("5", "WireGuard", wireguard.Badge())
 	ui.MenuOptionStatus("6", "容器管理", ui.SoftwareBadge(defaultStatus(status.Runtime, "未安装"), runtimeConfigured))
 	fmt.Println()
 	ui.MenuShortcutHint("c", "清理配置", "")

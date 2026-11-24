@@ -8,10 +8,10 @@ import (
 	"sort"
 	"strings"
 
+	"snail_tool/internal/firewall"
 	"snail_tool/internal/log"
-	"snail_tool/internal/shared"
+	"snail_tool/internal/storage"
 	"snail_tool/internal/system"
-	"snail_tool/internal/toolbox/firewall"
 	"snail_tool/internal/ui"
 )
 
@@ -96,7 +96,7 @@ func selectDockerUninstallMode(view dockerUninstallPrompter) (bool, bool, error)
 		if err != nil {
 			return false, false, err
 		}
-		if shared.IsReturnChoice(choice) {
+		if ui.IsReturnChoice(choice) {
 			return false, false, nil
 		}
 		switch strings.ToLower(strings.TrimSpace(choice)) {
@@ -126,8 +126,8 @@ func newDockerUninstaller(view *ui.UI, removeData bool) *dockerUninstaller {
 			_, err := os.Lstat(path)
 			return err == nil
 		},
-		removeFile:           shared.RemoveRegularFile,
-		removeTree:           shared.RemovePathTree,
+		removeFile:           storage.RemoveRegularFile,
+		removeTree:           storage.RemovePathTree,
 		removeForwardService: firewall.RemoveDockerForwardService,
 		groupExists:          dockerGroupExists,
 		confirm:              func(plan dockerUninstallPlan) (bool, error) { return confirmDockerUninstall(view, plan) },

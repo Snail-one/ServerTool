@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"snail_tool/internal/shared"
+	"snail_tool/internal/storage"
 	"snail_tool/internal/tempguard"
 	"snail_tool/internal/ui"
 )
@@ -47,7 +47,7 @@ func TestCleanupRefusesActiveProducerWithAllPayloadFilesClosed(t *testing.T) {
 	if err := Delete(items); err == nil {
 		t.Fatal("delete accepted a producer started after confirmation")
 	}
-	if shared.ReadFileString(path) != "needed by the next step" {
+	if storage.ReadFileString(path) != "needed by the next step" {
 		t.Fatal("active producer's closed payload was removed")
 	}
 }
@@ -243,8 +243,8 @@ func TestDeleteStopsWhenAListedFileChanges(t *testing.T) {
 			t.Fatalf("file removed after failed delete: %s %v", path, err)
 		}
 	}
-	if shared.ReadFileString(changed) != "replaced" {
-		t.Fatalf("changed file content = %q", shared.ReadFileString(changed))
+	if storage.ReadFileString(changed) != "replaced" {
+		t.Fatalf("changed file content = %q", storage.ReadFileString(changed))
 	}
 }
 
@@ -256,7 +256,7 @@ func TestRunCancelKeepsFiles(t *testing.T) {
 	}
 	view := confirmView(t, "n\n")
 	err := run(view, Locations{TempDirs: []string{dir}})
-	if !errors.Is(err, shared.ErrReturnToMenu) {
+	if !errors.Is(err, ui.ErrReturnToMenu) {
 		t.Fatalf("cancel = %v", err)
 	}
 	if _, err := os.Lstat(path); err != nil {
@@ -350,8 +350,8 @@ func TestDeleteRechecksIdentityImmediatelyBeforeRemoval(t *testing.T) {
 	if _, err := os.Lstat(first); !os.IsNotExist(err) {
 		t.Fatalf("unchanged file still present: %v", err)
 	}
-	if shared.ReadFileString(second) != "replaced" {
-		t.Fatalf("replacement content = %q", shared.ReadFileString(second))
+	if storage.ReadFileString(second) != "replaced" {
+		t.Fatalf("replacement content = %q", storage.ReadFileString(second))
 	}
 }
 
@@ -377,8 +377,8 @@ func TestDeleteStopsWhenAFileBecomesBusy(t *testing.T) {
 		t.Fatalf("busy file accepted: %v", err)
 	}
 	for _, path := range []string{first, second} {
-		if shared.ReadFileString(path) != "old" {
-			t.Fatalf("file changed: %s %q", path, shared.ReadFileString(path))
+		if storage.ReadFileString(path) != "old" {
+			t.Fatalf("file changed: %s %q", path, storage.ReadFileString(path))
 		}
 	}
 }

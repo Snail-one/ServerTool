@@ -3,7 +3,7 @@ package runtime
 import (
 	"testing"
 
-	"snail_tool/internal/shared"
+	"snail_tool/internal/ui"
 )
 
 func TestSelectRuntimeToUninstall(t *testing.T) {
@@ -39,7 +39,7 @@ func TestUninstallBackReturnsThroughModeAndRuntimeSelection(t *testing.T) {
 		}
 		return runUninstallMode(prompt, choose, func(removeData bool) (bool, error) {
 			confirmations = append(confirmations, rt.Name)
-			return false, shared.ErrReturnToMenu
+			return false, ui.ErrReturnToMenu
 		})
 	})
 	if err != nil || removed {

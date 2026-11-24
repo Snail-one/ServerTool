@@ -10,10 +10,10 @@ import (
 	"sort"
 	"strings"
 
-	"snail_tool/internal/environment/golang"
 	"snail_tool/internal/log"
-	"snail_tool/internal/shared"
+	"snail_tool/internal/storage"
 	"snail_tool/internal/tempguard"
+	"snail_tool/internal/tools/golang"
 	"snail_tool/internal/ui"
 )
 
@@ -86,9 +86,9 @@ func DefaultLocations() Locations {
 			"/etc/yum.repos.d",
 			"/etc/pki/rpm-gpg",
 		},
-		DataTempDir:       filepath.Join(shared.DataDir, shared.DataTempDirName),
+		DataTempDir:       filepath.Join(storage.DataDir, storage.DataTempDirName),
 		ProgramInstallDir: "/usr/local/sbin",
-		FirewallBackupDir: filepath.Join(shared.DataDir, "backups", "firewall"),
+		FirewallBackupDir: filepath.Join(storage.DataDir, "backups", "firewall"),
 		GoRoot:            "/opt/go",
 	}
 }
@@ -142,7 +142,7 @@ func run(view *ui.UI, locations Locations) error {
 	}
 	if !confirmed {
 		log.Info("已取消清理")
-		return shared.ErrReturnToMenu
+		return ui.ErrReturnToMenu
 	}
 	if err := Delete(items); err != nil {
 		return err
@@ -354,7 +354,7 @@ func validateItem(item Item, uses []openUse) error {
 		if err := requireKind(item.Path, kindDirectory, latest); err != nil {
 			return err
 		}
-		return shared.CheckRemovalTree(item.Path)
+		return storage.CheckRemovalTree(item.Path)
 	case kindGo:
 		if filepath.Join(item.Root, item.Name) != item.Path || filepath.Base(item.Name) != item.Name {
 			return fmt.Errorf("Go 安装残留路径无效，未删除: %s", item.Path)
@@ -375,9 +375,9 @@ func removeItem(item Item) error {
 	}
 	switch item.Kind {
 	case kindFile:
-		return shared.RemoveRegularFile(item.Path)
+		return storage.RemoveRegularFile(item.Path)
 	case kindDirectory:
-		return shared.RemovePathTree(item.Path)
+		return storage.RemovePathTree(item.Path)
 	case kindGo:
 		return golang.DeleteInstallArtifact(golang.InstallArtifact{Root: item.Root, Name: item.Name, Info: item.Info})
 	default:

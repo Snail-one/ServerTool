@@ -8,8 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"snail_tool/internal/shared"
+	"snail_tool/internal/storage"
 	"snail_tool/internal/system"
+	"snail_tool/internal/ui"
 )
 
 func TestEnsureSSHAuthorizedKeysAllowsQToReturn(t *testing.T) {
@@ -18,7 +19,7 @@ func TestEnsureSSHAuthorizedKeysAllowsQToReturn(t *testing.T) {
 	view := newUIWithInput(t, "q\n")
 
 	err := ensureSSHAuthorizedKeys(view, account)
-	if !errors.Is(err, shared.ErrReturnToMenu) {
+	if !errors.Is(err, ui.ErrReturnToMenu) {
 		t.Fatalf("输入 q 应返回菜单，得到：%v", err)
 	}
 	if system.DirExists(filepath.Join(home, ".ssh")) {
@@ -36,7 +37,7 @@ func TestDeleteSelectedKeysPreservesConcurrentChanges(t *testing.T) {
 	if err := removeSelectedAuthorizedKeys(path, original, map[int]struct{}{1: {}}); err == nil {
 		t.Fatal("stale selection accepted")
 	}
-	if shared.ReadFileString(path) != updated {
+	if storage.ReadFileString(path) != updated {
 		t.Fatal("concurrent SSH key removed")
 	}
 }
@@ -105,7 +106,7 @@ func TestOpenAuthorizedKeysWithEditorWarnsInvalidLines(t *testing.T) {
 	})
 
 	view := newUIWithInput(t, "\nnext\n")
-	shared.RunAction(view, "编辑失败", func() error {
+	ui.RunAction(view, "编辑失败", func() error {
 		return openAuthorizedKeysWithEditor(view, account, "vi")
 	})
 	if next, err := view.Ask("下一项："); err != nil || next != "next" {
@@ -156,7 +157,7 @@ func TestAddSSHAuthorizedKeysRetriesInvalidKey(t *testing.T) {
 	validKey := generateTestPublicKey(t)
 	view := newUIWithInput(t, "not-a-key\n"+validKey+"\n\n")
 
-	if err := addSSHAuthorizedKeys(view, account); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := addSSHAuthorizedKeys(view, account); !errors.Is(err, ui.ErrReturnToMenu) {
 		t.Fatalf("公钥添加后回车应直接返回菜单：%v", err)
 	}
 
@@ -174,7 +175,7 @@ func TestAddSSHAuthorizedKeysEmptyInputReturnsToMenu(t *testing.T) {
 	account := &system.Account{Name: "test", Home: home}
 	view := newUIWithInput(t, "bad-key\n\n")
 
-	if err := addSSHAuthorizedKeys(view, account); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := addSSHAuthorizedKeys(view, account); !errors.Is(err, ui.ErrReturnToMenu) {
 		t.Fatalf("无效公钥后回车结束应留在当前菜单，得到：%v", err)
 	}
 	if system.DirExists(filepath.Join(home, ".ssh")) {
@@ -220,7 +221,7 @@ func TestReplaceSSHAuthorizedKeyRetriesThenReplaces(t *testing.T) {
 	oldKey := generateTestPublicKey(t)
 	newKey := generateTestPublicKey(t)
 	authKeys := filepath.Join(sshDir, "authorized_keys")
-	content := shared.FormatManagedBlock(sshAuthorizedKeysBegin, oldKey, sshAuthorizedKeysEnd)
+	content := storage.FormatManagedBlock(sshAuthorizedKeysBegin, oldKey, sshAuthorizedKeysEnd)
 	if err := os.WriteFile(authKeys, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -376,7 +377,7 @@ func TestWriteManagedAuthorizedKeyIsIdempotent(t *testing.T) {
 	if strings.Count(content, sshAuthorizedKeysBegin) != 1 || strings.Count(content, sshAuthorizedKeysEnd) != 1 {
 		t.Fatalf("managed SSH key block is not idempotent:\n%s", content)
 	}
-	wantBlock := shared.FormatManagedBlock(sshAuthorizedKeysBegin, firstKey+"\n"+secondKey, sshAuthorizedKeysEnd)
+	wantBlock := storage.FormatManagedBlock(sshAuthorizedKeysBegin, firstKey+"\n"+secondKey, sshAuthorizedKeysEnd)
 	if !strings.Contains(content, wantBlock) {
 		t.Fatalf("managed SSH key block spacing mismatch:\n%s", content)
 	}

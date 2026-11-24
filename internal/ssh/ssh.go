@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"snail_tool/internal/shared"
 	"snail_tool/internal/ssh/keys"
+	"snail_tool/internal/ssh/rootlogin"
 	"snail_tool/internal/ssh/security"
 	sshstatus "snail_tool/internal/ssh/status"
 	"snail_tool/internal/system"
@@ -30,25 +30,25 @@ func Run(view *ui.UI) error {
 		}
 		fmt.Println()
 
-		if shared.IsReturnChoice(choice) {
-			return shared.ErrReturnToMenu
+		if ui.IsReturnChoice(choice) {
+			return ui.ErrReturnToMenu
 		}
 		switch strings.ToLower(choice) {
 		case "1":
-			shared.RunAction(view, "SSH 公钥管理失败，已返回 SSH 管理", func() error {
+			ui.RunAction(view, "SSH 公钥管理失败，已返回 SSH 管理", func() error {
 				return keys.Run(view)
 			})
 		case "2":
-			shared.RunAction(view, "SSH 安全策略配置失败，已返回 SSH 管理", func() error {
+			ui.RunAction(view, "SSH 安全策略配置失败，已返回 SSH 管理", func() error {
 				return security.Run(view)
 			})
 		case "3":
-			shared.RunAction(view, "查看 SSH 生效配置失败，已返回 SSH 管理", func() error {
-				return sshstatus.Show()
+			ui.RunAction(view, "查看 SSH 生效配置失败，已返回 SSH 管理", func() error {
+				return sshstatus.Show(security.ReadStatus)
 			})
 		case "4":
-			shared.RunAction(view, "Root SSH 登录策略配置失败，已返回 SSH 管理", func() error {
-				return security.ConfigureRootLogin(view)
+			ui.RunAction(view, "Root SSH 登录策略配置失败，已返回 SSH 管理", func() error {
+				return rootlogin.Run(view, security.CurrentRootLogin, security.UpdateRootLoginPolicy)
 			})
 		default:
 			ui.InvalidChoice()

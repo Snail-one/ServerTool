@@ -7,11 +7,11 @@ import (
 	"strings"
 
 	"snail_tool/internal/log"
-	"snail_tool/internal/shared"
+	"snail_tool/internal/storage"
 	"snail_tool/internal/ui"
 )
 
-var dataDir = shared.DataDir
+var dataDir = storage.DataDir
 
 type module struct {
 	key, name, directory string
@@ -27,8 +27,8 @@ var modules = []module{
 
 type inventory struct {
 	module  module
-	store   shared.BackupStore
-	entries []shared.BackupEntry
+	store   storage.BackupStore
+	entries []storage.BackupEntry
 }
 
 type Plan struct {
@@ -40,7 +40,7 @@ func PrepareAll() (*Plan, error) { return prepare(modules) }
 func prepare(selected []module) (*Plan, error) {
 	plan := &Plan{}
 	for _, item := range selected {
-		store := shared.BackupStore{Root: dataDir, Module: item.directory}
+		store := storage.BackupStore{Root: dataDir, Module: item.directory}
 		entries, err := store.List()
 		if err != nil {
 			return nil, fmt.Errorf("读取 %s 备份失败: %w", item.name, err)
@@ -116,7 +116,7 @@ func (plan *Plan) confirm(view *ui.UI) error {
 	}
 	if !confirmed {
 		log.Info("已取消清理备份")
-		return shared.ErrReturnToMenu
+		return ui.ErrReturnToMenu
 	}
 	return plan.Delete()
 }
@@ -150,7 +150,7 @@ func Run(view *ui.UI) error {
 		}
 		ui.PrintInfoCard("备份概况",
 			ui.CardField{Label: "备份合计", Value: plan.Summary()},
-			ui.CardField{Label: "保留上限", Value: fmt.Sprintf("每个配置文件最近 %d 份；UPS 首次备份单独保留", shared.MaxBackupSnapshots)},
+			ui.CardField{Label: "保留上限", Value: fmt.Sprintf("每个配置文件最近 %d 份；UPS 首次备份单独保留", storage.MaxBackupSnapshots)},
 		)
 		for _, item := range plan.items {
 			ui.MenuOptionHint(item.module.key, "清理 "+item.module.name+" 备份", fmt.Sprintf("%d 个文件", len(item.entries)))
@@ -162,11 +162,11 @@ func Run(view *ui.UI) error {
 		if err != nil {
 			return err
 		}
-		if shared.IsReturnChoice(choice) {
-			return shared.ErrReturnToMenu
+		if ui.IsReturnChoice(choice) {
+			return ui.ErrReturnToMenu
 		}
 		if choice == "6" {
-			shared.RunAction(view, "旧备份清理失败，已返回备份管理", func() error { return cleanLegacy(view) })
+			ui.RunAction(view, "旧备份清理失败，已返回备份管理", func() error { return cleanLegacy(view) })
 			continue
 		}
 		var selected []module
@@ -184,7 +184,7 @@ func Run(view *ui.UI) error {
 			view.Pause()
 			continue
 		}
-		shared.RunAction(view, "备份清理失败，已返回备份管理", func() error {
+		ui.RunAction(view, "备份清理失败，已返回备份管理", func() error {
 			chosen, err := prepare(selected)
 			if err != nil {
 				return err

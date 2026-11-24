@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"snail_tool/internal/shared"
 	"snail_tool/internal/ui"
 )
 
@@ -35,7 +34,7 @@ func uninstallDetectedRuntimes(view dockerUninstallPrompter, runtimes []Runtime,
 			}
 		}
 		removed, err := remove(selected)
-		if len(runtimes) > 1 && (errors.Is(err, shared.ErrReturnToMenu) || err == nil && !removed) {
+		if len(runtimes) > 1 && (errors.Is(err, ui.ErrReturnToMenu) || err == nil && !removed) {
 			continue
 		}
 		return removed, err
@@ -49,7 +48,7 @@ func runUninstallMode(view dockerUninstallPrompter, choose func(dockerUninstallP
 			return false, err
 		}
 		removed, err := remove(removeData)
-		if errors.Is(err, shared.ErrReturnToMenu) || err == nil && !removed {
+		if errors.Is(err, ui.ErrReturnToMenu) || err == nil && !removed {
 			continue
 		}
 		return removed, err
@@ -67,7 +66,7 @@ func selectRuntimeToUninstall(view dockerUninstallPrompter, runtimes []Runtime) 
 		if err != nil {
 			return Runtime{}, false, err
 		}
-		if shared.IsReturnChoice(choice) {
+		if ui.IsReturnChoice(choice) {
 			return Runtime{}, false, nil
 		}
 		switch strings.ToLower(strings.TrimSpace(choice)) {

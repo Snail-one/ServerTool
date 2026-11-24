@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
+	"snail_tool/internal/ui"
 )
 
 func TestKeyOperationCancellationStaysInKeyMenu(t *testing.T) {
@@ -41,7 +41,7 @@ func TestKeyOperationCancellationStaysInKeyMenu(t *testing.T) {
 				// Walk back through every selection page, then leave the key
 				// menu without consuming the next parent response.
 				view := newUIWithInput(t, operation.input+"q\nparent-next\n")
-				shared.RunAction(view, "SSH 公钥管理失败", func() error {
+				ui.RunAction(view, "SSH 公钥管理失败", func() error {
 					return configureSSHAuthorizedKeys(view, account)
 				})
 				if next, err := view.Ask("父菜单："); err != nil || next != "parent-next" {
@@ -75,7 +75,7 @@ func TestInterruptedEditorReturnsToKeyMenu(t *testing.T) {
 			} else {
 				err = configureSSHAuthorizedKeys(view, account)
 			}
-			if !errors.Is(err, shared.ErrReturnToMenu) {
+			if !errors.Is(err, ui.ErrReturnToMenu) {
 				t.Fatalf("expected menu return: %v", err)
 			}
 			if next, err := view.Ask("父菜单："); err != nil || next != "parent-next" {

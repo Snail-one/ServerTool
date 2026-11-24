@@ -6,11 +6,12 @@ import (
 	"strconv"
 	"strings"
 
+	composeprojects "snail_tool/internal/container/compose"
+	"snail_tool/internal/container/compose/update"
+	"snail_tool/internal/container/internal/listing"
 	"snail_tool/internal/container/runtime"
-	"snail_tool/internal/container/update"
 	"snail_tool/internal/input"
 	"snail_tool/internal/log"
-	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
 )
@@ -20,16 +21,6 @@ type containerAction struct {
 	Label   string
 	Command string
 }
-
-const (
-	containerStateRunning    = "running"
-	containerStateExited     = "exited"
-	containerStatePaused     = "paused"
-	containerStateCreated    = "created"
-	containerStateRestarting = "restarting"
-	containerStateDead       = "dead"
-	containerStateUnknown    = "unknown"
-)
 
 func Run(view *ui.UI) error {
 	// 查看容器入口：直接列出并管理容器（含未启动）
@@ -49,7 +40,7 @@ func manageContainers(view *ui.UI, rt runtime.Runtime) error {
 	if len(conts) == 0 {
 		log.Info("未发现容器")
 		view.Pause()
-		return shared.ErrReturnToMenu
+		return ui.ErrReturnToMenu
 	}
 
 	for {
@@ -64,8 +55,8 @@ func manageContainers(view *ui.UI, rt runtime.Runtime) error {
 		}
 		fmt.Println()
 
-		if shared.IsReturnChoice(raw) {
-			return shared.ErrReturnToMenu
+		if ui.IsReturnChoice(raw) {
+			return ui.ErrReturnToMenu
 		}
 
 		idx, err := input.Number(raw, 1, len(conts))
@@ -86,7 +77,7 @@ func manageContainers(view *ui.UI, rt runtime.Runtime) error {
 			return err
 		}
 		if len(conts) == 0 {
-			return shared.ErrReturnToMenu
+			return ui.ErrReturnToMenu
 		}
 	}
 }
@@ -101,10 +92,10 @@ func printContainers(conts []containerInfo) {
 			fmt.Sprintf("%d)", i+1),
 			ui.TableCell(state, 8),
 			shortContainerID(c.ID),
-			truncateText(defaultText(c.Name), 24),
-			truncateText(defaultText(c.Ports), 34),
-			truncateText(defaultText(containerTimeText(c)), 18),
-			defaultText(c.CreatedAt),
+			listing.TruncateText(listing.DefaultText(c.Name), 24),
+			listing.TruncateText(listing.DefaultText(c.Ports), 34),
+			listing.TruncateText(listing.DefaultText(containerTimeText(c)), 18),
+			listing.DefaultText(c.CreatedAt),
 		)
 	}
 }
@@ -116,11 +107,11 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 
 	for {
 		ui.ClearScreen()
-		ui.MenuTitle("容器管理", "容器列表与操作", defaultText(c.Name))
+		ui.MenuTitle("容器管理", "容器列表与操作", listing.DefaultText(c.Name))
 		ui.PrintInfoCard("容器关键信息",
 			ui.CardField{Label: "容器", Value: fmt.Sprintf("%s（%s）", c.Name, c.ID)},
 			ui.CardField{Label: "状态", Value: containerDetailStatus(c)},
-			ui.CardField{Label: "端口", Value: defaultText(c.Ports)},
+			ui.CardField{Label: "端口", Value: listing.DefaultText(c.Ports)},
 		)
 		fmt.Println()
 
@@ -140,7 +131,7 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 		}
 		fmt.Println()
 
-		if shared.IsReturnChoice(raw) {
+		if ui.IsReturnChoice(raw) {
 			return nil
 		}
 		index, err := input.Number(raw, 1, len(actions))
@@ -180,7 +171,7 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 			}
 			continue
 		case "down":
-			dir, _ := findProjectDirForContainer(compose, project)
+			dir, _ := composeprojects.FindProjectDir(compose, project)
 			if dir == "" {
 				log.Warn("未能找到项目目录，跳过 down")
 				view.PauseWithPrompt("按回车返回容器操作...")
@@ -188,7 +179,7 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 			}
 			confirmed, err := view.Confirm(fmt.Sprintf("项目目录：%s\n确认对项目 %s 执行 down（不会删除卷）？(y/N)：", dir, project))
 			if err != nil {
-				if errors.Is(err, shared.ErrReturnToMenu) {
+				if errors.Is(err, ui.ErrReturnToMenu) {
 					continue
 				}
 				return err
@@ -210,7 +201,7 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 				c,
 			)
 			if err != nil {
-				if errors.Is(err, shared.ErrReturnToMenu) {
+				if errors.Is(err, ui.ErrReturnToMenu) {
 					continue
 				}
 				log.Error("删除容器失败: ", err)
@@ -236,9 +227,9 @@ func availableContainerActions(c containerInfo, canComposeDown bool) []container
 		actions = append(actions, containerAction{Key: "stop", Label: "停止容器", Command: "stop"})
 	}
 	actions = append(actions, containerAction{Key: "restart", Label: "重启容器", Command: "restart"})
-	if c.State == containerStateRunning {
+	if c.State == listing.StateRunning {
 		actions = append(actions, containerAction{Key: "pause", Label: "暂停容器", Command: "pause"})
-	} else if c.State == containerStatePaused {
+	} else if c.State == listing.StatePaused {
 		actions = append(actions, containerAction{Key: "unpause", Label: "恢复容器", Command: "unpause"})
 	}
 	actions = append(actions,
@@ -259,12 +250,12 @@ func availableContainerActions(c containerInfo, canComposeDown bool) []container
 }
 
 func canEnterContainer(c containerInfo) bool {
-	return c.State == containerStateRunning
+	return c.State == listing.StateRunning
 }
 
 func canStartContainer(c containerInfo) bool {
 	switch c.State {
-	case containerStateRunning, containerStatePaused, containerStateRestarting:
+	case listing.StateRunning, listing.StatePaused, listing.StateRestarting:
 		return false
 	default:
 		return true
@@ -273,7 +264,7 @@ func canStartContainer(c containerInfo) bool {
 
 func canStopContainer(c containerInfo) bool {
 	switch c.State {
-	case containerStateRunning, containerStatePaused, containerStateRestarting:
+	case listing.StateRunning, listing.StatePaused, listing.StateRestarting:
 		return true
 	default:
 		return false
@@ -282,7 +273,7 @@ func canStopContainer(c containerInfo) bool {
 
 func canRemoveContainer(c containerInfo) bool {
 	switch c.State {
-	case containerStateExited, containerStateCreated, containerStateDead:
+	case listing.StateExited, listing.StateCreated, listing.StateDead:
 		return true
 	default:
 		return false
@@ -296,7 +287,7 @@ func removeContainer(confirm func(string) (bool, error), run func(string, ...str
 	if c.ID == "" {
 		return false, fmt.Errorf("未取得容器 ID，无法安全删除，请刷新后重试")
 	}
-	prompt := fmt.Sprintf("容器：%s\nID：%s\n确认执行 rm（不会强制删除）？(y/N)：", defaultText(c.Name), defaultText(c.ID))
+	prompt := fmt.Sprintf("容器：%s\nID：%s\n确认执行 rm（不会强制删除）？(y/N)：", listing.DefaultText(c.Name), listing.DefaultText(c.ID))
 	confirmed, err := confirm(prompt)
 	if err != nil || !confirmed {
 		return false, err
@@ -391,15 +382,15 @@ func containerRef(c containerInfo) string {
 
 func containerStateDisplay(state string) string {
 	switch state {
-	case containerStateRunning:
+	case listing.StateRunning:
 		return "运行中"
-	case containerStateExited:
+	case listing.StateExited:
 		return "已停止"
-	case containerStatePaused:
+	case listing.StatePaused:
 		return "已暂停"
-	case containerStateCreated:
+	case listing.StateCreated:
 		return "已创建"
-	case containerStateRestarting:
+	case listing.StateRestarting:
 		return "重启中"
 	case "dead":
 		return "异常"
@@ -420,13 +411,13 @@ func containerDetailStatus(c containerInfo) string {
 
 func colorContainerState(state, text string) string {
 	switch state {
-	case containerStateRunning:
+	case listing.StateRunning:
 		return ui.SuccessText(text)
-	case containerStateExited, containerStatePaused, containerStateCreated:
+	case listing.StateExited, listing.StatePaused, listing.StateCreated:
 		return ui.WarningText(text)
-	case containerStateRestarting:
+	case listing.StateRestarting:
 		return ui.InfoText(text)
-	case containerStateDead, "removing":
+	case listing.StateDead, "removing":
 		return ui.DangerText(text)
 	default:
 		return ui.MutedText(text)
@@ -446,24 +437,6 @@ func containerTimeText(c containerInfo) string {
 		return c.RunningFor
 	}
 	return c.Status
-}
-
-func defaultText(value string) string {
-	if strings.TrimSpace(value) == "" {
-		return "-"
-	}
-	return value
-}
-
-func truncateText(value string, max int) string {
-	runes := []rune(value)
-	if len(runes) <= max {
-		return value
-	}
-	if max <= 3 {
-		return string(runes[:max])
-	}
-	return string(runes[:max-3]) + "..."
 }
 
 func getContainerComposeProject(rt runtime.Runtime, c containerInfo) string {

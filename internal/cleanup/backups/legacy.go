@@ -5,11 +5,11 @@ import (
 	"io"
 
 	"snail_tool/internal/log"
-	"snail_tool/internal/shared"
+	"snail_tool/internal/storage"
 	"snail_tool/internal/ui"
 )
 
-var legacyStore = shared.LegacyBackupStore{Root: "/"}
+var legacyStore = storage.LegacyBackupStore{Root: "/"}
 
 func cleanLegacy(view *ui.UI) error {
 	entries, err := legacyStore.List()
@@ -43,7 +43,7 @@ func cleanLegacy(view *ui.UI) error {
 	}
 	if !confirmed {
 		log.Info("已取消清理旧备份")
-		return shared.ErrReturnToMenu
+		return ui.ErrReturnToMenu
 	}
 	deleted, err := legacyStore.Delete(entries)
 	if err != nil {

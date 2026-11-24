@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"snail_tool/internal/shared"
+	"snail_tool/internal/storage"
 )
 
 func TestDockerSupportedPlatformPolicy(t *testing.T) {
@@ -290,7 +290,7 @@ func TestConfigureRepositoryWritesOnlyStableRPMSection(t *testing.T) {
 	writes := map[string]string{}
 	installer := &dockerInstaller{
 		mkdirAll: func(string, os.FileMode) error { return nil },
-		writeFile: func(path string, data []byte, _ shared.AtomicWriteOptions) error {
+		writeFile: func(path string, data []byte, _ storage.AtomicWriteOptions) error {
 			writes[path] = string(data)
 			return nil
 		},

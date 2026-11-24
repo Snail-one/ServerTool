@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"snail_tool/internal/container/internal/listing"
 )
 
 func TestParseContainersJSONLines(t *testing.T) {
@@ -18,10 +20,10 @@ func TestParseContainersJSONLines(t *testing.T) {
 		t.Fatalf("container count = %d, want 2", len(got))
 	}
 
-	if got[0].Name != "web" || got[0].State != containerStateRunning || !got[0].IsRunning {
+	if got[0].Name != "web" || got[0].State != listing.StateRunning || !got[0].IsRunning {
 		t.Fatalf("running container parsed incorrectly: %#v", got[0])
 	}
-	if got[1].Name != "worker" || got[1].State != containerStateExited || got[1].IsRunning {
+	if got[1].Name != "worker" || got[1].State != listing.StateExited || got[1].IsRunning {
 		t.Fatalf("exited container parsed incorrectly: %#v", got[1])
 	}
 }
@@ -50,7 +52,7 @@ func TestParseContainersText(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("container count = %d, want 1", len(got))
 	}
-	if got[0].Name != "api" || got[0].State != containerStateExited || got[0].IsRunning {
+	if got[0].Name != "api" || got[0].State != listing.StateExited || got[0].IsRunning {
 		t.Fatalf("text container parsed incorrectly: %#v", got[0])
 	}
 }
@@ -62,18 +64,18 @@ func TestNormalizeContainerState(t *testing.T) {
 		status string
 		want   string
 	}{
-		{name: "explicit running", state: "running", status: "Up 1 hour", want: containerStateRunning},
-		{name: "paused from status", status: "Up 1 hour (Paused)", want: containerStatePaused},
-		{name: "restarting from status", status: "Restarting (1) 3 seconds ago", want: containerStateRestarting},
-		{name: "exited from status", status: "Exited (0) 2 hours ago", want: containerStateExited},
-		{name: "created from status", status: "Created", want: containerStateCreated},
-		{name: "dead from status", status: "Dead", want: containerStateDead},
-		{name: "unknown", status: "Something else", want: containerStateUnknown},
+		{name: "explicit running", state: "running", status: "Up 1 hour", want: listing.StateRunning},
+		{name: "paused from status", status: "Up 1 hour (Paused)", want: listing.StatePaused},
+		{name: "restarting from status", status: "Restarting (1) 3 seconds ago", want: listing.StateRestarting},
+		{name: "exited from status", status: "Exited (0) 2 hours ago", want: listing.StateExited},
+		{name: "created from status", status: "Created", want: listing.StateCreated},
+		{name: "dead from status", status: "Dead", want: listing.StateDead},
+		{name: "unknown", status: "Something else", want: listing.StateUnknown},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := normalizeContainerState(tt.state, tt.status); got != tt.want {
+			if got := listing.NormalizeContainerState(tt.state, tt.status); got != tt.want {
 				t.Fatalf("state = %q, want %q", got, tt.want)
 			}
 		})
@@ -90,12 +92,12 @@ func TestContainerActionAvailability(t *testing.T) {
 		wantRemove bool
 		wantPause  string
 	}{
-		{name: "running", state: containerStateRunning, wantStop: true, wantEnter: true, wantPause: "pause"},
-		{name: "paused", state: containerStatePaused, wantStop: true, wantPause: "unpause"},
-		{name: "restarting", state: containerStateRestarting, wantStop: true},
-		{name: "exited", state: containerStateExited, wantStart: true, wantRemove: true},
-		{name: "created", state: containerStateCreated, wantStart: true, wantRemove: true},
-		{name: "dead", state: containerStateDead, wantStart: true, wantRemove: true},
+		{name: "running", state: listing.StateRunning, wantStop: true, wantEnter: true, wantPause: "pause"},
+		{name: "paused", state: listing.StatePaused, wantStop: true, wantPause: "unpause"},
+		{name: "restarting", state: listing.StateRestarting, wantStop: true},
+		{name: "exited", state: listing.StateExited, wantStart: true, wantRemove: true},
+		{name: "created", state: listing.StateCreated, wantStart: true, wantRemove: true},
+		{name: "dead", state: listing.StateDead, wantStart: true, wantRemove: true},
 	}
 
 	for _, tt := range tests {
@@ -153,7 +155,7 @@ func TestContainerCommandArgs(t *testing.T) {
 }
 
 func TestRemoveContainerSafety(t *testing.T) {
-	c := containerInfo{ID: "abcdef", Name: "web", State: containerStateExited}
+	c := containerInfo{ID: "abcdef", Name: "web", State: listing.StateExited}
 	runs := 0
 	executed, err := removeContainer(
 		func(prompt string) (bool, error) {
@@ -170,7 +172,7 @@ func TestRemoveContainerSafety(t *testing.T) {
 		t.Fatalf("cancel result: executed=%v runs=%d err=%v", executed, runs, err)
 	}
 
-	c.State = containerStateRunning
+	c.State = listing.StateRunning
 	confirmed := 0
 	_, err = removeContainer(
 		func(string) (bool, error) { confirmed++; return true, nil },
@@ -181,7 +183,7 @@ func TestRemoveContainerSafety(t *testing.T) {
 	if err == nil || confirmed != 0 || runs != 0 {
 		t.Fatalf("running rm was not blocked: confirmed=%d runs=%d err=%v", confirmed, runs, err)
 	}
-	c.State = containerStateExited
+	c.State = listing.StateExited
 	executed, err = removeContainer(func(string) (bool, error) { return true, nil }, func(name string, args ...string) error {
 		if name != "docker" || !reflect.DeepEqual(args, []string{"rm", "abcdef"}) {
 			t.Fatalf("deletion must use stable ID: %s %v", name, args)
@@ -190,117 +192,5 @@ func TestRemoveContainerSafety(t *testing.T) {
 	}, "docker", c)
 	if err != nil || !executed {
 		t.Fatal("stopped container deletion failed", err)
-	}
-}
-
-func TestParseComposePSJSON(t *testing.T) {
-	raw := `[
-		{"Name":"demo-web-1","Project":"demo","Service":"web","State":"running","Status":"Up 2 minutes"},
-		{"Name":"demo-worker-1","Project":"demo","Service":"worker","State":"exited","Status":"Exited (0) 1 hour ago"},
-		{"Name":"demo-db-1","Project":"demo","Service":"db","State":"paused","Status":"Up 1 hour (Paused)"}
-	]`
-
-	got, projectName, err := parseComposePSJSON(raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if projectName != "demo" {
-		t.Fatalf("project name = %q, want demo", projectName)
-	}
-	if got.Total != 3 || got.Running != 1 || got.Exited != 1 || got.Paused != 1 {
-		t.Fatalf("summary parsed incorrectly: %#v", got)
-	}
-}
-
-func TestParseComposePSText(t *testing.T) {
-	raw := `NAME              IMAGE     COMMAND   SERVICE   CREATED        STATUS                    PORTS
-demo-web-1        nginx     "nginx"   web       2 minutes ago  Up 2 minutes              0.0.0.0:80->80/tcp
-demo-worker-1     busybox   "sh"      worker    1 hour ago     Exited (0) 1 hour ago`
-
-	got := parseComposePSText(raw)
-	if got.Total != 2 || got.Running != 1 || got.Exited != 1 {
-		t.Fatalf("summary parsed incorrectly: %#v", got)
-	}
-}
-
-func TestComposeProjectStatusDisplay(t *testing.T) {
-	tests := []struct {
-		name    string
-		project composeProjectInfo
-		want    string
-	}{
-		{
-			name:    "compose ls status wins",
-			project: composeProjectInfo{Status: "running(2)", Containers: composeContainerSummary{HasData: true, Total: 2, Running: 2}},
-			want:    "running(2)",
-		},
-		{
-			name:    "partial running",
-			project: composeProjectInfo{Containers: composeContainerSummary{HasData: true, Total: 3, Running: 1, Exited: 2}},
-			want:    "部分运行",
-		},
-		{
-			name:    "stopped",
-			project: composeProjectInfo{Containers: composeContainerSummary{HasData: true, Total: 2, Exited: 2}},
-			want:    "已停止",
-		},
-		{
-			name:    "empty",
-			project: composeProjectInfo{Containers: composeContainerSummary{HasData: true}},
-			want:    "无容器",
-		},
-		{
-			name:    "error",
-			project: composeProjectInfo{StatusError: "boom"},
-			want:    "状态获取失败",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := composeProjectStatusDisplay(tt.project); got != tt.want {
-				t.Fatalf("status = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestComposeContainerSummaryDisplay(t *testing.T) {
-	got := composeContainerSummaryDisplay(composeContainerSummary{
-		HasData: true,
-		Total:   4,
-		Running: 2,
-		Exited:  1,
-		Unknown: 1,
-	})
-	want := "总4 运行2 停止1 未知1"
-	if got != want {
-		t.Fatalf("display = %q, want %q", got, want)
-	}
-}
-
-func TestComposeProjectActionForChoice(t *testing.T) {
-	tests := []struct {
-		choice string
-		wantOK bool
-		want   composeProjectAction
-	}{
-		{choice: "1", wantOK: true, want: composeProjectAction{Name: "up -d", Args: []string{"up", "-d"}}},
-		{choice: "2", wantOK: true, want: composeProjectAction{Name: "stop", Args: []string{"stop"}}},
-		{choice: "3", wantOK: true, want: composeProjectAction{Name: "restart", Args: []string{"restart"}}},
-		{choice: "4", wantOK: true, want: composeProjectAction{Name: "down", Args: []string{"down"}}},
-		{choice: "x", wantOK: false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.choice, func(t *testing.T) {
-			got, ok := composeProjectActionForChoice(tt.choice)
-			if ok != tt.wantOK {
-				t.Fatalf("ok = %v, want %v", ok, tt.wantOK)
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Fatalf("action = %#v, want %#v", got, tt.want)
-			}
-		})
 	}
 }

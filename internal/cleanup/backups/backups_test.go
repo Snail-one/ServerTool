@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"snail_tool/internal/shared"
+	"snail_tool/internal/storage"
 	"snail_tool/internal/ui"
 )
 
@@ -37,7 +37,7 @@ func testView(t *testing.T, input string) *ui.UI {
 
 func seed(t *testing.T, name string) string {
 	t.Helper()
-	store := shared.BackupStore{Root: dataDir, Module: name}
+	store := storage.BackupStore{Root: dataDir, Module: name}
 	source := filepath.Join(t.TempDir(), "config")
 	if err := os.WriteFile(source, []byte("original"), 0600); err != nil {
 		t.Fatal(err)
@@ -62,7 +62,7 @@ func TestBackupCleanupConfirmationAndCancellation(t *testing.T) {
 			backup := seed(t, "firewall")
 			err := ConfirmAll(testView(t, input))
 			cancelled := input != "y\n" && input != ""
-			if cancelled && !errors.Is(err, shared.ErrReturnToMenu) || !cancelled && err != nil {
+			if cancelled && !errors.Is(err, ui.ErrReturnToMenu) || !cancelled && err != nil {
 				t.Fatalf("confirmation result: %v", err)
 			}
 			_, err = os.Stat(backup)
@@ -107,7 +107,7 @@ func TestModuleCleanupAndUninstallDeleteAll(t *testing.T) {
 			t.Fatalf("backup remains after uninstall cleanup: %s %v", path, err)
 		}
 	}
-	if shared.ReadFileString(state) != "keep" {
+	if storage.ReadFileString(state) != "keep" {
 		t.Fatal("uninstall cleanup touched other persistent data")
 	}
 }

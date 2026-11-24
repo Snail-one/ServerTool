@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"snail_tool/internal/shared"
+	"snail_tool/internal/storage"
 )
 
 func TestRootLoginForHardeningPreservesRestrictions(t *testing.T) {
@@ -71,9 +71,9 @@ func TestUpdateRootLoginPolicyValidatesAndRestoresOnFailure(t *testing.T) {
 			if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 				t.Fatal(err)
 			}
-			backupStore = shared.BackupStore{Root: filepath.Join(dir, "backups"), Module: "ssh"}
+			backupStore = storage.BackupStore{Root: filepath.Join(dir, "backups"), Module: "ssh"}
 			validateRootLoginConfig = func(content string) error {
-				if shared.ReadFileString(path) != original {
+				if storage.ReadFileString(path) != original {
 					t.Fatal("file modified before candidate validation")
 				}
 				if !strings.Contains(content, "PermitRootLogin no") {
@@ -105,7 +105,7 @@ func TestUpdateRootLoginPolicyValidatesAndRestoresOnFailure(t *testing.T) {
 				if failure == "reload" && reloads == 1 {
 					return errors.New("reload failed")
 				}
-				if reloads == 2 && shared.ReadFileString(path) != original {
+				if reloads == 2 && storage.ReadFileString(path) != original {
 					t.Fatal("original config not restored before retrying reload")
 				}
 				return nil
@@ -125,7 +125,7 @@ func TestUpdateRootLoginPolicyValidatesAndRestoresOnFailure(t *testing.T) {
 			if failure == "reload" {
 				wantReloads = 2
 			}
-			if got := shared.ReadFileString(path); got != want {
+			if got := storage.ReadFileString(path); got != want {
 				t.Fatalf("configuration after operation=%q, want %q", got, want)
 			}
 			if reloads != wantReloads {

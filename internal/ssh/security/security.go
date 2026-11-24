@@ -10,18 +10,19 @@ import (
 	"strconv"
 	"strings"
 
+	"snail_tool/internal/firewall"
 	"snail_tool/internal/log"
-	"snail_tool/internal/shared"
 	"snail_tool/internal/ssh/keys"
+	"snail_tool/internal/ssh/status"
+	"snail_tool/internal/storage"
 	"snail_tool/internal/system"
 	"snail_tool/internal/tempguard"
-	"snail_tool/internal/toolbox/firewall"
 	"snail_tool/internal/ui"
 )
 
 type sshdSettings map[string][]string
 
-var backupStore = shared.BackupStore{Root: shared.DataDir, Module: "ssh"}
+var backupStore = storage.BackupStore{Root: storage.DataDir, Module: "ssh"}
 
 var (
 	readSettingsForReload = loadSSHDSettings
@@ -58,22 +59,6 @@ const (
 	sshdCommandPath         = "/usr/sbin/sshd"
 )
 
-func ManagedSSHDIncludeMarkers() (string, string) {
-	return managedSSHDIncludeBegin, managedSSHDIncludeEnd
-}
-
-func ManagedSSHDConfigMarkers() (string, string) {
-	return managedSSHDConfigBegin, managedSSHDConfigEnd
-}
-
-func CustomSSHDConfigPath() string {
-	return customSSHDConfigPath
-}
-
-func SSHDConfigPath() string {
-	return sshdConfigPath
-}
-
 func Run(view *ui.UI) error {
 	return ConfigureSSHSecurity(view)
 }
@@ -87,20 +72,6 @@ func ConfigureSSHSecurity(view *ui.UI) error {
 	log.Info("当前配置用户：", account.Name)
 	fmt.Println()
 	return configureSSHDHardening(view, account)
-}
-
-func ShowStatus() error {
-	settings, source, err := loadSSHDSettings()
-	if err != nil {
-		return err
-	}
-
-	fmt.Println(ui.PrimaryBoldText("当前 SSH 安全配置："))
-	fmt.Println()
-	fmt.Println(ui.InfoText("配置来源："), source)
-	fmt.Println()
-	printSSHSecurityRows(settings)
-	return nil
 }
 
 // SummaryFields reads the current sshd configuration once for the SSH menu.
@@ -136,36 +107,12 @@ func LoadEffectiveConfig() (EffectiveConfig, error) {
 }
 
 func IsConfigured() bool {
-	return isManagedSSHDConfig(shared.ReadFileString(customSSHDConfigPath))
-}
-
-func IsManagedSSHDConfigContent(content string) bool {
-	return isManagedSSHDConfig(content)
-}
-
-func ReloadService() error {
-	return reloadSSHService()
-}
-
-func printSSHSecurityRows(settings sshdSettings) {
-	for _, row := range buildSSHSecurityRows(settings) {
-		if row.value == "已开启" {
-			row.value = ui.PrimaryText(row.value)
-		}
-		if row.status == "" {
-			fmt.Printf("%s %s：%s\n", ui.PrimaryText("-"), ui.InfoText(row.name), row.value)
-		} else {
-			fmt.Printf("%s %s：%s %s\n", ui.PrimaryText("-"), ui.InfoText(row.name), row.value, ui.StatusBadge(row.status))
-		}
-		if row.directive != "" {
-			fmt.Printf("  %s%s\n", ui.MutedText("配置项："), ui.MutedText(row.directive))
-		}
-	}
+	return isManagedSSHDConfig(storage.ReadFileString(customSSHDConfigPath))
 }
 
 func configureSSHDHardening(view *ui.UI, account *system.Account) error {
 	needsAdminConfirmation := account.Name != "root" && !system.UserInAdminGroup(account.Name)
-	existing, _, err := shared.ReadRegularFile(customSSHDConfigPath)
+	existing, _, err := storage.ReadRegularFile(customSSHDConfigPath)
 	if err != nil {
 		return err
 	}
@@ -204,8 +151,8 @@ func configureSSHDHardening(view *ui.UI, account *system.Account) error {
 			if err != nil {
 				return err
 			}
-			if raw != "0" && shared.IsReturnChoice(raw) {
-				return shared.ErrReturnToMenu
+			if raw != "0" && ui.IsReturnChoice(raw) {
+				return ui.ErrReturnToMenu
 			}
 			port, err = chooseSSHPort(raw)
 			return err
@@ -261,7 +208,7 @@ func configureSSHDHardening(view *ui.UI, account *system.Account) error {
 	fmt.Println(ui.InfoText("生效配置来源："), source)
 	fmt.Println()
 	fmt.Println(ui.PrimaryBoldText("生效 SSH 安全配置："))
-	printSSHSecurityRows(settings)
+	status.PrintRows(statusRows(settings))
 	fmt.Println()
 	log.Warn("请先新开一个终端测试 SSH 登录成功后，再关闭当前会话。")
 	return nil
@@ -388,8 +335,8 @@ func confirmDefaultYes(view *ui.UI, prompt string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if shared.IsReturnChoice(value) {
-			return false, shared.ErrReturnToMenu
+		if ui.IsReturnChoice(value) {
+			return false, ui.ErrReturnToMenu
 		}
 
 		switch strings.ToLower(strings.TrimSpace(value)) {
@@ -555,7 +502,7 @@ func writeSSHDConfig(port int, permitRootLogin string, disableSSHDConfigPorts bo
 			updated += "\n"
 		}
 		updated += buildSSHDIncludeBlock()
-		if err := shared.AtomicWriteFile(sshdConfigPath, []byte(updated), shared.AtomicWriteOptions{Mode: 0644}); err != nil {
+		if err := storage.AtomicWriteFile(sshdConfigPath, []byte(updated), storage.AtomicWriteOptions{Mode: 0644}); err != nil {
 			return err
 		}
 		log.Info("已自动添加 Include 配置")
@@ -571,7 +518,7 @@ func writeSSHDConfig(port int, permitRootLogin string, disableSSHDConfigPorts bo
 
 	fmt.Println()
 	log.Info("写入自定义 SSH 配置...")
-	if err := shared.AtomicWriteFile(customSSHDConfigPath, []byte(content), shared.AtomicWriteOptions{Mode: 0644, ForceMode: true}); err != nil {
+	if err := storage.AtomicWriteFile(customSSHDConfigPath, []byte(content), storage.AtomicWriteOptions{Mode: 0644, ForceMode: true}); err != nil {
 		return err
 	}
 	printSSHDConfig(customSSHDConfigPath, content)
@@ -619,7 +566,7 @@ func disableSSHDConfigPortsInFiles() error {
 			return err
 		}
 		log.Info("已备份 SSH 配置：", backup)
-		if err := shared.AtomicWriteFile(path, []byte(cleaned), shared.AtomicWriteOptions{Mode: mode}); err != nil {
+		if err := storage.AtomicWriteFile(path, []byte(cleaned), storage.AtomicWriteOptions{Mode: mode}); err != nil {
 			return err
 		}
 		log.Info("已注释 ", path, " 中的 Port 配置")
@@ -630,11 +577,11 @@ func disableSSHDConfigPortsInFiles() error {
 func buildSSHDConfig(port int, permitRootLogin string) string {
 	body := fmt.Sprintf("Port %d\nPasswordAuthentication no\nPermitRootLogin %s\nPubkeyAuthentication yes",
 		port, permitRootLogin)
-	return shared.FormatManagedBlock(managedSSHDConfigBegin, body, managedSSHDConfigEnd)
+	return storage.FormatManagedBlock(managedSSHDConfigBegin, body, managedSSHDConfigEnd)
 }
 
 func buildSSHDIncludeBlock() string {
-	return shared.FormatManagedBlock(
+	return storage.FormatManagedBlock(
 		managedSSHDIncludeBegin,
 		"Include /etc/ssh/sshd_config.d/*.conf",
 		managedSSHDIncludeEnd,
@@ -907,4 +854,21 @@ func printSSHDConfig(path, content string) {
 		fmt.Println()
 	}
 	fmt.Println(ui.MutedText("----------------------------------------"))
+}
+
+func ReadStatus() (status.Report, error) {
+	settings, source, err := loadSSHDSettings()
+	if err != nil {
+		return status.Report{}, err
+	}
+	return status.Report{Source: source, Rows: statusRows(settings)}, nil
+}
+
+func statusRows(settings sshdSettings) []status.Row {
+	raw := buildSSHSecurityRows(settings)
+	rows := make([]status.Row, 0, len(raw))
+	for _, row := range raw {
+		rows = append(rows, status.Row{Name: row.name, Value: row.value, State: row.status, Directive: row.directive})
+	}
+	return rows
 }

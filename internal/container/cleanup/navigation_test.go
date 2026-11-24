@@ -2,18 +2,18 @@ package cleanup
 
 import (
 	"os"
-	"snail_tool/internal/container/runtime"
-	"snail_tool/internal/shared"
-	"snail_tool/internal/ui"
 	"testing"
+
+	"snail_tool/internal/container/runtime"
+	"snail_tool/internal/ui"
 )
 
 func TestCleanupBackReturnsToRuntimeSelection(t *testing.T) {
 	view := navigationUI(t, "1\n2\nq\nparent-next\n")
 	runtimes := []runtime.Runtime{{Name: "docker", Display: "Docker"}, {Name: "podman", Display: "Podman"}}
 	var visited []string
-	err := cleanupDetectedRuntimes(view, runtimes, func(rt runtime.Runtime) error { visited = append(visited, rt.Name); return shared.ErrReturnToMenu })
-	if err != shared.ErrReturnToMenu {
+	err := cleanupDetectedRuntimes(view, runtimes, func(rt runtime.Runtime) error { visited = append(visited, rt.Name); return ui.ErrReturnToMenu })
+	if err != ui.ErrReturnToMenu {
 		t.Fatal(err)
 	}
 	if len(visited) != 2 || visited[0] != "docker" || visited[1] != "podman" {

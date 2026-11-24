@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"snail_tool/internal/log"
-	"snail_tool/internal/shared"
+	"snail_tool/internal/storage"
 	"snail_tool/internal/system"
 	"snail_tool/internal/tempguard"
 	"snail_tool/internal/ui"
@@ -96,7 +96,7 @@ type dockerInstaller struct {
 	confirm         func([]string) (bool, error)
 	confirmOnline   func() (bool, error)
 	mkdirAll        func(string, os.FileMode) error
-	writeFile       func(string, []byte, shared.AtomicWriteOptions) error
+	writeFile       func(string, []byte, storage.AtomicWriteOptions) error
 	platformCheck   func(*dockerDistribution) error
 	dependencyCheck func(dockerDistribution) ([]string, error)
 	firewallDetect  func() (dockerFirewallReport, error)
@@ -114,7 +114,7 @@ func newDockerInstaller(view *ui.UI) *dockerInstaller {
 		output:        system.Output,
 		commandExists: system.CommandExists,
 		mkdirAll:      os.MkdirAll,
-		writeFile:     shared.AtomicWriteFile,
+		writeFile:     storage.AtomicWriteFile,
 	}
 	installer.confirm = func(summary []string) (bool, error) {
 		fmt.Println("Docker 官方 stable 仓库安装计划：")
@@ -509,7 +509,7 @@ func (installer *dockerInstaller) configureRepository(distribution dockerDistrib
 			return err
 		}
 		keyPath := "/etc/apt/keyrings/docker.asc"
-		if err := installer.writeFile(keyPath, key, shared.AtomicWriteOptions{Mode: 0644, ForceMode: true}); err != nil {
+		if err := installer.writeFile(keyPath, key, storage.AtomicWriteOptions{Mode: 0644, ForceMode: true}); err != nil {
 			return err
 		}
 		suite := distribution.RepositorySuite
@@ -517,20 +517,20 @@ func (installer *dockerInstaller) configureRepository(distribution dockerDistrib
 			suite = distribution.Codename
 		}
 		source := fmt.Sprintf("Types: deb\nURIs: https://download.docker.com/linux/%s\nSuites: %s\nComponents: stable\nArchitectures: %s\nSigned-By: %s\n", distribution.ID, suite, strings.TrimSpace(arch), keyPath)
-		return installer.writeFile("/etc/apt/sources.list.d/docker.sources", []byte(source), shared.AtomicWriteOptions{Mode: 0644, ForceMode: true})
+		return installer.writeFile("/etc/apt/sources.list.d/docker.sources", []byte(source), storage.AtomicWriteOptions{Mode: 0644, ForceMode: true})
 	}
 	if err := installer.mkdirAll("/etc/pki/rpm-gpg", 0755); err != nil {
 		return err
 	}
 	keyPath := "/etc/pki/rpm-gpg/docker-ce.asc"
-	if err := installer.writeFile(keyPath, key, shared.AtomicWriteOptions{Mode: 0644, ForceMode: true}); err != nil {
+	if err := installer.writeFile(keyPath, key, storage.AtomicWriteOptions{Mode: 0644, ForceMode: true}); err != nil {
 		return err
 	}
 	if err := installer.mkdirAll("/etc/yum.repos.d", 0755); err != nil {
 		return err
 	}
 	repo := fmt.Sprintf("[docker-ce-stable]\nname=Docker CE Stable - $basearch\nbaseurl=https://download.docker.com/linux/%s/$releasever/$basearch/stable\nenabled=1\ngpgcheck=1\nrepo_gpgcheck=0\ngpgkey=file://%s\n", distribution.ID, keyPath)
-	return installer.writeFile("/etc/yum.repos.d/docker-ce.repo", []byte(repo), shared.AtomicWriteOptions{Mode: 0644, ForceMode: true})
+	return installer.writeFile("/etc/yum.repos.d/docker-ce.repo", []byte(repo), storage.AtomicWriteOptions{Mode: 0644, ForceMode: true})
 }
 
 func (installer *dockerInstaller) packageManager(distribution dockerDistribution) (string, error) {

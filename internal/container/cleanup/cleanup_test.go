@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"snail_tool/internal/container/runtime"
-	"snail_tool/internal/shared"
+	"snail_tool/internal/ui"
 )
 
 func TestDockerCleanupPlanForChoice(t *testing.T) {
@@ -188,7 +188,7 @@ func TestSelectCleanupRuntime(t *testing.T) {
 	}{
 		{name: "docker", answers: []string{"1"}, wantName: "docker"},
 		{name: "podman after invalid input", answers: []string{"", "3", "bad", "2"}, wantName: "podman"},
-		{name: "return", answers: []string{"q"}, wantErr: shared.ErrReturnToMenu},
+		{name: "return", answers: []string{"q"}, wantErr: ui.ErrReturnToMenu},
 		{name: "input error", wantErr: io.EOF},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

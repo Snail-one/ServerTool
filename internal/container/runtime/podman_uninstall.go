@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"snail_tool/internal/log"
-	"snail_tool/internal/shared"
+	"snail_tool/internal/storage"
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
 )
@@ -62,7 +62,7 @@ func selectPodmanUninstallMode(view dockerUninstallPrompter) (bool, bool, error)
 		if err != nil {
 			return false, false, err
 		}
-		if shared.IsReturnChoice(choice) {
+		if ui.IsReturnChoice(choice) {
 			return false, false, nil
 		}
 		switch strings.ToLower(strings.TrimSpace(choice)) {
@@ -89,7 +89,7 @@ func newPodmanUninstaller(view *ui.UI, removeData bool) *podmanUninstaller {
 			_, err := os.Lstat(path)
 			return err == nil
 		},
-		removeTree: shared.RemovePathTree,
+		removeTree: storage.RemovePathTree,
 		confirm:    func(plan podmanUninstallPlan) (bool, error) { return confirmPodmanUninstall(view, plan) },
 	}
 }

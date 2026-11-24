@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"snail_tool/internal/status"
+	"snail_tool/internal/app/status"
 	"snail_tool/internal/version"
 )
 

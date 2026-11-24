@@ -7,7 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"snail_tool/internal/shared"
+	"snail_tool/internal/storage"
+	"snail_tool/internal/ui"
 )
 
 func setupLegacy(t *testing.T) (string, []string) {
@@ -15,7 +16,7 @@ func setupLegacy(t *testing.T) (string, []string) {
 	setup(t)
 	previous := legacyStore
 	root := t.TempDir()
-	legacyStore = shared.LegacyBackupStore{Root: root}
+	legacyStore = storage.LegacyBackupStore{Root: root}
 	t.Cleanup(func() { legacyStore = previous })
 	var paths []string
 	for _, name := range []string{"etc/nftables.conf.bak.20261021_051605-123", "etc/nut/ups.conf.bak"} {
@@ -51,7 +52,7 @@ func captureOutput(t *testing.T, run func()) string {
 func TestLegacyCleanupListsEveryFileBeforeConfirmation(t *testing.T) {
 	_, paths := setupLegacy(t)
 	output := captureOutput(t, func() {
-		if err := cleanLegacy(testView(t, "n\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+		if err := cleanLegacy(testView(t, "n\n")); !errors.Is(err, ui.ErrReturnToMenu) {
 			t.Fatal(err)
 		}
 	})
@@ -61,7 +62,7 @@ func TestLegacyCleanupListsEveryFileBeforeConfirmation(t *testing.T) {
 		if index < 0 || confirmation < index {
 			t.Fatalf("file was not listed before asking for confirmation: %s\n%s", path, output)
 		}
-		if shared.ReadFileString(path) != "old backup" {
+		if storage.ReadFileString(path) != "old backup" {
 			t.Fatal("cancelled cleanup changed a file")
 		}
 	}
@@ -77,7 +78,7 @@ func TestLegacyCleanupRequiresExplicitConfirmation(t *testing.T) {
 			newBackup := seed(t, "firewall")
 			err := cleanLegacy(testView(t, input))
 			cancelled := input != "y\n" && input != ""
-			if cancelled && !errors.Is(err, shared.ErrReturnToMenu) || !cancelled && err != nil {
+			if cancelled && !errors.Is(err, ui.ErrReturnToMenu) || !cancelled && err != nil {
 				t.Fatalf("confirmation result: %v", err)
 			}
 			for _, path := range paths {
@@ -99,7 +100,7 @@ func TestLegacyCleanupRequiresExplicitConfirmation(t *testing.T) {
 
 func TestLegacyCleanupIsAvailableFromBackupMenu(t *testing.T) {
 	_, paths := setupLegacy(t)
-	if err := Run(testView(t, "6\ny\n\nq\n")); !errors.Is(err, shared.ErrReturnToMenu) {
+	if err := Run(testView(t, "6\ny\n\nq\n")); !errors.Is(err, ui.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	for _, path := range paths {

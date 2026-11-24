@@ -3,10 +3,10 @@ package cleanup
 import (
 	"errors"
 	"os"
-	"snail_tool/internal/shared"
+	"testing"
+
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
-	"testing"
 )
 
 func TestCleanupResultReturnsToCleanupSelection(t *testing.T) {
@@ -14,7 +14,7 @@ func TestCleanupResultReturnsToCleanupSelection(t *testing.T) {
 	calls := 0
 	steps := []cleanupStep{{label: "测试配置", run: func(*system.Account) error { calls++; return nil }}}
 	err := runMenu(view, &system.Account{Name: "test"}, steps)
-	if !errors.Is(err, shared.ErrReturnToMenu) {
+	if !errors.Is(err, ui.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
 	if calls != 1 {

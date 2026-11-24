@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"snail_tool/internal/log"
-	"snail_tool/internal/shared"
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
 )
@@ -49,27 +48,27 @@ func Ensure(view *ui.UI) error {
 		}
 		fmt.Println()
 
-		if shared.IsReturnChoice(choice) {
-			return shared.ErrReturnToMenu
+		if ui.IsReturnChoice(choice) {
+			return ui.ErrReturnToMenu
 		}
 		switch strings.ToLower(strings.TrimSpace(choice)) {
 		case "1":
 			if err := installDockerRuntime(view); err != nil {
-				if errors.Is(err, shared.ErrReturnToMenu) {
+				if errors.Is(err, ui.ErrReturnToMenu) {
 					continue
 				}
 				return err
 			}
 		case "2":
 			if err := installDockerScriptRuntime(view); err != nil {
-				if errors.Is(err, shared.ErrReturnToMenu) {
+				if errors.Is(err, ui.ErrReturnToMenu) {
 					continue
 				}
 				return err
 			}
 		case "3":
 			if err := installPodmanRuntime(view); err != nil {
-				if errors.Is(err, shared.ErrReturnToMenu) {
+				if errors.Is(err, ui.ErrReturnToMenu) {
 					continue
 				}
 				return err
@@ -151,7 +150,7 @@ func installPodmanRuntime(view *ui.UI) error {
 		return err
 	}
 	if !confirmed {
-		return shared.ErrReturnToMenu
+		return ui.ErrReturnToMenu
 	}
 	if err := ensureContainerRuntimeAbsent(system.CommandExists, system.Output); err != nil {
 		return err
