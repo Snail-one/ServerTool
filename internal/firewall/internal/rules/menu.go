@@ -145,6 +145,9 @@ func (session Session) EditPolicyDraft(view *ui.UI, original string, generating 
 			ui.MenuOptionHint("5", "规则配置", "来源、目标、网卡和端口；接受或拒绝")
 		}
 		if showDocker {
+			if forwardConfigErr == nil {
+				fmt.Println()
+			}
 			session.immediate.Print()
 		}
 		if forwardConfigErr == nil {

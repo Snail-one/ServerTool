@@ -2,9 +2,11 @@ package tools
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"snail_tool/internal/app/startup"
+	"snail_tool/internal/system"
 	"snail_tool/internal/tools/commands"
 	"snail_tool/internal/tools/golang"
 	"snail_tool/internal/tools/startupinfo"
@@ -16,9 +18,20 @@ import (
 // Run displays system tools and Go environment management.
 func Run(view *ui.UI, report *startup.Report) error {
 	inventory := commands.NewInventory()
+	distribution := distributionName()
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("系统工具")
+		packageManager := inventory.PackageManagerName()
+		if packageManager == "" {
+			packageManager = "未识别"
+		}
+		ui.PrintInfoCard("当前系统",
+			ui.CardField{Label: "发行版", Value: distribution},
+			ui.CardField{Label: "包管理器", Value: packageManager},
+			unattended.StatusField(),
+		)
+		fmt.Println()
 		installed, total, detectionErr := inventory.InstalledCount()
 		toolStatus := ui.SoftwareBadge(fmt.Sprintf("已安装 %d/%d", installed, total), installed > 0)
 		if detectionErr != nil {
@@ -31,8 +44,9 @@ func Run(view *ui.UI, report *startup.Report) error {
 			goStatus = "已安装 " + goVersion
 		}
 		ui.MenuOptionStatus("2", "Go 语言环境", ui.SoftwareBadge(goStatus, goVersion != ""))
-		ui.MenuOptionStatus("3", "UPS（NUT）", ui.ConfiguredBadge(ups.IsUPSConfigured()))
-		ui.MenuOption("4", unattended.Title)
+		ui.MenuOption("3", unattended.Title)
+		fmt.Println()
+		ui.MenuOptionStatus("4", "UPS（NUT）", ui.ConfiguredBadge(ups.IsUPSConfigured()))
 		ui.MenuOption("5", "查看本次启动信息")
 		ui.MenuExit("0/q", "返回")
 
@@ -55,12 +69,12 @@ func Run(view *ui.UI, report *startup.Report) error {
 				return golang.Run(view)
 			})
 		case "3":
-			ui.RunAction(view, "UPS 配置失败，已返回系统工具菜单", func() error {
-				return ups.Run(view)
-			})
-		case "4":
 			ui.RunAction(view, "自动更新管理失败，已返回系统工具菜单", func() error {
 				return unattended.Run(view)
+			})
+		case "4":
+			ui.RunAction(view, "UPS 配置失败，已返回系统工具菜单", func() error {
+				return ups.Run(view)
 			})
 		case "5":
 			ui.RunAction(view, "查看启动信息失败，已返回系统工具菜单", func() error {
@@ -71,4 +85,21 @@ func Run(view *ui.UI, report *startup.Report) error {
 			view.Pause()
 		}
 	}
+}
+
+func distributionName() string {
+	data, err := os.ReadFile("/etc/os-release")
+	if os.IsNotExist(err) {
+		data, err = os.ReadFile("/usr/lib/os-release")
+	}
+	if err != nil {
+		return "未知"
+	}
+	fields := system.ParseOSRelease(string(data))
+	for _, key := range []string{"PRETTY_NAME", "NAME", "ID"} {
+		if fields[key] != "" {
+			return fields[key]
+		}
+	}
+	return "未知"
 }

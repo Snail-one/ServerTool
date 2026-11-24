@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -335,7 +334,7 @@ func (installer *dockerInstaller) detectDistribution() (dockerDistribution, erro
 	if err != nil {
 		return dockerDistribution{}, err
 	}
-	values := parseOSRelease(string(data))
+	values := system.ParseOSRelease(string(data))
 	distribution := dockerDistribution{
 		ID: strings.ToLower(values["ID"]), Name: values["PRETTY_NAME"], Version: values["VERSION_ID"],
 		VersionCodename: values["VERSION_CODENAME"], UbuntuCodename: values["UBUNTU_CODENAME"],
@@ -402,22 +401,6 @@ func (installer *dockerInstaller) validatePlatform(distribution *dockerDistribut
 		}
 	}
 	return nil
-}
-
-func parseOSRelease(content string) map[string]string {
-	values := make(map[string]string)
-	scanner := bufio.NewScanner(strings.NewReader(content))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		key, value, ok := strings.Cut(line, "=")
-		if ok {
-			values[key] = strings.Trim(strings.TrimSpace(value), "\"'")
-		}
-	}
-	return values
 }
 
 func normalizeDockerArchitecture(value string) (string, bool) {

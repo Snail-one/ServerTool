@@ -53,6 +53,7 @@ func TestSourceRuleCanChangeBranchAfterReturning(t *testing.T) {
 }
 
 func TestDockerSettingsOpenFromForwardRuleManager(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
 	setupTest(t)
 	version := ruleTestConfig(t, nil)
 	view := inputUI(t, "6\nq\n7\nq\nq\nparent-next\n")
@@ -61,6 +62,10 @@ func TestDockerSettingsOpenFromForwardRuleManager(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+	if !strings.Contains(output, "接受或拒绝\n\n  6   Docker 流量放行") ||
+		!strings.Contains(output, "分别设置 Docker 网桥入站和出站\n  7   Docker 放行标记") {
+		t.Fatal("Docker 菜单项应与上方规则配置隔一行并保持相邻")
+	}
 	for _, name := range []string{"Docker 流量放行", "Docker 放行标记"} {
 		if !strings.Contains(output, "转发规则管理  ›  "+name) {
 			t.Fatalf("%s did not open under the forward rule manager:\n%s", name, output)

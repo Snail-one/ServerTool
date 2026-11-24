@@ -21,6 +21,10 @@ func NewInventory() *Inventory {
 	return inventory
 }
 
+func (inventory *Inventory) PackageManagerName() string {
+	return inventory.manager.Name
+}
+
 func (inventory *Inventory) Refresh() error {
 	if inventory.manager.Name == "" {
 		return inventory.err
