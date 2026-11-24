@@ -1,4 +1,4 @@
-package firewall
+package rules_test
 
 import (
 	"reflect"

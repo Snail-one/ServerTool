@@ -5,6 +5,7 @@ import (
 
 	"snail_tool/internal/firewall/configuration"
 	"snail_tool/internal/firewall/configuration/generate"
+	"snail_tool/internal/firewall/loadedrules"
 	"snail_tool/internal/storage"
 	"snail_tool/internal/ui"
 )
@@ -36,4 +37,12 @@ func configure(view *ui.UI) error {
 		Store: configStore(), IsRoot: isRoot, EnsureNftables: ensureNftables, HasManagedConfig: hasManagedConfig,
 		Autostart: autostartService(), SSH: sshAccessService(), DockerMark: dockerMarkService(), ValidateCounterConfig: validateCounterConfig,
 	}).Run(view)
+}
+
+func configSyncField(content []byte, fileErr error, installed bool, live loadedrules.Snapshot) ui.CardField {
+	return configStore().SyncField(content, fileErr, installed, live.JSON, live.Err, commandExists)
+}
+
+func compareConfigRules(content []byte, live loadedrules.Snapshot) (bool, error) {
+	return configStore().Compare(content, live.JSON, live.Err, commandExists)
 }

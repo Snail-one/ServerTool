@@ -5,11 +5,14 @@ import (
 	"strings"
 
 	"snail_tool/internal/firewall/configuration"
+	"snail_tool/internal/firewall/configuration/restore"
 	"snail_tool/internal/firewall/forward/dockerbridge"
 	rulespkg "snail_tool/internal/firewall/internal/rules"
 	"snail_tool/internal/firewall/settings/autostart"
 	"snail_tool/internal/firewall/settings/ping"
 	"snail_tool/internal/firewall/settings/sshaccess"
+	"snail_tool/internal/system"
+	"snail_tool/internal/ui"
 )
 
 var preserveOriginal = saveOriginalState
@@ -57,3 +60,15 @@ func inspectOriginalState() (string, error) {
 	}
 	return bootState, nil
 }
+
+func cleanupService() restore.Service {
+	return restore.Service{
+		Store: configStore(), IsRoot: isRoot, CommandExists: commandExists,
+		HasManagedConfig: hasManagedConfig, ReadOriginal: readOriginalState, Autostart: autostartService(),
+	}
+}
+
+func Cleanup(_ *system.Account) error { return cleanupService().Run() }
+
+// CleanupWithConfirm is the dedicated action under the configuration cleanup menu.
+func CleanupWithConfirm(view *ui.UI) error { return cleanupService().RunWithConfirm(view) }
