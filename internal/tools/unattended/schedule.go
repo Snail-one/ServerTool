@@ -27,6 +27,7 @@ func (service manager) scheduleMenu(view *ui.UI) error {
 			fmt.Println()
 			ui.MenuOption("1", "调整索引刷新定时器")
 			ui.MenuOption("2", "调整自动更新定时器")
+			fmt.Println()
 			ui.MenuOption("3", "恢复索引刷新原设置")
 			ui.MenuOption("4", "恢复自动更新原设置")
 			ui.MenuExit("0/q", "返回自动更新管理")
