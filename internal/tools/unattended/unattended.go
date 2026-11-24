@@ -1,13 +1,10 @@
 package unattended
 
 import (
-	"bytes"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
-	"snail_tool/internal/storage"
 	"snail_tool/internal/system"
 	"snail_tool/internal/system/packagemanager"
 	"snail_tool/internal/ui"
@@ -18,23 +15,19 @@ const (
 	refreshTimer  = "apt-daily.timer"
 	upgradeTimer  = "apt-daily-upgrade.timer"
 	managedHeader = "// Managed by ServerTool.\n"
-	enabledConfig = managedHeader + `APT::Periodic::Update-Package-Lists "1";
-APT::Periodic::Unattended-Upgrade "1";
-Unattended-Upgrade::Automatic-Reboot "false";
-`
-	disabledConfig = managedHeader + "APT::Periodic::Unattended-Upgrade \"0\";\n"
 )
 
 type manager struct {
-	path   string
-	exists func(string) bool
-	root   func() bool
-	query  func(string, ...string) (string, error)
-	run    func(string, ...string) error
+	path     string
+	exists   func(string) bool
+	root     func() bool
+	query    func(string, ...string) (string, error)
+	run      func(string, ...string) error
+	timerDir string
 }
 
 func Run(view *ui.UI) error {
-	service := manager{configPath, system.CommandExists, system.IsRoot, packagemanager.QueryOutput, system.Run}
+	service := manager{path: configPath, exists: system.CommandExists, root: system.IsRoot, query: packagemanager.QueryOutput, run: system.Run, timerDir: "/etc/systemd/system"}
 	if !service.exists("apt-get") || !service.exists("apt-config") {
 		return fmt.Errorf("此功能需要 APT 和 unattended-upgrades")
 	}
@@ -42,25 +35,32 @@ func Run(view *ui.UI) error {
 }
 
 type settings struct {
-	periodic, refresh, upgrade, reboot string
+	periodic, refresh, upgrade, reboot, preferred string
+	shutdown, preferredShutdown                   string
 }
 
 func (service manager) settings() (settings, error) {
 	output, err := service.query("apt-config", "shell",
 		"PERIODIC", "APT::Periodic::Enable", "REFRESH", "APT::Periodic::Update-Package-Lists",
-		"UPGRADE", "APT::Periodic::Unattended-Upgrade", "REBOOT", "Unattended-Upgrade::Automatic-Reboot/b")
+		"UPGRADE", upgradeKey, "REBOOT", rebootKey+"/b", "PREFERRED", intervalKey,
+		"SHUTDOWN", shutdownKey+"/b", "PREFERRED_SHUTDOWN", shutdownPreference)
 	if err != nil {
 		return settings{}, fmt.Errorf("读取 APT 生效设置失败: %w", err)
 	}
 	values := assignments(output)
-	return settings{values["PERIODIC"], values["REFRESH"], values["UPGRADE"], values["REBOOT"]}, nil
+	return settings{periodic: values["PERIODIC"], refresh: values["REFRESH"], upgrade: values["UPGRADE"],
+		reboot: values["REBOOT"], preferred: values["PREFERRED"], shutdown: values["SHUTDOWN"],
+		preferredShutdown: values["PREFERRED_SHUTDOWN"]}, nil
 }
 
 func assignments(output string) map[string]string {
 	values := make(map[string]string)
 	for _, line := range strings.Split(output, "\n") {
 		if key, value, ok := strings.Cut(line, "="); ok {
-			values[key] = strings.Trim(value, "'")
+			if strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'") && len(value) >= 2 {
+				value = strings.ReplaceAll(value[1:len(value)-1], "'\\''", "'")
+			}
+			values[key] = value
 		}
 	}
 	return values
@@ -80,19 +80,19 @@ func intervalLabel(value string) string {
 }
 
 type timer struct {
-	load, file, active string
+	load, file, active, next string
 }
 
 func (service manager) timer(name string) (timer, error) {
 	if !service.exists("systemctl") {
 		return timer{}, fmt.Errorf("未找到 systemctl")
 	}
-	output, err := service.query("systemctl", "show", "--property=LoadState,UnitFileState,ActiveState", name)
+	output, err := service.query("systemctl", "show", "--property=LoadState,UnitFileState,ActiveState,NextElapseUSecRealtime", name)
 	if err != nil {
 		return timer{}, fmt.Errorf("查询 %s 失败: %w", name, err)
 	}
 	values := assignments(output)
-	return timer{values["LoadState"], values["UnitFileState"], values["ActiveState"]}, nil
+	return timer{values["LoadState"], values["UnitFileState"], values["ActiveState"], values["NextElapseUSecRealtime"]}, nil
 }
 
 func (state timer) running() bool {
@@ -109,6 +109,10 @@ func (service manager) fields() []ui.CardField {
 		if current.reboot == "true" || current.reboot == "1" {
 			reboot = "开启"
 		}
+		shutdown := "关闭"
+		if current.shutdown == "true" {
+			shutdown = "开启"
+		}
 		if current.periodic == "0" {
 			fields = append(fields, ui.CardField{Label: "APT 定时任务", Value: "全局已关闭"})
 		}
@@ -116,6 +120,7 @@ func (service manager) fields() []ui.CardField {
 			ui.CardField{Label: "刷新软件包索引", Value: intervalLabel(current.refresh)},
 			ui.CardField{Label: "自动安装更新", Value: intervalLabel(current.upgrade)},
 			ui.CardField{Label: "自动重启", Value: reboot},
+			ui.CardField{Label: "关机时安装更新", Value: shutdown},
 		)
 	}
 	for _, name := range []string{refreshTimer, upgradeTimer} {
@@ -125,6 +130,8 @@ func (service manager) fields() []ui.CardField {
 			field.Value, field.Detail = "检测失败", err.Error()
 		} else if state.load != "loaded" {
 			field.Value = state.load
+		} else if state.next != "" && state.next != "n/a" {
+			field.Detail = "下次触发：" + state.next
 		}
 		fields = append(fields, field)
 	}
@@ -135,16 +142,13 @@ func (service manager) change(view *ui.UI, enable bool) error {
 	if !service.root() {
 		return fmt.Errorf("修改自动更新需要 root 权限")
 	}
-	previous, exists, err := storage.ReadRegularFile(service.path)
+	previous, exists, err := readManaged(service.path, managedHeader)
 	if err != nil {
 		return err
 	}
-	if exists && string(previous) != enabledConfig && string(previous) != disabledConfig {
-		return fmt.Errorf("无法识别现有配置，请先检查 %s", service.path)
-	}
-	message := "关闭自动安装更新，保留 APT 定时器及其他配置"
+	message := "关闭定时和关机自动安装更新，保留 APT 定时器与更新策略"
 	if enable {
-		message = "每天检查并按现有软件源策略自动安装更新，关闭自动重启"
+		message = "按当前频率及软件源策略开启自动更新"
 		if !service.exists("unattended-upgrade") {
 			message = "安装 unattended-upgrades，然后" + message
 		}
@@ -162,12 +166,24 @@ func (service manager) change(view *ui.UI, enable bool) error {
 
 func (service manager) apply(enable bool, previous []byte, exists bool) error {
 	var timers []string
-	content, expected := disabledConfig, "0"
-	if enable {
-		current, err := service.settings()
-		if err != nil {
-			return err
+	if err := checkSnapshot(service.path, previous, exists); err != nil {
+		return err
+	}
+	current, err := service.settings()
+	if err != nil {
+		return err
+	}
+	options := map[string]string{upgradeKey: "0"}
+	if !enable {
+		options[shutdownKey] = "false"
+		if current.shutdown == "true" {
+			options[shutdownPreference] = "true"
 		}
+	}
+	if activeInterval(current.upgrade) {
+		options[intervalKey] = current.upgrade
+	}
+	if enable {
 		if current.periodic == "0" {
 			return fmt.Errorf("APT::Periodic::Enable 已全局关闭，请先检查 APT 配置")
 		}
@@ -195,31 +211,22 @@ func (service manager) apply(enable bool, previous []byte, exists bool) error {
 				return fmt.Errorf("安装后仍未找到 unattended-upgrade")
 			}
 		}
-		content, expected = enabledConfig, "1"
+		options[upgradeKey] = current.upgrade
+		if !activeInterval(options[upgradeKey]) {
+			options[upgradeKey] = current.preferred
+			if !activeInterval(options[upgradeKey]) {
+				options[upgradeKey] = "1"
+			}
+		}
+		if current.refresh == "" {
+			options[refreshKey] = "1"
+		}
+		if current.preferredShutdown == "true" {
+			options[shutdownKey] = "true"
+		}
 	}
-
-	current, present, err := storage.ReadRegularFile(service.path)
-	if err != nil {
+	if err := service.saveOptions(previous, exists, options); err != nil {
 		return err
-	}
-	if present != exists || !bytes.Equal(current, previous) {
-		return fmt.Errorf("配置已变化，请重新确认: %s", service.path)
-	}
-	options := storage.AtomicWriteOptions{Mode: 0644}
-	if string(previous) != content {
-		if err := storage.AtomicWriteFile(service.path, []byte(content), options); err != nil {
-			return err
-		}
-	}
-	effective, err := service.settings()
-	if err == nil && (effective.upgrade != expected || enable && (effective.periodic == "0" || effective.refresh != "1" || effective.reboot != "false" && effective.reboot != "0")) {
-		err = fmt.Errorf("APT 生效设置与预期不一致，可能有其他配置覆盖 %s", service.path)
-	}
-	if err != nil {
-		if string(previous) == content {
-			return err
-		}
-		return errors.Join(err, service.restore(content, previous, exists, options))
 	}
 	if len(timers) == 0 {
 		return nil
@@ -235,25 +242,6 @@ func (service manager) apply(enable bool, previous []byte, exists bool) error {
 		if !state.running() {
 			return fmt.Errorf("APT 配置已保存，但定时器 %s 尚未启用或启动", name)
 		}
-	}
-	return nil
-}
-
-func (service manager) restore(written string, previous []byte, existed bool, options storage.AtomicWriteOptions) error {
-	current, exists, err := storage.ReadRegularFile(service.path)
-	if err != nil {
-		return fmt.Errorf("检查回退目标失败: %w", err)
-	}
-	if !exists || string(current) != written {
-		return fmt.Errorf("配置已被其他操作修改，无法回退 %s", service.path)
-	}
-	if existed {
-		err = storage.AtomicWriteFile(service.path, previous, options)
-	} else {
-		err = storage.RemoveRegularFile(service.path)
-	}
-	if err != nil {
-		return fmt.Errorf("回退 APT 配置失败: %w", err)
 	}
 	return nil
 }
