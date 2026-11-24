@@ -27,7 +27,7 @@ func TestManagementMenuShowsDistinctPolicyAndTimerStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer file.Close()
-	if _, err := file.WriteString("1\n4\nq\n7\nq\nq\n2\nq\n3\nq\n5\n\na\nn\nq\n"); err != nil {
+	if _, err := file.WriteString("1\n4\nq\n7\nq\nq\n2\nq\n3\nq\nc\n\nv\n\na\nn\nq\n"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := file.Seek(0, 0); err != nil {
@@ -42,10 +42,16 @@ func TestManagementMenuShowsDistinctPolicyAndTimerStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer output.Close()
+	editVisited := false
 	service := manager{
-		path:   filepath.Join(t.TempDir(), "policy.conf"),
-		root:   func() bool { return true },
-		exists: func(command string) bool { return command == "systemctl" },
+		path: filepath.Join(t.TempDir(), "policy.conf"),
+		root: func() bool { return true },
+		exists: func(command string) bool {
+			if command == "vim" {
+				editVisited = true
+			}
+			return command == "systemctl"
+		},
 		query: func(command string, args ...string) (string, error) {
 			if command == "systemctl" {
 				return "LoadState=loaded\nUnitFileState=enabled\nActiveState=active\n" +
@@ -80,10 +86,10 @@ Unattended-Upgrade::Origins-Pattern:: "origin=Debian,codename=${distro_codename}
 		"周期与调度", "关闭 · 已保存每 7 天", "系统单元：apt-daily.timer", "补跑错过的任务：开启",
 		"APT::Periodic::Unattended-Upgrade \"0\";", "\n\n  0/q 返回系统工具",
 		"更新设置\n  1   更新范围与开关", "重启\n  2   APT 策略与开关",
-		"邮件报告\n  3   设置定时器", "补跑\n  4   编辑原生 APT 配置",
-		"其他原生参数\n\n  5   查看生效配置\n\n运行与日志\n  6   模拟运行",
-		"哪些更新\n  7   立即执行一次更新\n  8   查看最近更新日志\n\n  a   开启自动更新",
-		"先安装 unattended-upgrades\n  r   刷新状态",
+		"邮件报告\n  3   设置定时器", "补跑\n\n运行与日志\n  6   模拟运行",
+		"哪些更新\n  7   立即执行一次更新\n  8   查看最近更新日志\n\n快捷操作\n  a   开启自动更新",
+		"先安装 unattended-upgrades\n  c   查看生效配置\n  r   刷新状态\n\n  v   编辑原生 APT 配置",
+		"其他参数\n  x   恢复基础 APT 策略",
 		"软件包自动更新  ›  开启自动更新", "安装 unattended-upgrades，然后按当前频率及软件源策略开启自动更新",
 		"系统安全更新：开启", "系统普通更新：开启", "Linux 内核更新：开启",
 		"旧内核清理：开启（默认）", "Docker Engine 更新：取决于软件包来源", "Debian 大版本升级提醒：关闭",
@@ -99,6 +105,9 @@ Unattended-Upgrade::Origins-Pattern:: "origin=Debian,codename=${distro_codename}
 	}
 	if strings.Contains(text, "enabled / active") {
 		t.Fatal("menu exposed raw timer status")
+	}
+	if !editVisited {
+		t.Fatal("v did not open the native APT config action")
 	}
 	if strings.Contains(text, "  1   开启自动更新") || strings.Contains(text, "  2   关闭自动更新") {
 		t.Fatal("obsolete numeric automatic update actions are still visible")

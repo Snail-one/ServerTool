@@ -11,9 +11,9 @@ const Title = "软件包自动更新"
 
 func (service manager) menu(view *ui.UI) error {
 	choices := map[string]string{
-		"1": "scope", "2": "options", "3": "schedule", "4": "edit", "5": "effective",
+		"1": "scope", "2": "options", "3": "schedule",
 		"6": "simulate", "7": "run", "8": "logs",
-		"a": "toggle", "r": "refresh", "x": "reset",
+		"a": "toggle", "v": "edit", "c": "effective", "r": "refresh", "x": "reset",
 	}
 	var releaseNotice ui.CardField
 	for {
@@ -62,22 +62,23 @@ func (service manager) menu(view *ui.UI) error {
 			ui.MenuOptionHint("1", "更新范围与开关", "安全更新、内核、Docker 与重启")
 			ui.MenuOptionHint("2", "APT 策略与开关", "更新频率、重启时间、软件包清理、邮件报告")
 			ui.MenuOptionHint("3", "设置定时器", "触发时刻、随机延迟、补跑")
-			nativeHint := "软件源、允许或阻止的软件包及其他原生参数"
-			if scope.Managed {
-				nativeHint = "更新来源由「更新范围与开关」管理"
-			}
-			ui.MenuOptionHint("4", "编辑原生 APT 配置", nativeHint)
-			fmt.Println()
-			ui.MenuOption("5", "查看生效配置")
 			fmt.Println()
 			ui.MenuSection("运行与日志")
 			ui.MenuOptionHint("6", "模拟运行", "查看当前策略会选择哪些更新")
 			ui.MenuOption("7", "立即执行一次更新")
 			ui.MenuOption("8", "查看最近更新日志")
 			fmt.Println()
+			ui.MenuSection("快捷操作")
 			ui.MenuShortcutStatusHint("a", toggleLabel, ui.SoftwareBadge(toggleStatus, toggleStatus == "已配置"), toggleHint)
-			ui.MenuOption("r", "刷新状态")
-			ui.MenuShortcutHint("x", "恢复基础 APT 策略", "更新范围可在「更新范围与开关」中恢复")
+			ui.MenuShortcutHint("c", "查看生效配置", "")
+			ui.MenuShortcutHint("r", "刷新状态", "")
+			fmt.Println()
+			nativeHint := "软件源、软件包名单与其他参数"
+			if scope.Managed {
+				nativeHint = "更新来源由「更新范围与开关」管理"
+			}
+			ui.MenuShortcutHint("v", "编辑原生 APT 配置", nativeHint)
+			ui.MenuShortcutHint("x", "恢复基础 APT 策略", "移除本工具写入的基础配置")
 			ui.MenuExit("0/q", "返回系统工具")
 		}
 		choice, err := ui.AskMenuChoice(view, "请选择", "", choices, draw)
