@@ -11,14 +11,26 @@ const Title = "软件包自动更新"
 
 func (service manager) menu(view *ui.UI) error {
 	choices := map[string]string{
-		"1": "enable", "2": "disable", "3": "options", "4": "schedule",
-		"5": "edit", "6": "effective", "7": "simulate", "8": "run",
-		"9": "logs", "10": "scope", "r": "refresh", "x": "reset",
+		"1": "scope", "2": "options", "3": "schedule", "4": "edit", "5": "effective",
+		"6": "simulate", "7": "run", "8": "logs",
+		"a": "toggle", "r": "refresh", "x": "reset",
 	}
 	var releaseNotice ui.CardField
 	for {
 		ui.ClearScreen()
-		policy, timers, installed := service.overview()
+		installed := service.exists("unattended-upgrade")
+		current, settingsErr := service.settings()
+		policy, timers := service.overview(current, settingsErr, installed)
+		enable := !installed || !current.automaticUpdatesConfigured()
+		toggleLabel, toggleHint := "关闭自动更新", ""
+		if settingsErr != nil {
+			toggleLabel = "切换自动更新"
+		} else if enable {
+			toggleLabel = "开启自动更新"
+			if !installed {
+				toggleHint = "先安装 unattended-upgrades"
+			}
+		}
 		scope, _, _, scopeErr := service.readScope()
 		if scopeErr != nil {
 			policy = append(policy, ui.CardField{Label: "更新范围", Value: "读取失败", Detail: scopeErr.Error()})
@@ -42,30 +54,25 @@ func (service manager) menu(view *ui.UI) error {
 			fmt.Println()
 			ui.PrintInfoCard("系统定时器", timers...)
 			fmt.Println()
-			if installed {
-				ui.MenuOption("1", "开启自动更新")
-			} else {
-				ui.MenuOptionHint("1", "开启自动更新", "先安装 unattended-upgrades")
-			}
-			ui.MenuOption("2", "关闭自动更新")
-			fmt.Println()
-			ui.MenuOptionHint("3", "APT 策略与开关", "更新频率、重启、软件包清理、邮件报告")
-			ui.MenuOptionHint("4", "设置定时器", "触发时刻、随机延迟、补跑")
+			ui.MenuSection("更新设置")
+			ui.MenuOptionHint("1", "更新范围与开关", "安全更新、内核、Docker 与重启")
+			ui.MenuOptionHint("2", "APT 策略与开关", "更新频率、重启时间、软件包清理、邮件报告")
+			ui.MenuOptionHint("3", "设置定时器", "触发时刻、随机延迟、补跑")
 			nativeHint := "软件源、允许或阻止的软件包及其他原生参数"
 			if scope.Managed {
-				nativeHint = "更新来源由选项 10 管理"
+				nativeHint = "更新来源由「更新范围与开关」管理"
 			}
-			ui.MenuOptionHint("5", "编辑原生 APT 配置", nativeHint)
-			ui.MenuOption("6", "查看生效配置")
+			ui.MenuOptionHint("4", "编辑原生 APT 配置", nativeHint)
+			ui.MenuOption("5", "查看生效配置")
 			fmt.Println()
-			ui.MenuOptionHint("7", "模拟运行", "查看当前策略会选择哪些更新")
-			ui.MenuOption("8", "立即执行一次更新")
-			ui.MenuOption("9", "查看最近更新日志")
+			ui.MenuSection("运行与日志")
+			ui.MenuOptionHint("6", "模拟运行", "查看当前策略会选择哪些更新")
+			ui.MenuOption("7", "立即执行一次更新")
+			ui.MenuOption("8", "查看最近更新日志")
 			fmt.Println()
-			ui.MenuOptionHint("10", "更新范围与开关", "安全更新、内核、Docker 与重启")
-			fmt.Println()
+			ui.MenuShortcutHint("a", toggleLabel, toggleHint)
 			ui.MenuOption("r", "刷新状态")
-			ui.MenuShortcutHint("x", "恢复基础 APT 策略", "更新范围可在选项 10 中恢复")
+			ui.MenuShortcutHint("x", "恢复基础 APT 策略", "更新范围可在「更新范围与开关」中恢复")
 			ui.MenuExit("0/q", "返回系统工具")
 		}
 		choice, err := ui.AskMenuChoice(view, "请选择", "", choices, draw)
@@ -94,16 +101,15 @@ func (service manager) menu(view *ui.UI) error {
 				return service.scopeMenu(view)
 			case "reset":
 				return service.resetNative(view)
+			case "toggle":
+				if settingsErr != nil {
+					return settingsErr
+				}
+				if err := service.change(view, enable); err != nil {
+					return err
+				}
+				ui.PrintSuccessCard("已" + toggleLabel)
 			}
-			enable := choice == "enable"
-			if err := service.change(view, enable); err != nil {
-				return err
-			}
-			label := "已关闭自动更新"
-			if enable {
-				label = "已开启自动更新"
-			}
-			ui.PrintSuccessCard(label)
 			return nil
 		})
 	}

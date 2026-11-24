@@ -27,7 +27,7 @@ func TestManagementMenuShowsDistinctPolicyAndTimerStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer file.Close()
-	if _, err := file.WriteString("3\nq\n4\nq\n6\n\n10\nq\nq\n"); err != nil {
+	if _, err := file.WriteString("1\nq\n2\nq\n3\nq\n5\n\na\nn\nq\n"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := file.Seek(0, 0); err != nil {
@@ -44,6 +44,7 @@ func TestManagementMenuShowsDistinctPolicyAndTimerStatus(t *testing.T) {
 	defer output.Close()
 	service := manager{
 		path:   filepath.Join(t.TempDir(), "policy.conf"),
+		root:   func() bool { return true },
 		exists: func(command string) bool { return command == "systemctl" },
 		query: func(command string, args ...string) (string, error) {
 			if command == "systemctl" {
@@ -74,7 +75,12 @@ func TestManagementMenuShowsDistinctPolicyAndTimerStatus(t *testing.T) {
 		"索引刷新：已启用 · 已启动", "下次触发：2026-11-24 18:36:09 PST",
 		"周期与调度", "关闭 · 已保存每 7 天", "系统单元：apt-daily.timer", "补跑错过的任务：开启",
 		"APT::Periodic::Unattended-Upgrade \"0\";", "\n\n  0/q 返回系统工具",
-		"查看最近更新日志\n\n  10  更新范围与开关",
+		"更新设置\n  1   更新范围与开关", "重启\n  2   APT 策略与开关",
+		"邮件报告\n  3   设置定时器", "补跑\n  4   编辑原生 APT 配置",
+		"其他原生参数\n  5   查看生效配置\n\n运行与日志\n  6   模拟运行",
+		"哪些更新\n  7   立即执行一次更新\n  8   查看最近更新日志\n\n  a   开启自动更新",
+		"先安装 unattended-upgrades\n  r   刷新状态",
+		"软件包自动更新  ›  开启自动更新", "安装 unattended-upgrades，然后按当前频率及软件源策略开启自动更新",
 		"系统安全更新：沿用原生策略", "系统普通更新：沿用原生策略", "Linux 内核更新：沿用原生策略",
 		"旧内核清理：开启（默认）", "Docker Engine 更新：沿用原生策略", "Debian 大版本升级提醒：关闭",
 		"服务器自动重启：关闭（默认）", "\n\n  0/q 返回自动更新管理",
@@ -85,6 +91,12 @@ func TestManagementMenuShowsDistinctPolicyAndTimerStatus(t *testing.T) {
 	}
 	if strings.Contains(text, "enabled / active") {
 		t.Fatal("menu exposed raw timer status")
+	}
+	if strings.Contains(text, "  1   开启自动更新") || strings.Contains(text, "  2   关闭自动更新") {
+		t.Fatal("obsolete numeric automatic update actions are still visible")
+	}
+	if _, err := os.Stat(service.path); !os.IsNotExist(err) {
+		t.Fatalf("canceled toggle changed the APT policy: %v", err)
 	}
 }
 

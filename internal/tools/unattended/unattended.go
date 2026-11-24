@@ -39,6 +39,10 @@ type settings struct {
 	shutdown, preferredShutdown                             string
 }
 
+func (current settings) automaticUpdatesConfigured() bool {
+	return activeInterval(current.upgrade) || current.shutdown == "true"
+}
+
 func (service manager) settings() (settings, error) {
 	output, err := service.query("apt-config", "shell",
 		"PERIODIC", "APT::Periodic::Enable", "REFRESH", "APT::Periodic::Update-Package-Lists",

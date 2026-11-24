@@ -61,12 +61,10 @@ func showPage(title string) {
 	ui.MenuTitle("系统工具", Title, title)
 }
 
-func (service manager) overview() (policy, timers []ui.CardField, installed bool) {
-	installed = service.exists("unattended-upgrade")
+func (service manager) overview(current settings, settingsErr error, installed bool) (policy, timers []ui.CardField) {
 	policy = []ui.CardField{{Label: "软件包", Value: ui.InstallationBadge(installed)}}
-	current, err := service.settings()
-	if err != nil {
-		policy = append(policy, ui.CardField{Label: "APT 策略", Value: "检测失败", Detail: err.Error()})
+	if settingsErr != nil {
+		policy = append(policy, ui.CardField{Label: "APT 策略", Value: "检测失败", Detail: settingsErr.Error()})
 	} else {
 		policy = append(policy, current.policyFields(installed)...)
 	}
@@ -80,7 +78,7 @@ func (service manager) overview() (policy, timers []ui.CardField, installed bool
 		}
 		timers = append(timers, field)
 	}
-	return policy, timers, installed
+	return policy, timers
 }
 
 func (current settings) policyFields(installed bool) []ui.CardField {
