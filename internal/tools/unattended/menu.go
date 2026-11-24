@@ -39,6 +39,7 @@ func (service manager) menu(view *ui.UI) error {
 			ui.MenuOptionHint("7", "模拟运行", "查看当前策略会选择哪些更新")
 			ui.MenuOption("8", "立即执行一次更新")
 			ui.MenuOption("9", "查看最近更新日志")
+			fmt.Println()
 			ui.MenuOption("r", "刷新状态")
 			ui.MenuShortcutHint("x", "恢复原有 APT 策略", "移除本工具写入的 APT 配置")
 			ui.MenuExit("0/q", "返回系统工具")

@@ -136,6 +136,7 @@ func chooseTrafficTable(view *ui.UI, current trafficTable) (trafficTable, error)
 			}
 			ui.MenuOptionHint(strconv.Itoa(i+1), table.label(), strings.Join(hints, " · "))
 		}
+		fmt.Println()
 		ui.MenuOption("r", "刷新表列表")
 		ui.MenuExit("0/q", "返回当前规则表")
 		choice, err := view.Ask("请选择规则表（回车默认 inet snail）：")

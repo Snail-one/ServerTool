@@ -17,8 +17,18 @@ import (
 func Run(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
-		status := currentStatus()
+		account, err := system.CurrentTargetUser()
+		status := currentStatus(account)
 		ui.MenuTitle("配置管理")
+		if err != nil {
+			ui.PrintInfoCard("配置目标", ui.CardField{Label: "用户", Value: "检测失败", Detail: err.Error()})
+		} else {
+			ui.PrintInfoCard("配置目标",
+				ui.CardField{Label: "用户", Value: account.Name},
+				ui.CardField{Label: "主目录", Value: account.Home},
+			)
+		}
+		fmt.Println()
 		ui.MenuOptionHint("1", "一键初始化", "SSH 公钥、安全策略、Vim、Bash")
 		ui.MenuOptionStatusHint("2", "Vim 配置", ui.ConfiguredBadge(status.vim), "~/.vimrc")
 		ui.MenuOptionStatus("3", "Bash 配置", ui.ConfiguredBadge(status.bash))
@@ -74,9 +84,8 @@ type configStatus struct {
 	tmux       bool
 }
 
-func currentStatus() configStatus {
-	account, err := system.CurrentTargetUser()
-	if err != nil {
+func currentStatus(account *system.Account) configStatus {
+	if account == nil {
 		return configStatus{completion: commoncompletion.IsInstalled()}
 	}
 	return configStatus{

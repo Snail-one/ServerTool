@@ -73,6 +73,7 @@ func TestManagementMenuShowsDistinctPolicyAndTimerStatus(t *testing.T) {
 		"索引刷新：已启用 · 已启动", "下次触发：2026-11-24 18:36:09 PST",
 		"周期与调度", "关闭 · 已保存每 7 天", "系统单元：apt-daily.timer", "补跑错过的任务：开启",
 		"APT::Periodic::Unattended-Upgrade \"0\";", "\n\n  0/q 返回系统工具",
+		"查看最近更新日志\n\n  r   刷新状态",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("menu missing %q", want)

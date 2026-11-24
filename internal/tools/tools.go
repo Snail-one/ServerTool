@@ -26,28 +26,32 @@ func Run(view *ui.UI, report *startup.Report) error {
 		if packageManager == "" {
 			packageManager = "未识别"
 		}
-		ui.PrintInfoCard("当前系统",
-			ui.CardField{Label: "发行版", Value: distribution},
-			ui.CardField{Label: "包管理器", Value: packageManager},
-			unattended.StatusField(),
-		)
-		fmt.Println()
 		installed, total, detectionErr := inventory.InstalledCount()
 		toolStatus := ui.SoftwareBadge(fmt.Sprintf("已安装 %d/%d", installed, total), installed > 0)
 		if detectionErr != nil {
 			toolStatus = ui.SoftwareBadge("检测失败", false)
 		}
-		ui.MenuOptionStatus("1", "常用命令行工具", toolStatus)
 		goVersion := golang.CurrentVersion()
 		goStatus := "未安装"
 		if goVersion != "" {
 			goStatus = "已安装 " + goVersion
 		}
-		ui.MenuOptionStatus("2", "Go 语言环境", ui.SoftwareBadge(goStatus, goVersion != ""))
+		ui.PrintInfoCard("当前系统",
+			ui.CardField{Label: "发行版", Value: distribution},
+			ui.CardField{Label: "包管理器", Value: packageManager},
+			ui.CardField{Label: "常用命令行工具", Value: toolStatus},
+			ui.CardField{Label: "Go 语言环境", Value: ui.SoftwareBadge(goStatus, goVersion != "")},
+			unattended.StatusField(),
+			ui.CardField{Label: "UPS（NUT）", Value: ui.ConfiguredBadge(ups.IsUPSConfigured())},
+		)
+		fmt.Println()
+		ui.MenuOption("1", "常用命令行工具")
+		ui.MenuOption("2", "Go 语言环境")
 		ui.MenuOption("3", unattended.Title)
 		fmt.Println()
-		ui.MenuOptionStatus("4", "UPS（NUT）", ui.ConfiguredBadge(ups.IsUPSConfigured()))
-		ui.MenuOption("5", "查看本次启动信息")
+		ui.MenuOption("4", "UPS（NUT）")
+		fmt.Println()
+		ui.MenuShortcutHint("c", "查看本次启动信息", "")
 		ui.MenuExit("0/q", "返回")
 
 		choice, err := view.Ask("请选择：")
@@ -76,7 +80,7 @@ func Run(view *ui.UI, report *startup.Report) error {
 			ui.RunAction(view, "UPS 配置失败，已返回系统工具菜单", func() error {
 				return ups.Run(view)
 			})
-		case "5":
+		case "c":
 			ui.RunAction(view, "查看启动信息失败，已返回系统工具菜单", func() error {
 				return startupinfo.Show(report)
 			})

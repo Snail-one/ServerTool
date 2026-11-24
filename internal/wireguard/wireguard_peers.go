@@ -111,6 +111,7 @@ func editWireGuardPeer(view *ui.UI, name string, before []byte, config wireGuard
 			ui.MenuOptionHint(strconv.Itoa(i+1), field[1], value)
 		}
 		if len(changes) > 0 {
+			fmt.Println()
 			ui.MenuShortcutHint("s", "保存对端修改", "")
 		}
 		ui.MenuExit("0/q", "返回对端详情")

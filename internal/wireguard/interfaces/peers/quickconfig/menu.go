@@ -56,6 +56,9 @@ func Run(view *ui.UI, name string, profile Profile, endpointValid func(string) b
 			addresses := peer.AllowedIPs
 			ui.MenuOptionHint(strconv.Itoa(i+1), fmt.Sprintf("生成对端 %d 的复制行", i+1), addresses)
 		}
+		if len(profile.Peers) > 0 {
+			fmt.Println()
+		}
 		ui.MenuShortcutHint("e", "填写本机端点", "可选，使用另一端能访问的主机名或 IP 和端口")
 		ui.MenuExit("0/q", "返回对端列表")
 		choice, err := view.Ask("粘贴对端配置，或选择上述操作：")

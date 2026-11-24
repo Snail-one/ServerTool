@@ -158,6 +158,9 @@ func selectRelease(view *ui.UI, releases []release, arch string) (release, error
 		for i, item := range releases[start:end] {
 			ui.MenuOption(strconv.Itoa(i+1), item.Version)
 		}
+		if pageCount > 1 {
+			fmt.Println()
+		}
 		if page+1 < pageCount {
 			ui.MenuOption("n", "下一页")
 		}
