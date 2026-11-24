@@ -18,6 +18,10 @@ import (
 	"snail_tool/internal/ui"
 )
 
+func withPacketCounters(content string, enabled bool) (string, error) {
+	return counters.Replace(content, enabled, validateCounterConfig)
+}
+
 func assertNoPacketCounters(t *testing.T, content string) {
 	t.Helper()
 	tokens, err := configuration.Tokens(content)

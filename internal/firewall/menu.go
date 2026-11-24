@@ -2,14 +2,90 @@ package firewall
 
 import (
 	"fmt"
+	"strings"
+	"time"
 
-	rulespkg "snail_tool/internal/firewall/internal/rules"
 	"snail_tool/internal/firewall/loadedrules"
-	"snail_tool/internal/firewall/settings"
-	"snail_tool/internal/firewall/settings/counters"
-	"snail_tool/internal/firewall/settings/ping"
+	"snail_tool/internal/firewall/portmapping"
+	"snail_tool/internal/firewall/portpolicy"
+	"snail_tool/internal/firewall/traffic"
 	"snail_tool/internal/ui"
 )
+
+func Run(view *ui.UI) error {
+	ui.ClearScreen()
+	ui.MenuTitle("防火墙管理")
+	if !isRoot() {
+		return fmt.Errorf("防火墙配置需要 root 权限，请使用 sudo 运行本工具")
+	}
+	installed, err := ensureNftables(view)
+	if err != nil {
+		return err
+	}
+	if !installed {
+		return ui.ErrReturnToMenu
+	}
+	for {
+		ui.ClearScreen()
+		ui.MenuTitle("防火墙管理")
+		autostart := autostartService().Inspect()
+		ui.PrintInfoCard("防火墙状态", currentConfigFields(autostart)...)
+		showMenu()
+		choice, err := view.Ask("请选择（回车刷新状态）：")
+		if err != nil {
+			return err
+		}
+		if ui.IsReturnChoice(choice) {
+			return ui.ErrReturnToMenu
+		}
+		switch strings.ToLower(choice) {
+		case "":
+			continue
+		case "1":
+			ui.RunAction(view, "规则管理失败，已返回防火墙管理", func() error {
+				return runAccessRuleManager(view)
+			})
+		case "2":
+			ui.RunAction(view, "转发规则管理失败，已返回防火墙管理", func() error {
+				return runForwardRuleManager(view)
+			})
+		case "3":
+			ui.RunAction(view, "端口映射设置失败，已返回防火墙管理", func() error {
+				return (portmapping.Service{
+					Store: configStore(), HasManagedConfig: hasManagedConfig,
+					ForwardingStatus: ipForwardingService().StatusField,
+				}).Run(view)
+			})
+		case "4":
+			ui.RunAction(view, "读取端口策略失败，已返回防火墙管理", (portpolicy.Service{CommandExists: commandExists, CommandOutput: commandOutput}).Show)
+		case "5":
+			ui.RunAction(view, "读取已加载规则失败，已返回防火墙管理", func() error { return loadedrules.Show(commandOutput) })
+		case "c":
+			ui.RunAction(view, "读取配置文件失败，已返回防火墙管理", configStore().Show)
+		case "v":
+			ui.RunAction(view, "编辑或加载配置失败，已返回防火墙管理", editConfig)
+		case "r":
+			ui.RunAction(view, "加载防火墙配置失败，已返回防火墙管理", func() error {
+				return loadConfig(view)
+			})
+		case "d":
+			ui.RunAction(view, "生成防火墙配置失败，已返回防火墙管理", func() error {
+				return configure(view)
+			})
+		case "8":
+			ui.RunAction(view, "常用功能设置失败，已返回防火墙管理", func() error {
+				return runFeatureSettings(view)
+			})
+		case "9":
+			ui.RunAction(view, "实时查看规则失败，已返回防火墙管理", func() error {
+				return traffic.Run(view, time.Second, isRoot, commandExists)
+			})
+		default:
+			ui.InvalidChoice()
+			view.Pause()
+		}
+	}
+}
 
 func showMenu() {
 	fmt.Println()
@@ -38,74 +114,4 @@ func showMenu() {
 	}
 	ui.MenuShortcutHint("r", "校验加载配置", "使当前配置文件立即生效")
 	ui.MenuExit("0/q", "返回主菜单")
-}
-
-func confirmFeatureChange(view *ui.UI, question string) (bool, error) {
-	return ui.ConfirmMenuChange(view, question, "常用功能设置")
-}
-
-func runFeatureSettings(view *ui.UI) error {
-	return settings.Run(view, settings.Actions{
-		Inspect:    inspectFeatureSettings,
-		Autostart:  autostartService().Toggle,
-		Ping:       configurePing,
-		Counters:   configurePacketCounters,
-		Forwarding: forwardingService().Run,
-		SSH:        sshAccessService().Run,
-	})
-}
-
-func inspectFeatureSettings() settings.Snapshot {
-	autostart := autostartService().Inspect()
-	installed := commandExists("nft")
-	live := loadedrules.Snapshot{}
-	if installed {
-		live = inspectLiveRules()
-	}
-	autostartLabel := autostart.Label
-	if autostartLabel == "已开启" || autostart.State == "enabled-runtime" {
-		autostartLabel = ui.PrimaryText(autostartLabel)
-	}
-	fields := []ui.CardField{{Label: "开机自启", Value: autostartLabel}}
-	fields = append(fields, echoStateFields(installed, live)...)
-	fields = append(fields, packetCounterStateField(installed, live))
-	fields = append(fields, forwardingService().StatusField())
-	fields = append(fields, sshAccessService().StateField())
-	return settings.Snapshot{
-		Fields: fields, AutostartUnavailable: autostart.Err != nil, AutostartEnabled: autostart.Enabled,
-	}
-}
-
-func packetCounterStateField(installed bool, live loadedrules.Snapshot) ui.CardField {
-	return counters.StateField(installed, live.InputActive, live.JSON, live.Err)
-}
-
-func echoStateFields(installed bool, live loadedrules.Snapshot) []ui.CardField {
-	return ping.StateFields(installed, live.InputActive, live.JSON, live.Err)
-}
-
-func validateCounterConfig(content string) error {
-	if _, err := rulespkg.ManagedRules(content); err != nil {
-		return err
-	}
-	_, _, err := ping.Read(content)
-	return err
-}
-
-func withPacketCounters(content string, enabled bool) (string, error) {
-	return counters.Replace(content, enabled, validateCounterConfig)
-}
-
-func configurePacketCounters(view *ui.UI) error {
-	return (counters.Service{Store: configStore(), IsRoot: isRoot, Validate: validateCounterConfig}).Run(view)
-}
-
-func configurePing(view *ui.UI) error {
-	return (ping.Service{
-		Store: configStore(), IsRoot: isRoot, HasManagedConfig: hasManagedConfig, CommandExists: commandExists,
-		InspectLive: func() (string, bool, error) {
-			live := inspectLiveRules()
-			return live.JSON, live.InputActive, live.Err
-		},
-	}).Run(view)
 }
