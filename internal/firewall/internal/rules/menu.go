@@ -337,9 +337,9 @@ func (session Session) PromptPolicyPortScope(view *ui.UI, scope string, edit fun
 		}
 	}
 	var steps []ui.PromptStep
-	for index, option := range []struct{ title, a, b, both string }{
-		{"选择 IP 版本", "IPv4", "IPv6", "IPv4 + IPv6"},
-		{"选择协议", "TCP", "UDP", "TCP + UDP"},
+	for index, option := range []struct{ title, a, b, both, back string }{
+		{"选择 IP 版本", "IPv4", "IPv6", "IPv4 + IPv6", "返回上一步"},
+		{"选择协议", "TCP", "UDP", "TCP + UDP", "返回 IP 版本选择"},
 	} {
 		index, option := index, option
 		steps = append(steps, ui.PromptStep{Run: func() error {
@@ -349,16 +349,10 @@ func (session Session) PromptPolicyPortScope(view *ui.UI, scope string, edit fun
 			for i, label := range []string{option.a, option.b, option.both} {
 				ruleChoiceOption(strconv.Itoa(i+1), label, "", selections[index+1])
 			}
-			if index > 0 {
-				ui.MenuOption("b", "上一步：选择 IP 版本")
-			}
-			ui.MenuExit("0/q", "返回上一步")
-			choice, err := ui.AskChoice(view, "请选择", selections[index+1], map[string]string{"1": "1", "2": "2", "3": "3", "b": "back"})
+			ui.MenuExit("0/q", option.back)
+			choice, err := ui.AskChoice(view, "请选择", selections[index+1], map[string]string{"1": "1", "2": "2", "3": "3"})
 			if err != nil {
 				return err
-			}
-			if choice == "back" {
-				return ui.ErrReturnToMenu
 			}
 			selections[index+1] = choice
 			updateIndices()

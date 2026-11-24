@@ -206,7 +206,8 @@ func TestPolicyBatchSelectorsTargetOnlyChosenLists(t *testing.T) {
 		{"3\n1\n2\n", []int{1, 5}},
 		{"3\n3\n3\n", []int{0, 1, 2, 3, 4, 5, 6, 7}},
 		{"2\n\n\n", []int{4, 5, 6, 7}},
-		{"1\n1\nb\n2\n\n", []int{2, 3}},
+		{"1\n1\nq\n2\n\n", []int{2, 3}},
+		{"1\n1\n0\n2\n\n", []int{2, 3}},
 	} {
 		got, err := accessPolicy().PromptPolicyPortScope(inputUI(t, tc.input[2:]), tc.input[:1], nil)
 		if err != nil || !reflect.DeepEqual(got, tc.want) {
