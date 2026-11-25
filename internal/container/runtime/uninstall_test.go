@@ -1,10 +1,24 @@
 package runtime
 
 import (
+	"errors"
 	"testing"
 
 	"snail_tool/internal/ui"
 )
+
+type fakeRuntimePrompt struct {
+	answers []string
+}
+
+func (prompt *fakeRuntimePrompt) Ask(string) (string, error) {
+	if len(prompt.answers) == 0 {
+		return "", errors.New("no answer")
+	}
+	answer := prompt.answers[0]
+	prompt.answers = prompt.answers[1:]
+	return answer, nil
+}
 
 func TestSelectRuntimeToUninstall(t *testing.T) {
 	runtimes := []Runtime{{Name: "docker", Display: "Docker"}, {Name: "podman", Display: "Podman"}}
@@ -17,7 +31,7 @@ func TestSelectRuntimeToUninstall(t *testing.T) {
 		{answer: "2", name: "podman", proceed: true},
 		{answer: "q"},
 	} {
-		prompt := &fakeDockerUninstallPrompt{answers: []string{tt.answer}}
+		prompt := &fakeRuntimePrompt{answers: []string{tt.answer}}
 		selected, proceed, err := selectRuntimeToUninstall(prompt, runtimes)
 		if err != nil {
 			t.Fatal(err)
@@ -30,17 +44,11 @@ func TestSelectRuntimeToUninstall(t *testing.T) {
 
 func TestUninstallBackReturnsThroughModeAndRuntimeSelection(t *testing.T) {
 	runtimes := []Runtime{{Name: "docker", Display: "Docker"}, {Name: "podman", Display: "Podman"}}
-	prompt := &fakeDockerUninstallPrompt{answers: []string{"1", "2", "q", "2", "1", "q", "q", "parent-next"}}
+	prompt := &fakeRuntimePrompt{answers: []string{"1", "2", "q", "parent-next"}}
 	var confirmations []string
 	removed, err := uninstallDetectedRuntimes(prompt, runtimes, func(rt Runtime) (bool, error) {
-		choose := selectDockerUninstallMode
-		if rt.Name == "podman" {
-			choose = selectPodmanUninstallMode
-		}
-		return runUninstallMode(prompt, choose, func(removeData bool) (bool, error) {
-			confirmations = append(confirmations, rt.Name)
-			return false, ui.ErrReturnToMenu
-		})
+		confirmations = append(confirmations, rt.Name)
+		return false, ui.ErrReturnToMenu
 	})
 	if err != nil || removed {
 		t.Fatalf("cancelled uninstall: removed=%v err=%v", removed, err)

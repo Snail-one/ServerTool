@@ -23,11 +23,14 @@ type containerAction struct {
 }
 
 func Run(view *ui.UI) error {
-	// 查看容器入口：直接列出并管理容器（含未启动）
 	rt, ok := runtime.Detect()
 	if !ok {
 		return fmt.Errorf("未检测到 Docker 或 Podman")
 	}
+	return RunRuntime(view, rt)
+}
+
+func RunRuntime(view *ui.UI, rt runtime.Runtime) error {
 	return manageContainers(view, rt)
 }
 

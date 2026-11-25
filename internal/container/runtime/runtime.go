@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"snail_tool/internal/container/docker"
+	"snail_tool/internal/container/podman"
 	"snail_tool/internal/log"
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
@@ -118,7 +120,7 @@ func installDockerRuntime(view *ui.UI) error {
 	if !system.IsRoot() {
 		return fmt.Errorf("安装 Docker 需要 root 权限，请使用 sudo 运行本工具")
 	}
-	return newDockerInstaller(view).install()
+	return docker.Install(view)
 }
 
 func installDockerScriptRuntime(view *ui.UI) error {
@@ -128,39 +130,13 @@ func installDockerScriptRuntime(view *ui.UI) error {
 	if !system.IsRoot() {
 		return fmt.Errorf("使用官方脚本安装 Docker 需要 root 权限，请使用 sudo 运行本工具")
 	}
-	return newDockerScriptInstaller(view).install()
+	return docker.InstallWithScript(view)
 }
 
 func installPodmanRuntime(view *ui.UI) error {
-	if !system.IsRoot() {
-		return fmt.Errorf("安装 Podman 需要 root 权限，请使用 sudo 运行本工具")
-	}
-
-	var manager string
-	switch {
-	case system.CommandExists("apt"):
-		manager = "apt"
-	case system.CommandExists("apt-get"):
-		manager = "apt-get"
-	default:
-		return fmt.Errorf("未找到 apt 或 apt-get，无法自动安装 Podman")
-	}
-	confirmed, err := view.Confirm(fmt.Sprintf("使用 %s 更新软件包索引并安装 Podman？(y/N，0/q 返回)：", manager))
-	if err != nil {
-		return err
-	}
-	if !confirmed {
-		return ui.ErrReturnToMenu
-	}
-	if err := ensureContainerRuntimeAbsent(system.CommandExists, system.Output); err != nil {
-		return err
-	}
-
-	log.Info("安装 Podman...")
-	if err := system.Run(manager, "update"); err != nil {
-		return fmt.Errorf("%s update 失败: %w", manager, err)
-	}
-	return system.Run(manager, "install", "-y", "podman")
+	return podman.Install(view, func() error {
+		return ensureContainerRuntimeAbsent(system.CommandExists, system.Output)
+	})
 }
 
 func ensureContainerRuntimeAbsent(commandExists func(string) bool, output func(string, ...string) (string, error)) error {

@@ -1,6 +1,7 @@
-package runtime
+package podman
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -43,7 +44,44 @@ type podmanUninstaller struct {
 	confirm       func(podmanUninstallPlan) (bool, error)
 }
 
-func UninstallPodman(view *ui.UI) (bool, error) {
+type uninstallPrompter interface {
+	Ask(string) (string, error)
+	Confirm(string) (bool, error)
+}
+
+func Install(view *ui.UI, ensureAbsent func() error) error {
+	if !system.IsRoot() {
+		return fmt.Errorf("安装 Podman 需要 root 权限，请使用 sudo 运行本工具")
+	}
+
+	var manager string
+	switch {
+	case system.CommandExists("apt"):
+		manager = "apt"
+	case system.CommandExists("apt-get"):
+		manager = "apt-get"
+	default:
+		return fmt.Errorf("未找到 apt 或 apt-get，无法自动安装 Podman")
+	}
+	confirmed, err := view.Confirm(fmt.Sprintf("使用 %s 更新软件包索引并安装 Podman？(y/N，0/q 返回)：", manager))
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		return ui.ErrReturnToMenu
+	}
+	if err := ensureAbsent(); err != nil {
+		return err
+	}
+
+	log.Info("安装 Podman...")
+	if err := system.Run(manager, "update"); err != nil {
+		return fmt.Errorf("%s update 失败: %w", manager, err)
+	}
+	return system.Run(manager, "install", "-y", "podman")
+}
+
+func Uninstall(view *ui.UI) (bool, error) {
 	if !system.IsRoot() {
 		return false, fmt.Errorf("卸载 Podman 需要 root 权限，请使用 sudo 运行本工具")
 	}
@@ -52,7 +90,21 @@ func UninstallPodman(view *ui.UI) (bool, error) {
 	})
 }
 
-func selectPodmanUninstallMode(view dockerUninstallPrompter) (bool, bool, error) {
+func runUninstallMode(view uninstallPrompter, choose func(uninstallPrompter) (bool, bool, error), remove func(bool) (bool, error)) (bool, error) {
+	for {
+		removeData, proceed, err := choose(view)
+		if err != nil || !proceed {
+			return false, err
+		}
+		removed, err := remove(removeData)
+		if errors.Is(err, ui.ErrReturnToMenu) || err == nil && !removed {
+			continue
+		}
+		return removed, err
+	}
+}
+
+func selectPodmanUninstallMode(view uninstallPrompter) (bool, bool, error) {
 	for {
 		ui.MenuSection("请选择 Podman 卸载方式")
 		ui.MenuOptionHint("1", "卸载运行时", "保留容器、镜像和卷数据")
@@ -105,7 +157,7 @@ func runPodmanAsAccount(account *system.Account, name string, args ...string) er
 	return system.Run("runuser", runArgs...)
 }
 
-func confirmPodmanUninstall(view dockerUninstallPrompter, plan podmanUninstallPlan) (bool, error) {
+func confirmPodmanUninstall(view uninstallPrompter, plan podmanUninstallPlan) (bool, error) {
 	fmt.Println(ui.PrimaryBoldText("即将卸载 Podman："))
 	if len(plan.packages) > 0 {
 		fmt.Println("软件包：")

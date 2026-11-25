@@ -19,20 +19,12 @@ type composeProjectAction struct {
 	Args []string
 }
 
-func manageRunning(view *ui.UI) error {
-	rt, ok := runtime.Detect()
-	if !ok {
-		return fmt.Errorf("未检测到 Docker 或 Podman")
-	}
+func manageRunning(view *ui.UI, rt runtime.Runtime) error {
 	return manageComposeProjects(view, rt, true)
 }
 
 // manageScanned 入口：管理通过扫描目录获取的 docker compose 项目
-func manageScanned(view *ui.UI) error {
-	rt, ok := runtime.Detect()
-	if !ok {
-		return fmt.Errorf("未检测到 Docker 或 Podman")
-	}
+func manageScanned(view *ui.UI, rt runtime.Runtime) error {
 	return manageComposeProjects(view, rt, false)
 }
 

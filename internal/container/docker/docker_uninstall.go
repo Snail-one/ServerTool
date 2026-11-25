@@ -1,4 +1,4 @@
-package runtime
+package docker
 
 import (
 	"errors"
@@ -77,13 +77,35 @@ type dockerUninstallPrompter interface {
 	Confirm(string) (bool, error)
 }
 
-func UninstallDocker(view *ui.UI) (bool, error) {
+func Install(view *ui.UI) error {
+	return newDockerInstaller(view).install()
+}
+
+func InstallWithScript(view *ui.UI) error {
+	return newDockerScriptInstaller(view).install()
+}
+
+func Uninstall(view *ui.UI) (bool, error) {
 	if !system.IsRoot() {
 		return false, fmt.Errorf("卸载 Docker 需要 root 权限，请使用 sudo 运行本工具")
 	}
 	return runUninstallMode(view, selectDockerUninstallMode, func(removeData bool) (bool, error) {
 		return newDockerUninstaller(view, removeData).uninstall()
 	})
+}
+
+func runUninstallMode(view dockerUninstallPrompter, choose func(dockerUninstallPrompter) (bool, bool, error), remove func(bool) (bool, error)) (bool, error) {
+	for {
+		removeData, proceed, err := choose(view)
+		if err != nil || !proceed {
+			return false, err
+		}
+		removed, err := remove(removeData)
+		if errors.Is(err, ui.ErrReturnToMenu) || err == nil && !removed {
+			continue
+		}
+		return removed, err
+	}
 }
 
 func selectDockerUninstallMode(view dockerUninstallPrompter) (bool, bool, error) {

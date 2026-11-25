@@ -25,6 +25,11 @@ func Run(view *ui.UI) error {
 	return CleanupDockerResources(view)
 }
 
+func RunRuntime(view *ui.UI, rt runtime.Runtime) error {
+	log.Info("清理 ", rt.Display, " 容器与资源")
+	return runDockerCleanup(view, rt)
+}
+
 func CleanupDockerResources(view *ui.UI) error {
 	runtimes := runtime.DetectAll()
 	if len(runtimes) == 0 {
@@ -75,10 +80,17 @@ func selectCleanupRuntime(view interface{ Ask(string) (string, error) }, runtime
 	}
 }
 
+func cleanupMenuTitle(runtimeName string) string {
+	if runtimeName == "podman" {
+		return "Podman 清理"
+	}
+	return "Docker 清理"
+}
+
 func runDockerCleanup(view *ui.UI, rt runtime.Runtime) error {
 	for {
 		ui.ClearScreen()
-		ui.MenuTitle("容器管理", "Docker 清理")
+		ui.MenuTitle("容器管理", cleanupMenuTitle(rt.Name))
 		printContainerDiskUsage(rt, "当前 "+rt.Display+" 磁盘占用")
 		fmt.Println()
 		volumeNote := "仅选项 10 删除；常规与深度系统清理均保留"

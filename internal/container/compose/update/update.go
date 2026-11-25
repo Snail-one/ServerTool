@@ -61,10 +61,14 @@ type composeRebuildResult struct {
 type composeRunner func(ComposeCommand, string, ...string) error
 
 func Run(view *ui.UI) error {
+	return RunWithRuntime(view, "")
+}
+
+func RunWithRuntime(view *ui.UI, runtimeName string) error {
 	log.Info("批量更新运行中的 Docker Compose 应用")
 	fmt.Println()
 
-	compose, err := DetectComposeCommand()
+	compose, err := composeCommandForRuntime(runtimeName)
 	if err != nil {
 		return err
 	}
@@ -180,14 +184,22 @@ func parseComposeProjectDirs(output string, runningOnly bool) ([]string, error) 
 }
 
 func RebuildRunningComposeProjects(view *ui.UI) error {
-	return RebuildRunningComposeProjectsWithPrompt(view, "")
+	return RebuildRunningComposeProjectsForRuntime(view, "")
+}
+
+func RebuildRunningComposeProjectsForRuntime(view *ui.UI, runtimeName string) error {
+	return rebuildRunningComposeProjectsForRuntime(view, runtimeName, "")
 }
 
 func RebuildRunningComposeProjectsWithPrompt(confirmer ComposeRebuildConfirmer, confirmPrompt string) error {
+	return rebuildRunningComposeProjectsForRuntime(confirmer, "", confirmPrompt)
+}
+
+func rebuildRunningComposeProjectsForRuntime(confirmer ComposeRebuildConfirmer, runtimeName, confirmPrompt string) error {
 	log.Info("批量重建运行中的 Docker Compose 项目")
 	fmt.Println()
 
-	compose, err := DetectComposeCommand()
+	compose, err := composeCommandForRuntime(runtimeName)
 	if err != nil {
 		return err
 	}
@@ -403,6 +415,13 @@ func dedupeCleanPaths(paths []string) []string {
 		result = append(result, cleaned)
 	}
 	return result
+}
+
+func composeCommandForRuntime(runtimeName string) (ComposeCommand, error) {
+	if runtimeName == "" {
+		return DetectComposeCommand()
+	}
+	return DetectComposeCommandForRuntime(runtimeName)
 }
 
 func DetectComposeCommand() (ComposeCommand, error) {

@@ -6,8 +6,17 @@ import (
 	"strconv"
 	"strings"
 
+	"snail_tool/internal/container/docker"
+	"snail_tool/internal/container/podman"
 	"snail_tool/internal/ui"
 )
+
+func UninstallRuntime(view *ui.UI, selected Runtime) (bool, error) {
+	if selected.Name == "podman" {
+		return podman.Uninstall(view)
+	}
+	return docker.Uninstall(view)
+}
 
 func Uninstall(view *ui.UI) (bool, error) {
 	runtimes := DetectAll()
@@ -16,13 +25,15 @@ func Uninstall(view *ui.UI) (bool, error) {
 	}
 	return uninstallDetectedRuntimes(view, runtimes, func(selected Runtime) (bool, error) {
 		if selected.Name == "podman" {
-			return UninstallPodman(view)
+			return podman.Uninstall(view)
 		}
-		return UninstallDocker(view)
+		return docker.Uninstall(view)
 	})
 }
 
-func uninstallDetectedRuntimes(view dockerUninstallPrompter, runtimes []Runtime, remove func(Runtime) (bool, error)) (bool, error) {
+func uninstallDetectedRuntimes(view interface {
+	Ask(string) (string, error)
+}, runtimes []Runtime, remove func(Runtime) (bool, error)) (bool, error) {
 	for {
 		selected := runtimes[0]
 		if len(runtimes) > 1 {
@@ -41,21 +52,9 @@ func uninstallDetectedRuntimes(view dockerUninstallPrompter, runtimes []Runtime,
 	}
 }
 
-func runUninstallMode(view dockerUninstallPrompter, choose func(dockerUninstallPrompter) (bool, bool, error), remove func(bool) (bool, error)) (bool, error) {
-	for {
-		removeData, proceed, err := choose(view)
-		if err != nil || !proceed {
-			return false, err
-		}
-		removed, err := remove(removeData)
-		if errors.Is(err, ui.ErrReturnToMenu) || err == nil && !removed {
-			continue
-		}
-		return removed, err
-	}
-}
-
-func selectRuntimeToUninstall(view dockerUninstallPrompter, runtimes []Runtime) (Runtime, bool, error) {
+func selectRuntimeToUninstall(view interface {
+	Ask(string) (string, error)
+}, runtimes []Runtime) (Runtime, bool, error) {
 	for {
 		ui.MenuSection("检测到多个容器运行时，请选择要卸载的运行时")
 		for index, current := range runtimes {

@@ -1,4 +1,4 @@
-package runtime
+package podman
 
 import (
 	"errors"
@@ -8,6 +8,24 @@ import (
 
 	"snail_tool/internal/system"
 )
+
+type fakeDockerUninstallPrompt struct {
+	answers []string
+	confirm bool
+}
+
+func (prompt *fakeDockerUninstallPrompt) Ask(string) (string, error) {
+	if len(prompt.answers) == 0 {
+		return "", errors.New("no answer")
+	}
+	answer := prompt.answers[0]
+	prompt.answers = prompt.answers[1:]
+	return answer, nil
+}
+
+func (prompt *fakeDockerUninstallPrompt) Confirm(string) (bool, error) {
+	return prompt.confirm, nil
+}
 
 func TestPodmanUninstallSafeModePreservesData(t *testing.T) {
 	uninstaller, calls, removed := fakePodmanUninstaller(false)

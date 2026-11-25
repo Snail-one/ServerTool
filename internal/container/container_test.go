@@ -40,12 +40,42 @@ func TestUninstallMenuLabelPutsDockerFirst(t *testing.T) {
 		t.Fatalf("abnormal docker label = %q", got)
 	}
 	podman := []runtime.Runtime{{Name: "podman", Display: "Podman"}}
-	if got := uninstallMenuLabel(podman); got != "卸载 Podman" {
+	if got := uninstallMenuLabel(podman); got != "Podman 卸载" {
 		t.Fatalf("podman label = %q", got)
 	}
 	both := []runtime.Runtime{{Name: "docker", Display: "Docker"}, {Name: "podman", Display: "Podman"}}
 	if got := uninstallMenuLabel(both); got != "卸载 Docker 或 Podman" {
 		t.Fatalf("both label = %q", got)
+	}
+}
+
+func TestContainerMenuLabelsFollowInstalledRuntime(t *testing.T) {
+	docker := containerMenuLabels([]runtime.Runtime{{Name: "docker", Display: "Docker"}})
+	if docker.manage != "Docker 管理" || docker.config != "Docker 配置" || docker.cleanup != "Docker 清理" || docker.uninstall != "Docker 卸载" || !docker.configEnabled {
+		t.Fatalf("docker labels = %#v", docker)
+	}
+	podman := containerMenuLabels([]runtime.Runtime{{Name: "podman", Display: "Podman"}})
+	if podman.manage != "Podman 管理" || podman.config != "Podman 配置" || podman.cleanup != "Podman 清理" || podman.uninstall != "Podman 卸载" || podman.configEnabled {
+		t.Fatalf("podman labels = %#v", podman)
+	}
+	both := containerMenuLabels([]runtime.Runtime{{Name: "docker", Display: "Docker"}, {Name: "podman", Display: "Podman"}})
+	if both.manage != "Docker 管理" || both.cleanup != "Docker 清理" || both.uninstall != "卸载 Docker 或 Podman" || !both.configEnabled {
+		t.Fatalf("both labels = %#v", both)
+	}
+}
+
+func TestContainerRuntimeByChoiceSelectsDockerOrPodman(t *testing.T) {
+	installed := []runtime.Runtime{{Name: "docker", Display: "Docker"}, {Name: "podman", Display: "Podman"}}
+	docker, ok := containerRuntimeByChoice(installed, "1")
+	if !ok || docker.Name != "docker" {
+		t.Fatalf("choice 1 = %#v ok=%v", docker, ok)
+	}
+	podman, ok := containerRuntimeByChoice(installed, "2")
+	if !ok || podman.Name != "podman" {
+		t.Fatalf("choice 2 = %#v ok=%v", podman, ok)
+	}
+	if _, ok := containerRuntimeByChoice(installed, "3"); ok {
+		t.Fatal("choice 3 was accepted")
 	}
 }
 
