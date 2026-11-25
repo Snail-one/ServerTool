@@ -6,9 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"snail_tool/internal/container/compose/update"
-	"snail_tool/internal/container/internal/listing"
-	"snail_tool/internal/container/runtime"
+	"snail_tool/internal/container/docker/compose/update"
+	"snail_tool/internal/container/docker/listing"
 	"snail_tool/internal/input"
 	"snail_tool/internal/log"
 	"snail_tool/internal/ui"
@@ -19,13 +18,13 @@ type composeProjectAction struct {
 	Args []string
 }
 
-func manageRunning(view *ui.UI, rt runtime.Runtime) error {
-	return manageComposeProjects(view, rt, true)
+func manageRunning(view *ui.UI) error {
+	return manageComposeProjects(view, true)
 }
 
 // manageScanned 入口：管理通过扫描目录获取的 docker compose 项目
-func manageScanned(view *ui.UI, rt runtime.Runtime) error {
-	return manageComposeProjects(view, rt, false)
+func manageScanned(view *ui.UI) error {
+	return manageComposeProjects(view, false)
 }
 
 func composeProjectStatusDisplay(project composeProjectInfo) string {
@@ -116,8 +115,8 @@ func colorComposeStatus(status string) string {
 	}
 }
 
-func manageComposeProjects(view *ui.UI, rt runtime.Runtime, useLS bool) error {
-	compose, err := update.DetectComposeCommandForRuntime(rt.Name)
+func manageComposeProjects(view *ui.UI, useLS bool) error {
+	compose, err := update.DetectComposeCommand()
 	if err != nil {
 		return err
 	}

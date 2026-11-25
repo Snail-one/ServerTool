@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"snail_tool/internal/container/internal/listing"
+	"snail_tool/internal/container/docker/listing"
 )
 
 func TestParseContainersJSONLines(t *testing.T) {

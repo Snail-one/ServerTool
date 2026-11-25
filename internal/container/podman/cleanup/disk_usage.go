@@ -5,13 +5,12 @@ import (
 	"strconv"
 	"strings"
 
-	"snail_tool/internal/container/runtime"
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
 )
 
-func printContainerDiskUsage(rt runtime.Runtime, title string) {
-	fields, err := containerDiskUsageFields(rt, system.Output)
+func printDiskUsage(display, title string) {
+	fields, err := diskUsageFields(display, system.Output)
 	if err != nil {
 		fields = []ui.CardField{{Label: "状态", Value: "无法获取磁盘占用", Detail: err.Error()}}
 	} else if len(fields) == 0 {
@@ -20,22 +19,23 @@ func printContainerDiskUsage(rt runtime.Runtime, title string) {
 	ui.PrintSectionCard(title, fields...)
 }
 
-func containerDiskUsageFields(rt runtime.Runtime, output func(string, ...string) (string, error)) ([]ui.CardField, error) {
-	total := "{{.TotalCount}}"
-	if rt.Name == "podman" {
-		total = "{{.Total}}"
-	}
+func diskUsageFields(display string, output func(string, ...string) (string, error)) ([]ui.CardField, error) {
 	// Explicit separators avoid parsing the CLI's table padding or splitting
-	// resource names and sizes that contain spaces.
-	format := "{{.Type}}\t" + total + "\t{{.Active}}\t{{.Size}}\t{{.Reclaimable}}"
-	text, err := output(rt.Name, "system", "df", "--format", format)
+	// resource names and sizes that contain spaces. Podman reports the total
+	// column as {{.Total}}, not Docker's {{.TotalCount}}.
+	format := "{{.Type}}\t{{.Total}}\t{{.Active}}\t{{.Size}}\t{{.Reclaimable}}"
+	text, err := output(runtimeName, "system", "df", "--format", format)
 	if err != nil {
 		detail := strings.Join(strings.Fields(text), " ")
 		if detail == "" {
-			return nil, fmt.Errorf("%s system df 失败: %w", rt.Display, err)
+			return nil, fmt.Errorf("%s system df 失败: %w", display, err)
 		}
-		return nil, fmt.Errorf("%s system df 失败: %w；%s", rt.Display, err, detail)
+		return nil, fmt.Errorf("%s system df 失败: %w；%s", display, err, detail)
 	}
+	return parseDiskUsage(display, text)
+}
+
+func parseDiskUsage(display, text string) ([]ui.CardField, error) {
 	var fields []ui.CardField
 	for _, line := range strings.Split(text, "\n") {
 		if strings.TrimSpace(line) == "" {
@@ -43,18 +43,18 @@ func containerDiskUsageFields(rt runtime.Runtime, output func(string, ...string)
 		}
 		columns := strings.Split(strings.TrimRight(line, "\r"), "\t")
 		if len(columns) != 5 {
-			return nil, fmt.Errorf("%s 磁盘占用输出格式无法识别", rt.Display)
+			return nil, fmt.Errorf("%s 磁盘占用输出格式无法识别", display)
 		}
 		for i := range columns {
 			columns[i] = strings.TrimSpace(columns[i])
 		}
 		for _, count := range columns[1:3] {
 			if _, err := strconv.ParseUint(count, 10, 64); err != nil {
-				return nil, fmt.Errorf("%s 磁盘占用数量无法识别", rt.Display)
+				return nil, fmt.Errorf("%s 磁盘占用数量无法识别", display)
 			}
 		}
 		if columns[0] == "" || columns[3] == "" || columns[4] == "" {
-			return nil, fmt.Errorf("%s 磁盘占用输出不完整", rt.Display)
+			return nil, fmt.Errorf("%s 磁盘占用输出不完整", display)
 		}
 		label := columns[0]
 		switch label {

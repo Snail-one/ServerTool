@@ -12,7 +12,7 @@ import (
 	"snail_tool/internal/configuration/proxy"
 	commontmux "snail_tool/internal/configuration/tmux"
 	"snail_tool/internal/configuration/vim"
-	"snail_tool/internal/container/dockerconfig"
+	"snail_tool/internal/container/docker/dockerconfig"
 	"snail_tool/internal/firewall"
 	"snail_tool/internal/input"
 	"snail_tool/internal/log"

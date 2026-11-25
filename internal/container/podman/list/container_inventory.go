@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"snail_tool/internal/container/internal/listing"
-	"snail_tool/internal/container/runtime"
+	"snail_tool/internal/container/podman/listing"
 	"snail_tool/internal/system"
 )
 
@@ -21,8 +20,8 @@ type containerInfo struct {
 	IsRunning  bool
 }
 
-func listContainers(rt runtime.Runtime) ([]containerInfo, error) {
-	out, err := system.Output(rt.Name, "ps", "-a", "--format", "json")
+func listContainers() ([]containerInfo, error) {
+	out, err := system.Output(runtimeName, "ps", "-a", "--format", "json")
 	if err == nil {
 		conts, parseErr := parseContainersJSON(out)
 		if parseErr == nil {
@@ -30,7 +29,7 @@ func listContainers(rt runtime.Runtime) ([]containerInfo, error) {
 		}
 	}
 
-	conts, fallbackErr := listContainersText(rt)
+	conts, fallbackErr := listContainersText()
 	if fallbackErr != nil {
 		if err != nil {
 			return nil, fmt.Errorf("获取容器列表失败: %w", err)
@@ -40,9 +39,9 @@ func listContainers(rt runtime.Runtime) ([]containerInfo, error) {
 	return conts, nil
 }
 
-func listContainersText(rt runtime.Runtime) ([]containerInfo, error) {
+func listContainersText() ([]containerInfo, error) {
 	format := "{{.ID}}\t{{.Names}}\t{{.Ports}}\t{{.Status}}\t{{.CreatedAt}}\t{{.RunningFor}}"
-	out, err := system.Output(rt.Name, "ps", "-a", "--format", format)
+	out, err := system.Output(runtimeName, "ps", "-a", "--format", format)
 	if err != nil {
 		return nil, err
 	}

@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 
-	containerruntime "snail_tool/internal/container/runtime"
 	"snail_tool/internal/input"
 	"snail_tool/internal/log"
 	"snail_tool/internal/system"
@@ -65,7 +64,7 @@ func Run(view *ui.UI) error {
 }
 
 func RunWithRuntime(view *ui.UI, runtimeName string) error {
-	log.Info("批量更新运行中的 Docker Compose 应用")
+	log.Info("批量更新运行中的 Podman Compose 应用")
 	fmt.Println()
 
 	compose, err := composeCommandForRuntime(runtimeName)
@@ -73,7 +72,7 @@ func RunWithRuntime(view *ui.UI, runtimeName string) error {
 		return err
 	}
 
-	fmt.Println("正在通过 docker compose ls 获取运行中的项目...")
+	fmt.Println("正在通过 podman compose ls 获取运行中的项目...")
 	dirs, err := GetComposeProjectDirsFromLS(compose)
 	if err != nil {
 		return err
@@ -83,7 +82,7 @@ func RunWithRuntime(view *ui.UI, runtimeName string) error {
 		return nil
 	}
 
-	ui.PrintField("来源", "docker compose ls")
+	ui.PrintField("来源", "podman compose ls")
 	ui.PrintField("Compose 命令", compose.Display)
 	fmt.Printf("找到 %d 个 Compose 目录：\n", len(dirs))
 	for _, dir := range dirs {
@@ -196,7 +195,7 @@ func RebuildRunningComposeProjectsWithPrompt(confirmer ComposeRebuildConfirmer, 
 }
 
 func rebuildRunningComposeProjectsForRuntime(confirmer ComposeRebuildConfirmer, runtimeName, confirmPrompt string) error {
-	log.Info("批量重建运行中的 Docker Compose 项目")
+	log.Info("批量重建运行中的 Podman Compose 项目")
 	fmt.Println()
 
 	compose, err := composeCommandForRuntime(runtimeName)
@@ -204,7 +203,7 @@ func rebuildRunningComposeProjectsForRuntime(confirmer ComposeRebuildConfirmer, 
 		return err
 	}
 
-	fmt.Println("正在通过 docker compose ls 获取运行中的项目...")
+	fmt.Println("正在通过 podman compose ls 获取运行中的项目...")
 	dirs, err := GetComposeProjectDirsFromLS(compose)
 	if err != nil {
 		return err
@@ -231,7 +230,7 @@ func rebuildRunningComposeProjects(confirmer ComposeRebuildConfirmer, compose Co
 	for _, dir := range dirs {
 		fmt.Printf("- %s\n", dir)
 	}
-	ui.PrintField("说明", "只会重建 Docker Compose 项目；非 Compose 创建的容器需按原 docker run 参数手动重建")
+	ui.PrintField("说明", "只会重建 Podman Compose 项目；非 Compose 创建的容器需按原 podman run 参数手动重建")
 	fmt.Println()
 
 	if len(dirs) == 0 {
@@ -306,7 +305,7 @@ func AskComposeScanDirs(view *ui.UI, defaultRoots []string) ([]string, []string,
 		}
 		existingRoots := filterExistingComposeRoots(roots)
 		if len(existingRoots) == 0 {
-			fmt.Println("没有可扫描的 Docker Compose 目录")
+			fmt.Println("没有可扫描的 Podman Compose 目录")
 			view.PauseWithPrompt("按回车重新输入扫描目录...")
 			continue
 		}
@@ -318,7 +317,7 @@ func AskComposeScanDirs(view *ui.UI, defaultRoots []string) ([]string, []string,
 			continue
 		}
 		if len(dirs) == 0 {
-			log.Warn("未找到 Docker Compose 配置文件")
+			log.Warn("未找到 Podman Compose 配置文件")
 			view.PauseWithPrompt("按回车重新输入扫描目录...")
 			continue
 		}
@@ -417,33 +416,16 @@ func dedupeCleanPaths(paths []string) []string {
 	return result
 }
 
-func composeCommandForRuntime(runtimeName string) (ComposeCommand, error) {
-	if runtimeName == "" {
-		return DetectComposeCommand()
-	}
-	return DetectComposeCommandForRuntime(runtimeName)
+func composeCommandForRuntime(string) (ComposeCommand, error) {
+	return DetectComposeCommand()
 }
 
 func DetectComposeCommand() (ComposeCommand, error) {
-	if rt, ok := containerruntime.Detect(); ok {
-		return DetectComposeCommandForRuntime(rt.Name)
-	}
-	return detectComposeCommand(composeCommandCandidatesForRuntime(""))
-}
-
-func DetectComposeCommandForRuntime(runtimeName string) (ComposeCommand, error) {
-	compose, err := detectComposeCommand(composeCommandCandidatesForRuntime(runtimeName))
-	if err == nil {
-		return compose, nil
-	}
-	switch runtimeName {
-	case "docker":
-		return ComposeCommand{}, fmt.Errorf("未找到 docker compose 或 docker-compose")
-	case "podman":
+	compose, err := detectComposeCommand(composeCommandCandidates())
+	if err != nil {
 		return ComposeCommand{}, fmt.Errorf("未找到 podman compose 或 podman-compose")
-	default:
-		return ComposeCommand{}, err
 	}
+	return compose, nil
 }
 
 func detectComposeCommand(candidates []composeCommandCandidate) (ComposeCommand, error) {
@@ -471,25 +453,10 @@ func detectComposeCommandCandidate(candidate composeCommandCandidate) (ComposeCo
 	return compose, true
 }
 
-func composeCommandCandidatesForRuntime(runtimeName string) []composeCommandCandidate {
-	switch runtimeName {
-	case "docker":
-		return []composeCommandCandidate{
-			{name: "docker", args: []string{"compose"}, display: "docker compose"},
-			{name: "docker-compose", display: "docker-compose"},
-		}
-	case "podman":
-		return []composeCommandCandidate{
-			{name: "podman", args: []string{"compose"}, display: "podman compose"},
-			{name: "podman-compose", display: "podman-compose"},
-		}
-	default:
-		return []composeCommandCandidate{
-			{name: "docker", args: []string{"compose"}, display: "docker compose"},
-			{name: "docker-compose", display: "docker-compose"},
-			{name: "podman", args: []string{"compose"}, display: "podman compose"},
-			{name: "podman-compose", display: "podman-compose"},
-		}
+func composeCommandCandidates() []composeCommandCandidate {
+	return []composeCommandCandidate{
+		{name: "podman", args: []string{"compose"}, display: "podman compose"},
+		{name: "podman-compose", display: "podman-compose"},
 	}
 }
 

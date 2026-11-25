@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"snail_tool/internal/container/compose/update"
+	"snail_tool/internal/container/docker/compose/update"
 	"snail_tool/internal/input"
 	"snail_tool/internal/log"
 	"snail_tool/internal/storage"

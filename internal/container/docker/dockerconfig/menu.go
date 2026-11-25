@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"snail_tool/internal/container/dockerconfig/clientproxy"
-	"snail_tool/internal/container/dockerconfig/daemonlog"
-	"snail_tool/internal/container/dockerconfig/daemonproxy"
+	"snail_tool/internal/container/docker/dockerconfig/clientproxy"
+	"snail_tool/internal/container/docker/dockerconfig/daemonlog"
+	"snail_tool/internal/container/docker/dockerconfig/daemonproxy"
 	"snail_tool/internal/ui"
 )
 

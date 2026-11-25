@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"snail_tool/internal/container/compose/update"
+	"snail_tool/internal/container/docker/compose/update"
 	"snail_tool/internal/storage"
 )
 

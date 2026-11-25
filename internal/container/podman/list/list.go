@@ -6,15 +6,16 @@ import (
 	"strconv"
 	"strings"
 
-	composeprojects "snail_tool/internal/container/compose"
-	"snail_tool/internal/container/compose/update"
-	"snail_tool/internal/container/internal/listing"
-	"snail_tool/internal/container/runtime"
+	composeprojects "snail_tool/internal/container/podman/compose"
+	"snail_tool/internal/container/podman/compose/update"
+	"snail_tool/internal/container/podman/listing"
 	"snail_tool/internal/input"
 	"snail_tool/internal/log"
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
 )
+
+const runtimeName = "podman"
 
 type containerAction struct {
 	Key     string
@@ -23,20 +24,12 @@ type containerAction struct {
 }
 
 func Run(view *ui.UI) error {
-	rt, ok := runtime.Detect()
-	if !ok {
-		return fmt.Errorf("未检测到 Docker 或 Podman")
-	}
-	return RunRuntime(view, rt)
-}
-
-func RunRuntime(view *ui.UI, rt runtime.Runtime) error {
-	return manageContainers(view, rt)
+	return manageContainers(view)
 }
 
 // ManageComposeLS 入口：管理通过 docker compose ls 获取的项目
-func manageContainers(view *ui.UI, rt runtime.Runtime) error {
-	conts, err := listContainers(rt)
+func manageContainers(view *ui.UI) error {
+	conts, err := listContainers()
 	if err != nil {
 		return err
 	}
@@ -70,12 +63,12 @@ func manageContainers(view *ui.UI, rt runtime.Runtime) error {
 		}
 
 		c := conts[idx-1]
-		if err := manageSingleContainer(view, rt, c); err != nil {
+		if err := manageSingleContainer(view, c); err != nil {
 			return err
 		}
 
 		// refresh
-		conts, err = listContainers(rt)
+		conts, err = listContainers()
 		if err != nil {
 			return err
 		}
@@ -103,9 +96,9 @@ func printContainers(conts []containerInfo) {
 	}
 }
 
-func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) error {
-	compose, composeErr := update.DetectComposeCommandForRuntime(rt.Name)
-	project := getContainerComposeProject(rt, c)
+func manageSingleContainer(view *ui.UI, c containerInfo) error {
+	compose, composeErr := update.DetectComposeCommand()
+	project := getContainerComposeProject(c)
 	canComposeDown := project != "" && composeErr == nil
 
 	for {
@@ -120,7 +113,7 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 
 		actions := availableContainerActions(c, canComposeDown)
 		for index, action := range actions {
-			command := rt.Name + " " + action.Command
+			command := runtimeName + " " + action.Command
 			if action.Key == "down" {
 				command = compose.Display + " " + action.Command
 			}
@@ -152,30 +145,30 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 
 		switch actions[index-1].Key {
 		case "start":
-			runContainerLifecycle(rt, c, "start", "启动失败: ", "已启动: ")
+			runContainerLifecycle(c, "start", "启动失败: ", "已启动: ")
 		case "stop":
-			runContainerLifecycle(rt, c, "stop", "停止失败: ", "已停止: ")
+			runContainerLifecycle(c, "stop", "停止失败: ", "已停止: ")
 		case "restart":
-			runContainerLifecycle(rt, c, "restart", "重启失败: ", "已重启: ")
+			runContainerLifecycle(c, "restart", "重启失败: ", "已重启: ")
 		case "pause":
-			runContainerLifecycle(rt, c, "pause", "暂停失败: ", "已暂停: ")
+			runContainerLifecycle(c, "pause", "暂停失败: ", "已暂停: ")
 		case "unpause":
-			runContainerLifecycle(rt, c, "unpause", "恢复失败: ", "已恢复: ")
+			runContainerLifecycle(c, "unpause", "恢复失败: ", "已恢复: ")
 		case "inspect":
-			runContainerInspect(rt, c)
+			runContainerInspect(c)
 			view.PauseWithPrompt("按回车返回容器操作...")
 			continue
 		case "logs":
-			runContainerLogs(rt, c, false)
+			runContainerLogs(c, false)
 			view.PauseWithPrompt("按回车返回容器操作...")
 			continue
 		case "logs-follow":
-			if !runContainerLogs(rt, c, true) {
+			if !runContainerLogs(c, true) {
 				view.PauseWithPrompt("按回车返回容器操作...")
 			}
 			continue
 		case "exec":
-			if !runContainerShell(rt, c) {
+			if !runContainerShell(c) {
 				view.PauseWithPrompt("按回车返回容器操作...")
 			}
 			continue
@@ -206,7 +199,7 @@ func manageSingleContainer(view *ui.UI, rt runtime.Runtime, c containerInfo) err
 			executed, err := removeContainer(
 				view.Confirm,
 				system.Run,
-				rt.Name,
+				runtimeName,
 				c,
 			)
 			if err != nil {
@@ -308,17 +301,17 @@ func removeContainer(confirm func(string) (bool, error), run func(string, ...str
 	return true, nil
 }
 
-func runContainerLifecycle(rt runtime.Runtime, c containerInfo, action, failureMessage, successMessage string) {
+func runContainerLifecycle(c containerInfo, action, failureMessage, successMessage string) {
 	ref := containerRef(c)
-	if err := system.Run(rt.Name, containerLifecycleArgs(action, ref)...); err != nil {
+	if err := system.Run(runtimeName, containerLifecycleArgs(action, ref)...); err != nil {
 		log.Error(failureMessage, err)
 		return
 	}
 	log.Info(successMessage, ref)
 }
 
-func runContainerLogs(rt runtime.Runtime, c containerInfo, follow bool) bool {
-	if err := system.Run(rt.Name, containerLogsArgs(containerRef(c), follow)...); err != nil {
+func runContainerLogs(c containerInfo, follow bool) bool {
+	if err := system.Run(runtimeName, containerLogsArgs(containerRef(c), follow)...); err != nil {
 		if follow && system.IsInterrupted(err) {
 			log.Info("已退出实时日志")
 			return true
@@ -329,18 +322,18 @@ func runContainerLogs(rt runtime.Runtime, c containerInfo, follow bool) bool {
 	return true
 }
 
-func runContainerInspect(rt runtime.Runtime, c containerInfo) bool {
+func runContainerInspect(c containerInfo) bool {
 	ref := containerRef(c)
-	if err := system.Run(rt.Name, containerInspectArgs(ref)...); err != nil {
+	if err := system.Run(runtimeName, containerInspectArgs(ref)...); err != nil {
 		log.Error("查看容器信息失败: ", err)
 		return false
 	}
 	return true
 }
 
-func runContainerShell(rt runtime.Runtime, c containerInfo) bool {
+func runContainerShell(c containerInfo) bool {
 	fmt.Println("进入容器 Shell，输入 exit 或 Ctrl+D 返回容器操作界面。")
-	if err := system.Run(rt.Name, containerShellArgs(containerRef(c))...); err != nil {
+	if err := system.Run(runtimeName, containerShellArgs(containerRef(c))...); err != nil {
 		if system.IsInterrupted(err) {
 			log.Info("已退出容器 Shell")
 			return true
@@ -446,11 +439,11 @@ func containerTimeText(c containerInfo) string {
 	return c.Status
 }
 
-func getContainerComposeProject(rt runtime.Runtime, c containerInfo) string {
+func getContainerComposeProject(c containerInfo) string {
 	ref := containerRef(c)
-	label, _ := system.Output(rt.Name, "inspect", "-f", `{{ index .Config.Labels "com.docker.compose.project" }}`, ref)
+	label, _ := system.Output(runtimeName, "inspect", "-f", `{{ index .Config.Labels "com.docker.compose.project" }}`, ref)
 	if strings.TrimSpace(label) == "" {
-		label, _ = system.Output(rt.Name, "inspect", "-f", `{{ index .Config.Labels "io.podman.compose.project" }}`, ref)
+		label, _ = system.Output(runtimeName, "inspect", "-f", `{{ index .Config.Labels "io.podman.compose.project" }}`, ref)
 	}
 	return strings.TrimSpace(label)
 }

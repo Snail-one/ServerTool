@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"snail_tool/internal/container/compose/update"
-	"snail_tool/internal/container/internal/listing"
+	"snail_tool/internal/container/podman/compose/update"
+	"snail_tool/internal/container/podman/listing"
 	"snail_tool/internal/system"
 )
 

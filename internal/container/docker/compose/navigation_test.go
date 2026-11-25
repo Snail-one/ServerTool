@@ -6,8 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"snail_tool/internal/container/compose/update"
-	"snail_tool/internal/container/runtime"
+	"snail_tool/internal/container/docker/compose/update"
 	"snail_tool/internal/ui"
 )
 
@@ -62,7 +61,7 @@ func TestComposeScanReturnsThroughProjectListAndDirectoryPrompt(t *testing.T) {
 	} {
 		t.Run(sequence, func(t *testing.T) {
 			view := navigationUI(t, root+"\n"+sequence+"parent-next\n")
-			if err := manageComposeProjects(view, runtime.Runtime{Name: "docker"}, false); !errors.Is(err, ui.ErrReturnToMenu) {
+			if err := manageComposeProjects(view, false); !errors.Is(err, ui.ErrReturnToMenu) {
 				t.Fatal(err)
 			}
 			if next, err := view.Ask("parent"); err != nil || next != "parent-next" {

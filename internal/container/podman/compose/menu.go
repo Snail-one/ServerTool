@@ -4,21 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	"snail_tool/internal/container/compose/update"
-	"snail_tool/internal/container/runtime"
+	"snail_tool/internal/container/podman/compose/update"
 	"snail_tool/internal/ui"
 )
 
 func Run(view *ui.UI) error {
-	rt, ok := runtime.Detect()
-	if !ok {
-		return fmt.Errorf("未检测到 Docker 或 Podman")
-	}
-	return RunRuntime(view, rt)
-}
-
-func RunRuntime(view *ui.UI, rt runtime.Runtime) error {
-	command := rt.Name + " compose"
+	command := "podman compose"
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("容器管理", "Compose")
@@ -40,19 +31,19 @@ func RunRuntime(view *ui.UI, rt runtime.Runtime) error {
 		switch strings.ToLower(choice) {
 		case "1":
 			ui.RunAction(view, "Compose 项目管理失败，已返回 Compose", func() error {
-				return manageRunning(view, rt)
+				return manageRunning(view)
 			})
 		case "2":
 			ui.RunAction(view, "Compose 项目管理失败，已返回 Compose", func() error {
-				return manageScanned(view, rt)
+				return manageScanned(view)
 			})
 		case "3":
 			ui.RunAction(view, "Compose 应用更新失败，已返回 Compose", func() error {
-				return update.RunWithRuntime(view, rt.Name)
+				return update.Run(view)
 			})
 		case "4":
 			ui.RunAction(view, "Compose 项目重建失败，已返回 Compose", func() error {
-				return update.RebuildRunningComposeProjectsForRuntime(view, rt.Name)
+				return update.RebuildRunningComposeProjects(view)
 			})
 		default:
 			ui.InvalidChoice()

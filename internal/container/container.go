@@ -5,26 +5,30 @@ import (
 	"fmt"
 	"strings"
 
-	containercleanup "snail_tool/internal/container/cleanup"
-	"snail_tool/internal/container/compose"
-	"snail_tool/internal/container/dockerconfig"
-	"snail_tool/internal/container/dockerconfig/clientproxy"
-	"snail_tool/internal/container/dockerconfig/daemonlog"
-	"snail_tool/internal/container/dockerconfig/daemonproxy"
-	"snail_tool/internal/container/list"
-	"snail_tool/internal/container/runtime"
+	"snail_tool/internal/container/docker"
+	dockercleanup "snail_tool/internal/container/docker/cleanup"
+	dockercompose "snail_tool/internal/container/docker/compose"
+	"snail_tool/internal/container/docker/dockerconfig"
+	"snail_tool/internal/container/docker/dockerconfig/clientproxy"
+	"snail_tool/internal/container/docker/dockerconfig/daemonlog"
+	"snail_tool/internal/container/docker/dockerconfig/daemonproxy"
+	dockerlist "snail_tool/internal/container/docker/list"
+	"snail_tool/internal/container/podman"
+	podmancleanup "snail_tool/internal/container/podman/cleanup"
+	podmancompose "snail_tool/internal/container/podman/compose"
+	podmanlist "snail_tool/internal/container/podman/list"
 	"snail_tool/internal/ui"
 )
 
 var errBackToRuntimes = errors.New("back to container runtimes")
 
 func Run(view *ui.UI) error {
-	if err := runtime.Ensure(view); err != nil {
+	if err := Ensure(view); err != nil {
 		return err
 	}
 
 	for {
-		installed := runtime.DetectAll()
+		installed := DetectAll()
 		if len(installed) == 0 {
 			return ui.ErrReturnToMenu
 		}
@@ -43,7 +47,7 @@ func Run(view *ui.UI) error {
 	}
 }
 
-func chooseContainerRuntime(view *ui.UI, installed []runtime.Runtime) (string, error) {
+func chooseContainerRuntime(view *ui.UI, installed []Runtime) (string, error) {
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("容器管理")
@@ -70,22 +74,22 @@ func chooseContainerRuntime(view *ui.UI, installed []runtime.Runtime) (string, e
 	}
 }
 
-func containerRuntimeByChoice(installed []runtime.Runtime, choice string) (runtime.Runtime, bool) {
+func containerRuntimeByChoice(installed []Runtime, choice string) (Runtime, bool) {
 	name := map[string]string{"1": "docker", "2": "podman"}[strings.ToLower(strings.TrimSpace(choice))]
 	if name == "" {
-		return runtime.Runtime{}, false
+		return Runtime{}, false
 	}
 	for _, item := range installed {
 		if item.Name == name {
 			return item, true
 		}
 	}
-	return runtime.Runtime{}, false
+	return Runtime{}, false
 }
 
 func runRuntimeMenu(view *ui.UI, runtimeName string, backToChooser bool) error {
 	for {
-		installed := runtime.DetectAll()
+		installed := DetectAll()
 		selected, ok := findRuntime(installed, runtimeName)
 		if !ok {
 			if backToChooser {
@@ -93,11 +97,11 @@ func runRuntimeMenu(view *ui.UI, runtimeName string, backToChooser bool) error {
 			}
 			return ui.ErrReturnToMenu
 		}
-		labels := containerMenuLabels([]runtime.Runtime{selected})
+		labels := containerMenuLabels([]Runtime{selected})
 		ui.ClearScreen()
 		ui.MenuTitle("容器管理", runtimeMenuTitle(selected))
-		logSummary, proxySummary, clientProxySummary := dockerConfigSummaries([]runtime.Runtime{selected})
-		ui.PrintInfoCard("容器运行时状态", runtimeStatusFields([]runtime.Runtime{selected}, logSummary, proxySummary, clientProxySummary)...)
+		logSummary, proxySummary, clientProxySummary := dockerConfigSummaries([]Runtime{selected})
+		ui.PrintInfoCard("容器运行时状态", runtimeStatusFields([]Runtime{selected}, logSummary, proxySummary, clientProxySummary)...)
 		fmt.Println()
 		ui.MenuOptionHint("1", labels.manage, "查看状态、日志与生命周期操作")
 		ui.MenuOptionHint("2", "Compose", "查看、更新与重建项目")
@@ -123,11 +127,17 @@ func runRuntimeMenu(view *ui.UI, runtimeName string, backToChooser bool) error {
 		switch strings.ToLower(choice) {
 		case "1":
 			ui.RunAction(view, "容器列表与操作失败，已返回容器管理", func() error {
-				return list.RunRuntime(view, selected)
+				if selected.Name == "podman" {
+					return podmanlist.Run(view)
+				}
+				return dockerlist.Run(view)
 			})
 		case "2":
 			ui.RunAction(view, "Compose 项目失败，已返回容器管理", func() error {
-				return compose.RunRuntime(view, selected)
+				if selected.Name == "podman" {
+					return podmancompose.Run(view)
+				}
+				return dockercompose.Run(view)
 			})
 		case "3":
 			if !labels.configEnabled {
@@ -140,10 +150,18 @@ func runRuntimeMenu(view *ui.UI, runtimeName string, backToChooser bool) error {
 			})
 		case "4":
 			ui.RunAction(view, "容器资源清理失败，已返回容器管理", func() error {
-				return containercleanup.RunRuntime(view, selected)
+				if selected.Name == "podman" {
+					return podmancleanup.Run(view, selected.Display)
+				}
+				return dockercleanup.Run(view, selected.Display)
 			})
 		case "5":
-			uninstalled, err := runtime.UninstallRuntime(view, selected)
+			var uninstalled bool
+			if selected.Name == "podman" {
+				uninstalled, err = podman.Uninstall(view)
+			} else {
+				uninstalled, err = docker.Uninstall(view)
+			}
 			if err != nil {
 				if errors.Is(err, ui.ErrReturnToMenu) {
 					continue
@@ -160,23 +178,23 @@ func runRuntimeMenu(view *ui.UI, runtimeName string, backToChooser bool) error {
 	}
 }
 
-func findRuntime(installed []runtime.Runtime, name string) (runtime.Runtime, bool) {
+func findRuntime(installed []Runtime, name string) (Runtime, bool) {
 	for _, item := range installed {
 		if item.Name == name {
 			return item, true
 		}
 	}
-	return runtime.Runtime{}, false
+	return Runtime{}, false
 }
 
-func runtimeMenuTitle(item runtime.Runtime) string {
+func runtimeMenuTitle(item Runtime) string {
 	if item.Name == "podman" {
 		return "Podman"
 	}
 	return "Docker"
 }
 
-func dockerConfigSummaries(installed []runtime.Runtime) (string, string, string) {
+func dockerConfigSummaries(installed []Runtime) (string, string, string) {
 	for _, item := range installed {
 		if item.Name == "docker" {
 			return daemonlog.CurrentSummary(), daemonproxy.CurrentSummary(), clientproxy.CurrentSummary()
@@ -194,7 +212,7 @@ type containerMenuLabelSet struct {
 	configEnabled bool
 }
 
-func containerMenuLabels(installed []runtime.Runtime) containerMenuLabelSet {
+func containerMenuLabels(installed []Runtime) containerMenuLabelSet {
 	hasDocker, hasPodman := false, false
 	for _, item := range installed {
 		switch item.Name {
@@ -223,7 +241,7 @@ func containerMenuLabels(installed []runtime.Runtime) containerMenuLabelSet {
 	}
 }
 
-func uninstallMenuLabel(installed []runtime.Runtime) string {
+func uninstallMenuLabel(installed []Runtime) string {
 	name := "容器运行时"
 	if len(installed) == 1 {
 		name = installed[0].Display
@@ -239,10 +257,10 @@ func uninstallMenuLabel(installed []runtime.Runtime) string {
 	return "卸载 " + name
 }
 
-func runtimeStatusFields(installedRuntimes []runtime.Runtime, logSummary, proxySummary, clientProxySummary string) []ui.CardField {
+func runtimeStatusFields(installedRuntimes []Runtime, logSummary, proxySummary, clientProxySummary string) []ui.CardField {
 	fields := []ui.CardField{{
 		Label: "当前运行时",
-		Value: runtime.DisplaySummary(installedRuntimes),
+		Value: DisplaySummary(installedRuntimes),
 	}}
 	for _, installed := range installedRuntimes {
 		if installed.Name != "docker" {
