@@ -1,4 +1,4 @@
-package container
+package docker
 
 import (
 	"errors"
@@ -6,7 +6,43 @@ import (
 	"testing"
 )
 
-func TestProbeContainerRuntimeScenarios(t *testing.T) {
+func TestEnsureAbsent(t *testing.T) {
+	tests := []struct {
+		name       string
+		docker     bool
+		podman     bool
+		wantError  bool
+		wantDetail string
+	}{
+		{name: "none installed"},
+		{name: "docker installed", docker: true, wantError: true, wantDetail: "Docker"},
+		{name: "podman installed", podman: true, wantError: true, wantDetail: "Podman"},
+		{name: "both installed", docker: true, podman: true, wantError: true, wantDetail: "Docker、Podman"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ensureAbsent(func(name string) bool {
+				switch name {
+				case "docker":
+					return tt.docker
+				case "podman":
+					return tt.podman
+				default:
+					return false
+				}
+			}, func(string, ...string) (string, error) { return "Docker version test", nil })
+			if (err != nil) != tt.wantError {
+				t.Fatalf("error = %v, wantError %v", err, tt.wantError)
+			}
+			if err != nil && !strings.Contains(err.Error(), tt.wantDetail) {
+				t.Fatalf("error = %q, want detail %q", err, tt.wantDetail)
+			}
+		})
+	}
+}
+
+func TestProbeScenarios(t *testing.T) {
 	tests := []struct {
 		name       string
 		docker     bool
@@ -25,7 +61,7 @@ func TestProbeContainerRuntimeScenarios(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := probeContainerRuntimes(func(name string) bool {
+			got := probe(func(name string) bool {
 				return name == "docker" && tt.docker || name == "podman" && tt.podman
 			}, func(_ string, args ...string) (string, error) {
 				if args[0] == "--version" {
@@ -35,7 +71,7 @@ func TestProbeContainerRuntimeScenarios(t *testing.T) {
 					return "Cannot connect to daemon", tt.infoErr
 				}
 				return "Server Version: 29", nil
-			})
+			}, nil)
 			if len(got) != len(tt.wantNames) {
 				t.Fatalf("runtimes = %v, want names %v", got, tt.wantNames)
 			}
@@ -53,7 +89,7 @@ func TestProbeContainerRuntimeScenarios(t *testing.T) {
 
 func TestProbeReportsDockerCommandBeforeRunningIt(t *testing.T) {
 	currentStep := ""
-	got := probeContainerRuntimesWithProgress(func(name string) bool {
+	got := probe(func(name string) bool {
 		return name == "docker"
 	}, func(_ string, args ...string) (string, error) {
 		switch args[0] {

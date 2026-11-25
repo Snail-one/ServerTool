@@ -10,7 +10,7 @@ import (
 	"snail_tool/internal/app/status"
 	"snail_tool/internal/cleanup"
 	"snail_tool/internal/configuration"
-	"snail_tool/internal/container"
+	"snail_tool/internal/container/docker"
 	"snail_tool/internal/firewall"
 	"snail_tool/internal/ssh"
 	"snail_tool/internal/system"
@@ -81,7 +81,7 @@ func (a *App) Run() error {
 			})
 		case "6":
 			ui.RunAction(a.ui, "容器管理失败，已返回菜单", func() error {
-				return container.Run(a.ui)
+				return docker.Manage(a.ui)
 			})
 		case "c":
 			ui.RunAction(a.ui, "清理配置失败，已返回菜单", func() error {

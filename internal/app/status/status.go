@@ -6,7 +6,7 @@ import (
 	commonbash "snail_tool/internal/configuration/bash"
 	commonproxy "snail_tool/internal/configuration/proxy"
 	commonvim "snail_tool/internal/configuration/vim"
-	"snail_tool/internal/container"
+	"snail_tool/internal/container/docker"
 	"snail_tool/internal/ssh/keys"
 	"snail_tool/internal/ssh/security"
 	"snail_tool/internal/system"
@@ -37,7 +37,7 @@ func DetectStatusWithProgress(account *system.Account, step func(string, func())
 	result := Status{ConfigTotal: 3}
 	step("SSH 安全配置", func() { result.SSHSecurity = security.IsConfigured() })
 	step("UPS 配置", func() { result.UPS = ups.IsUPSConfigured() })
-	result.Runtime = RuntimeSummary(container.DetectAllWithProgress(step))
+	result.Runtime = RuntimeSummary(docker.DetectAllWithProgress(step))
 	step("Go 当前版本", func() { result.GoVersion = golang.CurrentVersion() })
 	if account != nil {
 		step("SSH 公钥", func() { result.SSHKeys = keys.IsConfigured(account) })
@@ -54,7 +54,7 @@ func DetectStatusWithProgress(account *system.Account, step func(string, func())
 	return result
 }
 
-func RuntimeSummary(runtimes []container.Runtime) string {
+func RuntimeSummary(runtimes []docker.Runtime) string {
 	if len(runtimes) == 0 {
 		return "未安装"
 	}

@@ -8,7 +8,7 @@ import (
 	commonbash "snail_tool/internal/configuration/bash"
 	commonproxy "snail_tool/internal/configuration/proxy"
 	commonvim "snail_tool/internal/configuration/vim"
-	"snail_tool/internal/container"
+	"snail_tool/internal/container/docker"
 	"snail_tool/internal/storage"
 	"snail_tool/internal/system"
 )
@@ -64,14 +64,14 @@ func TestUserConfigurationCountExcludesUPS(t *testing.T) {
 func TestRuntimeSummary(t *testing.T) {
 	tests := []struct {
 		name string
-		in   []container.Runtime
+		in   []docker.Runtime
 		want string
 	}{
 		{name: "none", want: "未安装"},
-		{name: "docker", in: []container.Runtime{{Name: "docker", Display: "Docker"}}, want: "Docker"},
-		{name: "docker abnormal", in: []container.Runtime{{Name: "docker", Display: "Docker（服务异常）"}}, want: "Docker（服务异常）"},
-		{name: "podman", in: []container.Runtime{{Name: "podman", Display: "Podman"}}, want: "Podman"},
-		{name: "both", in: []container.Runtime{{Name: "docker", Display: "Docker"}, {Name: "podman", Display: "Podman"}}, want: "Docker、Podman；容器操作优先 Docker"},
+		{name: "docker", in: []docker.Runtime{{Name: "docker", Display: "Docker"}}, want: "Docker"},
+		{name: "docker abnormal", in: []docker.Runtime{{Name: "docker", Display: "Docker（服务异常）"}}, want: "Docker（服务异常）"},
+		{name: "podman", in: []docker.Runtime{{Name: "podman", Display: "Podman"}}, want: "Podman"},
+		{name: "both", in: []docker.Runtime{{Name: "docker", Display: "Docker"}, {Name: "podman", Display: "Podman"}}, want: "Docker、Podman；容器操作优先 Docker"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
