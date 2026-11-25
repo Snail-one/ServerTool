@@ -45,7 +45,7 @@ func Run(view *ui.UI) error {
 			})
 		case "3":
 			ui.RunAction(view, "查看 SSH 生效配置失败，已返回 SSH 管理", func() error {
-				return sshstatus.Show(security.ReadStatus)
+				return sshstatus.Run(view, security.ReadStatus)
 			})
 		case "4":
 			ui.RunAction(view, "Root SSH 登录策略配置失败，已返回 SSH 管理", func() error {

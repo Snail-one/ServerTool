@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -203,16 +202,6 @@ func TestReplaceAuthorizedKeyIndexKeepsSurroundingKeys(t *testing.T) {
 	}
 }
 
-func TestParseSingleAuthorizedKeyIndex(t *testing.T) {
-	got, err := parseSingleAuthorizedKeyIndex("2", 3)
-	if err != nil || got != 2 {
-		t.Fatalf("got %d %v, want 2", got, err)
-	}
-	if _, err := parseSingleAuthorizedKeyIndex("1,2", 3); err == nil {
-		t.Fatal("multiple indexes should be rejected when replacing")
-	}
-}
-
 func TestReplaceSSHAuthorizedKeyRetriesThenReplaces(t *testing.T) {
 	home := t.TempDir()
 	sshDir := filepath.Join(home, ".ssh")
@@ -228,10 +217,10 @@ func TestReplaceSSHAuthorizedKeyRetriesThenReplaces(t *testing.T) {
 		t.Fatal(err)
 	}
 	account := &system.Account{Name: "test", Home: home, UID: os.Getuid(), GID: os.Getgid()}
-	view := newUIWithInput(t, "9\n1\nbad-key\n"+newKey+"\ny\n")
+	view := newUIWithInput(t, "1\nr\nbad-key\n"+newKey+"\ny\n\nq\n")
 
-	if err := replaceSSHAuthorizedKey(view, account); err != nil {
-		t.Fatalf("修改公钥失败：%v", err)
+	if err := configureSSHAuthorizedKeys(view, account); !errors.Is(err, ui.ErrReturnToMenu) {
+		t.Fatalf("替换公钥后未正常返回：%v", err)
 	}
 
 	got := readTestFile(t, authKeys)
@@ -268,25 +257,24 @@ func TestPublicKeySummaryMatchesOpenSSHFingerprint(t *testing.T) {
 	}
 }
 
-func TestDeleteSSHAuthorizedKeysRetriesInvalidSelection(t *testing.T) {
-	home := t.TempDir()
-	sshDir := filepath.Join(home, ".ssh")
-	if err := os.Mkdir(sshDir, 0700); err != nil {
+func TestKeyMenuRetriesInvalidNumberAndDeletesOnlySelectedKey(t *testing.T) {
+	account := &system.Account{Name: "test", Home: t.TempDir()}
+	path := authorizedKeysPath(account)
+	if err := os.Mkdir(filepath.Dir(path), 0700); err != nil {
 		t.Fatal(err)
 	}
-	authKeys := filepath.Join(sshDir, "authorized_keys")
-	key := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIkeep keep@example"
-	if err := os.WriteFile(authKeys, []byte(key+"\n"), 0600); err != nil {
+	first := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIkeep keep@example"
+	second := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIdelete delete@example"
+	if err := os.WriteFile(path, []byte(first+"\n"+second+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	account := &system.Account{Name: "test", Home: home}
-	view := newUIWithInput(t, "99\nabc\n1\ny\n")
+	view := newUIWithInput(t, "99\nabc\n2\nd\ny\n\nq\n")
 
-	if err := deleteSSHAuthorizedKeys(view, account); err != nil {
-		t.Fatalf("无效编号应提示后重试，不应返回错误：%v", err)
+	if err := configureSSHAuthorizedKeys(view, account); !errors.Is(err, ui.ErrReturnToMenu) {
+		t.Fatalf("unexpected navigation error: %v", err)
 	}
-	if strings.Contains(readTestFile(t, authKeys), "AAAAC3NzaC1lZDI1NTE5AAAAIkeep") {
-		t.Fatal("重试选择后公钥应被删除")
+	if got := readTestFile(t, path); got != first+"\n" {
+		t.Fatalf("wrong key removed: %q", got)
 	}
 }
 
@@ -335,26 +323,6 @@ func TestIsConfiguredRequiresAuthorizedKeyEntry(t *testing.T) {
 	}
 	if !IsConfigured(account) {
 		t.Fatal("authorized key entry was not detected")
-	}
-}
-
-func TestParseAuthorizedKeySelection(t *testing.T) {
-	got, err := parseAuthorizedKeySelection("2, 1 2", 3)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []int{2, 1}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("selection mismatch: got %#v, want %#v", got, want)
-	}
-
-	if got, err := parseAuthorizedKeySelection("2，1", 3); err != nil || !reflect.DeepEqual(got, want) {
-		t.Fatalf("Chinese comma selection mismatch: %#v, %v", got, err)
-	}
-	for _, raw := range []string{"4", "+1", "1\u200b", "1\n2"} {
-		if _, err := parseAuthorizedKeySelection(raw, 3); err == nil {
-			t.Fatalf("invalid selection accepted: %q", raw)
-		}
 	}
 }
 

@@ -12,18 +12,29 @@ type Report struct {
 	Rows   []Row
 }
 
-func Show(load func() (Report, error)) error {
-	report, err := load()
-	if err != nil {
-		return err
-	}
+func Run(view *ui.UI, load func() (Report, error)) error {
+	choices := map[string]string{"r": "refresh"}
+	for {
+		ui.ClearScreen()
+		report, loadErr := load()
+		draw := func() {
+			ui.MenuTitle("SSH 管理", "查看生效配置")
+			if loadErr != nil {
+				ui.PrintWarningCard("无法读取 SSH 生效配置", ui.CardField{Label: "原因", Value: loadErr.Error()})
+			} else {
+				ui.PrintField("配置来源", report.Source)
+				fmt.Println()
+				PrintRows(report.Rows)
+			}
 
-	fmt.Println(ui.PrimaryBoldText("当前 SSH 安全配置："))
-	fmt.Println()
-	fmt.Println(ui.InfoText("配置来源："), report.Source)
-	fmt.Println()
-	PrintRows(report.Rows)
-	return nil
+			fmt.Println()
+			ui.MenuShortcutHint("r", "刷新配置", "")
+			ui.MenuExit("0/q", "返回 SSH 管理")
+		}
+		if _, err := ui.AskMenuChoice(view, "请选择", "", choices, draw); err != nil {
+			return err
+		}
+	}
 }
 
 func PrintRows(rows []Row) {

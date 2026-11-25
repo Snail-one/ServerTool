@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"snail_tool/internal/storage"
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
 )
@@ -27,7 +28,7 @@ func TestDeletingLastKeyShowsImpactAndWaitsBeforeRefreshing(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer output.Close()
-	view := newUIWithInput(t, "4\n1\ny\n\nq\nparent-next\n")
+	view := newUIWithInput(t, "1\nd\ny\n\nq\nparent-next\n")
 	previous := os.Stdout
 	os.Stdout = output
 	err = configureSSHAuthorizedKeys(view, account)
@@ -39,13 +40,42 @@ func TestDeletingLastKeyShowsImpactAndWaitsBeforeRefreshing(t *testing.T) {
 		t.Fatalf("unexpected navigation: next=%q err=%v", next, err)
 	}
 	menu := readTestFile(t, output.Name())
-	for _, text := range []string{"test-user", path, "即将删除此文件中的全部公钥", "SSH 公钥删除完成", "按回车返回菜单", "0 把"} {
+	for _, text := range []string{"test-user", path, "即将删除列表中的全部公钥", "SSH 公钥删除完成", "按回车返回菜单", "0 把"} {
 		if !strings.Contains(menu, text) {
 			t.Errorf("key menu is missing %q", text)
 		}
 	}
 	if IsConfigured(account) {
 		t.Fatal("the selected key is still present")
+	}
+}
+
+func TestClearKeyShortcutPreservesNonKeyLines(t *testing.T) {
+	account := &system.Account{Home: t.TempDir()}
+	path := authorizedKeysPath(account)
+	if err := os.Mkdir(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	first, second := generateTestPublicKey(t), generateTestPublicKey(t)
+	content := "# outside note\n" + first + "\n" +
+		storage.FormatManagedBlock(sshAuthorizedKeysBegin, "# inside note\n"+second, sshAuthorizedKeysEnd) +
+		"custom entry\n"
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	view := newUIWithInput(t, "X\ny\n\nq\n")
+	if err := configureSSHAuthorizedKeys(view, account); !errors.Is(err, ui.ErrReturnToMenu) {
+		t.Fatalf("unexpected navigation error: %v", err)
+	}
+	if IsConfigured(account) {
+		t.Fatal("clear shortcut left a listed public key")
+	}
+	remaining := readTestFile(t, path)
+	for _, line := range []string{"# outside note", "# inside note", "custom entry"} {
+		if !strings.Contains(remaining, line) {
+			t.Errorf("clearing public keys removed %q", line)
+		}
 	}
 }
 
@@ -59,12 +89,11 @@ func TestKeyOperationCancellationStaysInKeyMenu(t *testing.T) {
 		for _, operation := range []struct {
 			name, input string
 		}{
-			{"add", "1\n" + answer + "\n"},
-			{"replace-selection", "2\n" + answer + "\n"},
-			{"replace-key", "2\n1\n" + answer + "\nq\n"},
-			{"replace-confirmation", "2\n1\n" + newKey + "\n" + answer + "\n" + replaceBacks},
-			{"delete-selection", "4\n" + answer + "\n"},
-			{"delete-confirmation", "4\n1\n" + answer + "\nq\n"},
+			{"add", "A\n" + answer + "\n"},
+			{"replace-key", "1\nr\n" + answer + "\nq\n"},
+			{"replace-confirmation", "1\nr\n" + newKey + "\n" + answer + "\n" + replaceBacks},
+			{"delete-confirmation", "1\nd\n" + answer + "\nq\n"},
+			{"clear-confirmation", "x\n" + answer + "\n"},
 		} {
 			t.Run(operation.name+"/answer="+answer, func(t *testing.T) {
 				account := &system.Account{Home: t.TempDir()}
@@ -102,7 +131,7 @@ func TestInterruptedEditorReturnsToKeyMenu(t *testing.T) {
 	for _, setup := range []bool{false, true} {
 		t.Run(map[bool]string{false: "keys", true: "setup"}[setup], func(t *testing.T) {
 			account := &system.Account{Home: t.TempDir(), UID: os.Getuid(), GID: os.Getgid()}
-			choice := "3"
+			choice := "v"
 			if setup {
 				choice = "2"
 			}

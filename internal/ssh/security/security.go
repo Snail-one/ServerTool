@@ -59,10 +59,6 @@ const (
 	sshdCommandPath         = "/usr/sbin/sshd"
 )
 
-func Run(view *ui.UI) error {
-	return ConfigureSSHSecurity(view)
-}
-
 func ConfigureSSHSecurity(view *ui.UI) error {
 	account, err := system.CurrentTargetUser()
 	if err != nil {
