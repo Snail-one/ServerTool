@@ -86,7 +86,7 @@ sudo snail uninstall
 ## 使用说明
 
 - **一键初始化**：没有已有 SSH 公钥时，必须成功添加一把公钥才会继续安全加固。
-- **容器运行时**：Docker 和 Podman 同时存在时，容器操作优先使用 Docker，资源清理可选择运行时。资源清理逐次确认，数据卷需单独选择清理并确认永久删除卷内数据；完全卸载运行时并删除数据需要强确认。Docker 完全卸载还会删除 docker 用户组及成员关系，保留用户账号；仅卸载运行时则保留该组。
+- **容器运行时**：在容器管理页选择 Docker 或 Podman 后进入对应菜单。已安装任一运行时时，工具会提示先卸载当前运行时再安装另一种。资源清理逐次确认，数据卷需单独选择清理并确认永久删除卷内数据；完全卸载运行时并删除数据需要强确认。Docker 完全卸载会删除 docker 用户组及成员关系，保留用户账号、containerd 软件包及 `/var/lib/containerd`。仅卸载 Docker 运行时时也会保留 docker 用户组。
 - **Go 环境**：各版本保存在 `/opt/go/goX.Y.Z`，由 `/opt/go/current` 指向当前版本，旧版本会保留。安装或切换后需重新登录或执行 `source ~/.bashrc`；命令软链接可在 Go 菜单中手动创建。
 - **状态检测**：启动检测仅执行一次，首页的 SSH 和容器状态使用启动时结果，WireGuard 安装状态随菜单刷新。“系统工具 → 查看本次启动信息”可查看检测结果与耗时；工具安装页面提供独立的安装状态刷新。
 
@@ -180,12 +180,10 @@ internal/
   wireguard/              WireGuard 管理
     interfaces/           接口菜单，含 runtime/ 运行状态和 peers/ 对端管理
       peers/quickconfig/  对端快速配置
-  container/              容器管理
-    list/                 管理容器
-    compose/              Compose 项目，含 update/ 更新和重建
-    dockerconfig/         Docker 配置，含代理与日志轮转
-    cleanup/              清理容器资源
-    runtime/              容器运行时安装和卸载
+  container/              Docker / Podman 检测和选择菜单
+    docker/               Docker 安装、卸载和配置
+    podman/               Podman 安装和卸载
+    各运行时目录下的 list/、compose/、cleanup/ 分别管理容器、Compose 和资源清理
   cleanup/                跨模块清理菜单
     backups/              清理备份
     softwaredata/         删除软件数据目录

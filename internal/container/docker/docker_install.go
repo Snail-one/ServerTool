@@ -103,6 +103,10 @@ type dockerInstaller struct {
 	onlineVerify    func() error
 }
 
+func Install(view *ui.UI) error {
+	return newDockerInstaller(view).install()
+}
+
 func newDockerInstaller(view *ui.UI) *dockerInstaller {
 	installer := &dockerInstaller{
 		osReleasePath: "/etc/os-release",

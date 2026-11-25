@@ -73,6 +73,10 @@ func Run(view *ui.UI, current func() (display string, ok bool), backToChooser bo
 				return err
 			}
 			if uninstalled {
+				view.Pause()
+				if backToChooser {
+					return ErrBackToRuntimes
+				}
 				return ui.ErrReturnToMenu
 			}
 		default:

@@ -18,7 +18,6 @@ import (
 var dockerDebUninstallPackages = []string{
 	"docker-ce",
 	"docker-ce-cli",
-	"containerd.io",
 	"docker-buildx-plugin",
 	"docker-compose-plugin",
 	"docker-ce-rootless-extras",
@@ -31,7 +30,6 @@ var dockerDebUninstallPackages = []string{
 var dockerRPMUninstallPackages = []string{
 	"docker-ce",
 	"docker-ce-cli",
-	"containerd.io",
 	"docker-buildx-plugin",
 	"docker-compose-plugin",
 	"docker-ce-rootless-extras",
@@ -75,14 +73,6 @@ type dockerUninstaller struct {
 type dockerUninstallPrompter interface {
 	Ask(string) (string, error)
 	Confirm(string) (bool, error)
-}
-
-func Install(view *ui.UI) error {
-	return newDockerInstaller(view).install()
-}
-
-func InstallWithScript(view *ui.UI) error {
-	return newDockerScriptInstaller(view).install()
 }
 
 func Uninstall(view *ui.UI) (bool, error) {
@@ -175,7 +165,7 @@ func confirmDockerUninstall(view dockerUninstallPrompter, plan dockerUninstallPl
 	if !plan.removeData {
 		ui.PrintInfoCard("Docker 数据将保留",
 			ui.CardField{Label: "容器数据", Value: "/var/lib/docker（镜像、容器、卷）"},
-			ui.CardField{Label: "运行时数据", Value: "/var/lib/containerd"},
+			ui.CardField{Label: "运行时数据", Value: "保留 containerd 软件包及 /var/lib/containerd"},
 			ui.CardField{Label: "自定义配置", Value: "/etc/docker 与 Docker systemd 配置"},
 			ui.CardField{Label: "用户组", Value: "保留 docker 组及成员关系"},
 		)
@@ -183,13 +173,14 @@ func confirmDockerUninstall(view dockerUninstallPrompter, plan dockerUninstallPl
 		return view.Confirm("确认卸载 Docker 运行时并保留数据？请输入 y 确认，默认取消 (y/N)：")
 	}
 	fields := make([]ui.CardField, 0, len(plan.dataPaths)+1)
-	fields = append(fields, ui.CardField{Label: "影响", Value: "镜像、容器和卷无法恢复"})
+	fields = append(fields, ui.CardField{Label: "影响", Value: "/var/lib/docker 中的镜像、容器和卷无法恢复"})
 	for _, path := range plan.dataPaths {
 		fields = append(fields, ui.CardField{Label: "永久删除", Value: path})
 	}
 	if plan.removeGroup {
 		fields = append(fields, ui.CardField{Label: "用户组", Value: "删除 docker 组及成员关系，保留用户账号"})
 	}
+	fields = append(fields, ui.CardField{Label: "共享运行时", Value: "保留 containerd 软件包及 /var/lib/containerd"})
 	ui.PrintDangerCard("Docker 数据将被永久删除", fields...)
 	fmt.Println()
 	answer, err := view.Ask("请输入 DELETE DOCKER DATA 确认完全卸载：")
@@ -231,9 +222,9 @@ func (uninstaller *dockerUninstaller) uninstall() (bool, error) {
 
 	if len(plan.packages) > 0 {
 		log.Info("[Docker 卸载/软件包删除] ", strings.Join(plan.packages, ", "))
-		args := []string{"remove", "-y"}
+		args := []string{"remove", "-y", "--setopt=clean_requirements_on_remove=False"}
 		if plan.distribution.Family == "apt" {
-			args[0] = "purge"
+			args = []string{"purge", "-y", "-o", "APT::Get::AutomaticRemove=false"}
 		}
 		args = append(args, plan.packages...)
 		if err := uninstaller.run(plan.manager, args...); err != nil {
@@ -287,7 +278,8 @@ func (uninstaller *dockerUninstaller) uninstall() (bool, error) {
 	if plan.removeData {
 		ui.PrintSuccessCard("Docker 完全卸载完成",
 			ui.CardField{Label: "软件包与仓库", Value: ui.Badge("已清理", true)},
-			ui.CardField{Label: "镜像、容器和卷", Value: ui.Badge("已清理", true)},
+			ui.CardField{Label: "Docker 数据", Value: "/var/lib/docker 已清理或不存在"},
+			ui.CardField{Label: "共享运行时", Value: "保留 containerd 软件包及 /var/lib/containerd"},
 			ui.CardField{Label: "自定义配置", Value: ui.Badge("已清理", true)},
 			ui.CardField{Label: "docker 用户组", Value: "已清理或不存在（用户账号保留）"},
 		)
@@ -402,7 +394,6 @@ func (uninstaller *dockerUninstaller) existingDataPaths() []string {
 	}
 	paths := []string{
 		"/var/lib/docker",
-		"/var/lib/containerd",
 		"/etc/docker",
 		"/etc/systemd/system/docker.service.d",
 		"/etc/systemd/system/docker.service",

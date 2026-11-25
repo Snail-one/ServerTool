@@ -1,4 +1,4 @@
-package docker
+package container
 
 import (
 	"fmt"
@@ -70,7 +70,10 @@ func probeDocker(output func(string, ...string) (string, error), step func(strin
 }
 
 func ensureAbsent(commandExists func(string) bool, output func(string, ...string) (string, error)) error {
-	runtimes := probe(commandExists, output, nil)
+	return checkInstallAllowed(probe(commandExists, output, nil))
+}
+
+func checkInstallAllowed(runtimes []Runtime) error {
 	if len(runtimes) == 0 {
 		return nil
 	}
@@ -78,7 +81,7 @@ func ensureAbsent(commandExists func(string) bool, output func(string, ...string
 	for _, item := range runtimes {
 		installed = append(installed, item.Display)
 	}
-	return fmt.Errorf("安装已取消：检测到已安装的容器运行时：%s；检测到 Podman 时请先使用现有卸载功能，Docker 服务异常时请先检查 systemctl status docker", strings.Join(installed, "、"))
+	return fmt.Errorf("安装前需先卸载当前运行时：%s", strings.Join(installed, "、"))
 }
 
 func firstOutputLine(value string) string {

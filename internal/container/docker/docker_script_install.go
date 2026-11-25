@@ -22,6 +22,10 @@ type dockerScriptInstaller struct {
 	confirm       func() (bool, error)
 }
 
+func InstallWithScript(view *ui.UI) error {
+	return newDockerScriptInstaller(view).install()
+}
+
 func newDockerScriptInstaller(view *ui.UI) *dockerScriptInstaller {
 	return &dockerScriptInstaller{
 		download:      downloadDockerInstallScript,

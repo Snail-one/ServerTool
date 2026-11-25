@@ -27,7 +27,7 @@ func TestDockerUninstallPlanDetectsPackagesAndRepositoryFiles(t *testing.T) {
 	if plan.manager != "apt-get" {
 		t.Fatalf("manager = %q", plan.manager)
 	}
-	if !reflect.DeepEqual(plan.packages, []string{"containerd.io", "docker-ce"}) {
+	if !reflect.DeepEqual(plan.packages, []string{"docker-ce"}) {
 		t.Fatalf("packages = %v", plan.packages)
 	}
 	wantFiles := []string{"/etc/apt/sources.list.d/docker.sources", "/etc/apt/keyrings/docker.asc"}
@@ -72,7 +72,7 @@ func TestDockerUninstallDebCompletesInSafeOrder(t *testing.T) {
 	wantCalls := []string{
 		"remove firewall sync service",
 		"systemctl disable --now docker.service docker.socket",
-		"apt-get purge -y docker-ce docker-ce-cli",
+		"apt-get purge -y -o APT::Get::AutomaticRemove=false docker-ce docker-ce-cli",
 	}
 	if !reflect.DeepEqual(*calls, wantCalls) {
 		t.Fatalf("calls = %v, want %v", *calls, wantCalls)
@@ -121,7 +121,7 @@ func TestDockerUninstallRPMUsesRemove(t *testing.T) {
 	if done, err := uninstaller.uninstall(); err != nil || !done {
 		t.Fatalf("done=%v error=%v", done, err)
 	}
-	if got := (*calls)[1]; got != "dnf remove -y docker-ce" {
+	if got := (*calls)[1]; got != "dnf remove -y --setopt=clean_requirements_on_remove=False docker-ce" {
 		t.Fatalf("remove call = %q", got)
 	}
 }
@@ -185,7 +185,7 @@ func TestCompleteDockerUninstallDeletesDataAndRefreshesSystemd(t *testing.T) {
 	uninstaller, calls, _ := fakeDockerUninstaller()
 	uninstaller.removeData = true
 	uninstaller.pathExists = func(path string) bool {
-		return path == "/var/lib/docker" || path == "/etc/docker" || path == "/etc/systemd/system/docker.service.d"
+		return path == "/var/lib/docker" || path == "/var/lib/containerd" || path == "/etc/docker" || path == "/etc/systemd/system/docker.service.d"
 	}
 	var removedTrees []string
 	uninstaller.removeTree = func(path string) error {
