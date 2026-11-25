@@ -57,8 +57,6 @@ func ConfigureSSH(view *ui.UI) error {
 		return err
 	}
 
-	log.Info("当前配置用户：", account.Name)
-	fmt.Println()
 	return configureSSHAuthorizedKeys(view, account)
 }
 
@@ -129,7 +127,7 @@ func ensureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 
 func pasteRequiredSSHAuthorizedKey(view *ui.UI, account *system.Account) error {
 	for {
-		pubkey, err := view.Ask("请粘贴 SSH 公钥（必填，输入 q 返回）：")
+		pubkey, err := view.Ask("请粘贴 SSH 公钥（必填，0/q 返回）：")
 		if err != nil {
 			return err
 		}
@@ -155,60 +153,71 @@ func pasteRequiredSSHAuthorizedKey(view *ui.UI, account *system.Account) error {
 }
 
 func IsConfigured(account *system.Account) bool {
-	authKeys := filepath.Join(account.Home, ".ssh", "authorized_keys")
+	authKeys := authorizedKeysPath(account)
 	data, err := os.ReadFile(authKeys)
 	return err == nil && len(authorizedKeyEntries(string(data))) > 0
 }
 
 func configureSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
+	choices := map[string]string{"1": "add", "2": "replace", "3": "edit", "4": "delete"}
 	for {
 		ui.ClearScreen()
-		ui.MenuTitle("SSH 管理", "SSH 公钥")
-		if err := printAuthorizedKeys(account); err != nil {
-			return err
+		authKeys := authorizedKeysPath(account)
+		data, err := os.ReadFile(authKeys)
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("读取 SSH 公钥文件失败 %s: %w", authKeys, err)
+		}
+		entries := authorizedKeyEntries(string(data))
+		draw := func() {
+			ui.MenuTitle("SSH 管理", "SSH 公钥")
+			ui.PrintInfoCard("公钥配置",
+				ui.CardField{Label: "配置用户", Value: account.Name},
+				ui.CardField{Label: "配置文件", Value: authKeys},
+				ui.CardField{Label: "公钥数量", Value: fmt.Sprintf("%d 把", len(entries))},
+			)
+			fmt.Println()
+			if len(entries) > 0 {
+				printAuthorizedKeyEntries(entries)
+			}
+			ui.MenuSection("公钥操作")
+			ui.MenuOptionHint("1", "添加公钥", "每行粘贴一把，回车结束")
+			hint := "按编号选择"
+			if len(entries) == 0 {
+				hint = "暂无公钥"
+			}
+			ui.MenuOptionHint("2", "替换公钥", hint)
+			ui.MenuOptionHint("3", "编辑文件", "自动选择 vim / vi / nano")
+			ui.MenuOptionHint("4", "删除公钥", hint)
+			ui.MenuExit("0/q", "返回 SSH 管理")
 		}
 
-		ui.MenuSection("请选择公钥操作")
-		ui.MenuOption("1", "添加公钥")
-		ui.MenuOption("2", "选择替换")
-		ui.MenuOptionHint("3", "编辑文件", "自动选择 vim / vi / nano")
-		ui.MenuOption("4", "删除公钥")
-		ui.MenuExit("0/q", "返回")
-
-		choice, err := view.Ask("请选择：")
+		choice, err := ui.AskMenuChoice(view, "请选择", "", choices, draw)
 		if err != nil {
 			return err
 		}
-		fmt.Println()
-
-		if ui.IsReturnChoice(choice) {
-			return ui.ErrReturnToMenu
-		}
-		var actionErr error
-		switch strings.ToLower(choice) {
-		case "1":
-			actionErr = addSSHAuthorizedKeys(view, account)
-		case "2":
-			actionErr = replaceSSHAuthorizedKey(view, account)
-		case "3":
-			_, actionErr = openAuthorizedKeysWithPreferredEditor(view, account)
-		case "4":
-			actionErr = deleteSSHAuthorizedKeys(view, account)
-		default:
-			ui.InvalidChoice()
-			view.Pause()
-		}
-		// Cancelling a key operation belongs to this menu; only its own
-		// return choice should propagate navigation to the SSH menu.
-		if actionErr != nil && !errors.Is(actionErr, ui.ErrReturnToMenu) {
-			return actionErr
-		}
-		fmt.Println()
+		ui.RunAction(view, "公钥操作失败，已返回 SSH 公钥管理", func() error {
+			switch choice {
+			case "add":
+				return addSSHAuthorizedKeys(view, account)
+			case "replace":
+				return replaceSSHAuthorizedKey(view, account)
+			case "edit":
+				_, err := openAuthorizedKeysWithPreferredEditor(view, account)
+				return err
+			case "delete":
+				return deleteSSHAuthorizedKeys(view, account)
+			}
+			return nil
+		})
 	}
 }
 
+func authorizedKeysPath(account *system.Account) string {
+	return filepath.Join(account.Home, ".ssh", "authorized_keys")
+}
+
 func replaceSSHAuthorizedKey(view *ui.UI, account *system.Account) error {
-	authKeys := filepath.Join(account.Home, ".ssh", "authorized_keys")
+	authKeys := authorizedKeysPath(account)
 	if !system.FileExists(authKeys) {
 		log.Info("未发现 SSH authorized_keys，跳过")
 		return nil
@@ -226,10 +235,12 @@ func replaceSSHAuthorizedKey(view *ui.UI, account *system.Account) error {
 		return nil
 	}
 
+	ui.ClearScreen()
+	ui.MenuTitle("SSH 管理", "SSH 公钥", "替换公钥")
 	printAuthorizedKeyEntries(entries)
 selectKey:
 	for {
-		rawSelection, err := view.Ask("请输入要修改的编号（直接回车返回）：")
+		rawSelection, err := view.Ask("请选择要替换的公钥编号（回车或 0/q 返回）：")
 		if err != nil {
 			return err
 		}
@@ -250,7 +261,7 @@ selectKey:
 		fmt.Println()
 
 		for {
-			pubkey, err := view.Ask("请粘贴新的 SSH 公钥（直接回车返回）：")
+			pubkey, err := view.Ask("请粘贴新的 SSH 公钥（回车或 0/q 返回）：")
 			if err != nil {
 				return err
 			}
@@ -261,6 +272,12 @@ selectKey:
 				log.Warn(err)
 				continue
 			}
+			originalOptions, _, _, _ := authorizedKeyParts(entry.line)
+			newOptions, _, _, _ := authorizedKeyParts(pubkey)
+			keptOptions := originalOptions != "" && newOptions == ""
+			if keptOptions {
+				pubkey = originalOptions + " " + pubkey
+			}
 			if strings.TrimSpace(pubkey) == strings.TrimSpace(entry.line) {
 				log.Info("公钥未变化")
 				return nil
@@ -270,14 +287,19 @@ selectKey:
 				continue
 			}
 
-			fmt.Println()
-			fmt.Println("即将替换：")
-			fmt.Printf("%d) %s\n", entry.index, summarizeAuthorizedKey(entry.line))
-			fmt.Println("替换为：")
-			fmt.Println(summarizeAuthorizedKey(pubkey))
-			fmt.Println()
+			fields := []ui.CardField{
+				{Label: "编号", Value: strconv.Itoa(entry.index)},
+				{Label: "原公钥", Value: summarizeAuthorizedKey(entry.line)},
+				{Label: "新公钥", Value: summarizeAuthorizedKey(pubkey), Changed: true},
+			}
+			if keptOptions {
+				fields = append(fields, ui.CardField{Label: "登录选项", Value: "沿用原公钥设置"})
+			} else if originalOptions != newOptions {
+				fields = append(fields, ui.CardField{Label: "登录选项", Value: "采用新公钥附带的设置", Changed: true})
+			}
+			ui.PrintInfoCard("确认替换 SSH 公钥", fields...)
 
-			confirmed, err := view.Confirm("确认替换选中的 SSH 公钥？(y/N)：")
+			confirmed, err := view.Confirm("确认替换选中的 SSH 公钥？(y/N，0/q 返回粘贴)：")
 			if errors.Is(err, ui.ErrReturnToMenu) {
 				continue
 			}
@@ -309,8 +331,10 @@ selectKey:
 }
 
 func addSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
+	ui.ClearScreen()
+	ui.MenuTitle("SSH 管理", "SSH 公钥", "添加公钥")
 	for {
-		pubkey, err := view.Ask("请粘贴 SSH 公钥（直接回车结束）：")
+		pubkey, err := view.Ask("请粘贴 SSH 公钥（回车或 0/q 结束）：")
 		if err != nil {
 			return err
 		}
@@ -330,7 +354,7 @@ func addSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 }
 
 func deleteSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
-	authKeys := filepath.Join(account.Home, ".ssh", "authorized_keys")
+	authKeys := authorizedKeysPath(account)
 	if !system.FileExists(authKeys) {
 		log.Info("未发现 SSH authorized_keys，跳过")
 		return nil
@@ -348,9 +372,11 @@ func deleteSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 		return nil
 	}
 
+	ui.ClearScreen()
+	ui.MenuTitle("SSH 管理", "SSH 公钥", "删除公钥")
 	printAuthorizedKeyEntries(entries)
 	for {
-		rawSelection, err := view.Ask("请输入要删除的编号（多个用逗号或空格分隔，直接回车返回）：")
+		rawSelection, err := view.Ask("请选择要删除的公钥编号（可用逗号或空格多选，回车或 0/q 返回）：")
 		if err != nil {
 			return err
 		}
@@ -364,15 +390,21 @@ func deleteSSHAuthorizedKeys(view *ui.UI, account *system.Account) error {
 			continue
 		}
 
-		fmt.Println()
-		fmt.Println("即将删除以下 SSH 公钥：")
+		remaining := len(entries) - len(indexes)
+		fields := make([]ui.CardField, 0, len(indexes)+1)
 		for _, index := range indexes {
 			entry := entries[index-1]
-			fmt.Printf("%d) %s\n", entry.index, summarizeAuthorizedKey(entry.line))
+			fields = append(fields, ui.CardField{Label: "公钥 " + strconv.Itoa(index), Value: summarizeAuthorizedKey(entry.line)})
 		}
-		fmt.Println()
+		if remaining == 0 {
+			fields = append(fields, ui.CardField{Label: "删除后", Value: "此文件将没有可识别的 SSH 公钥", Changed: true})
+			ui.PrintWarningCard("即将删除此文件中的全部公钥", fields...)
+		} else {
+			fields = append(fields, ui.CardField{Label: "保留数量", Value: fmt.Sprintf("%d 把", remaining)})
+			ui.PrintInfoCard("确认删除 SSH 公钥", fields...)
+		}
 
-		confirmed, err := view.Confirm("确认删除选中的 SSH 公钥？(y/N)：")
+		confirmed, err := view.Confirm("确认删除选中的 SSH 公钥？(y/N，0/q 返回选择)：")
 		if errors.Is(err, ui.ErrReturnToMenu) {
 			continue
 		}
@@ -417,13 +449,13 @@ func checkAuthorizedKeysVersion(path, original string) error {
 		return err
 	}
 	if !exists || string(latest) != original {
-		return fmt.Errorf("SSH 公钥文件在选择期间已变化，未删除，请重新进入选择")
+		return fmt.Errorf("SSH 公钥文件在选择期间已变化，请重新选择")
 	}
 	return nil
 }
 
 func printAuthorizedKeys(account *system.Account) error {
-	authKeys := filepath.Join(account.Home, ".ssh", "authorized_keys")
+	authKeys := authorizedKeysPath(account)
 	if !system.FileExists(authKeys) {
 		log.Info("未发现 SSH authorized_keys")
 		return nil
@@ -471,8 +503,7 @@ func openAuthorizedKeysWithEditor(view *ui.UI, account *system.Account, editor s
 			log.Info("已取消编辑")
 			return ui.ErrReturnToMenu
 		}
-		log.Warn("打开 ", editor, " 失败：", err)
-		return nil
+		return fmt.Errorf("打开 %s 失败: %w", editor, err)
 	}
 
 	if err := secureAuthorizedKeysFile(account, authKeys); err != nil {
@@ -488,7 +519,7 @@ func openAuthorizedKeysWithEditor(view *ui.UI, account *system.Account, editor s
 		return nil
 	}
 	for _, line := range invalid {
-		log.Warn("无效 SSH 公钥：", truncateString(line, 80))
+		log.Warn("无效 SSH 公钥：", truncateString(safeKeyText(line), 80))
 	}
 	return nil
 }
@@ -719,45 +750,4 @@ func removeEmptyManagedAuthorizedKeyBlock(content string) string {
 		return storage.RemoveManagedBlock(content, sshAuthorizedKeysBegin, sshAuthorizedKeysEnd)
 	}
 	return content
-}
-
-func isAuthorizedKeyLine(trimmed string) bool {
-	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-		return false
-	}
-	fields := strings.Fields(trimmed)
-	for index, field := range fields {
-		if _, ok := authorizedKeyTypes[field]; ok && index+1 < len(fields) && fields[index+1] != "" {
-			return true
-		}
-	}
-	return false
-}
-
-func summarizeAuthorizedKey(line string) string {
-	fields := strings.Fields(line)
-	if len(fields) < 2 {
-		return truncateString(strings.TrimSpace(line), 90)
-	}
-
-	keyBody := fields[1]
-	if len(keyBody) > 24 {
-		keyBody = keyBody[:16] + "..." + keyBody[len(keyBody)-8:]
-	}
-
-	summary := fields[0] + " " + keyBody
-	if len(fields) > 2 {
-		summary += " " + strings.Join(fields[2:], " ")
-	}
-	return truncateString(summary, 120)
-}
-
-func truncateString(value string, max int) string {
-	if len(value) <= max {
-		return value
-	}
-	if max <= 3 {
-		return value[:max]
-	}
-	return value[:max-3] + "..."
 }

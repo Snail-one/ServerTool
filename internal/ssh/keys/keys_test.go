@@ -3,6 +3,7 @@ package keys
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -221,7 +222,8 @@ func TestReplaceSSHAuthorizedKeyRetriesThenReplaces(t *testing.T) {
 	oldKey := generateTestPublicKey(t)
 	newKey := generateTestPublicKey(t)
 	authKeys := filepath.Join(sshDir, "authorized_keys")
-	content := storage.FormatManagedBlock(sshAuthorizedKeysBegin, oldKey, sshAuthorizedKeysEnd)
+	const options = `restrict,command="printf \"hello world\""`
+	content := storage.FormatManagedBlock(sshAuthorizedKeysBegin, options+" "+oldKey, sshAuthorizedKeysEnd)
 	if err := os.WriteFile(authKeys, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -236,11 +238,33 @@ func TestReplaceSSHAuthorizedKeyRetriesThenReplaces(t *testing.T) {
 	if strings.Contains(got, oldKey) {
 		t.Fatalf("原公钥仍在文件中：\n%s", got)
 	}
-	if !strings.Contains(got, newKey) {
-		t.Fatalf("新公钥未写入：\n%s", got)
+	if !strings.Contains(got, options+" "+newKey) {
+		t.Fatalf("替换未保留原有登录选项：\n%s", got)
 	}
 	if !strings.Contains(got, sshAuthorizedKeysBegin) {
 		t.Fatalf("替换后丢失本工具管理标记：\n%s", got)
+	}
+}
+
+func TestPublicKeySummaryMatchesOpenSSHFingerprint(t *testing.T) {
+	key := generateTestPublicKey(t)
+	path := filepath.Join(t.TempDir(), "key.pub")
+	if err := os.WriteFile(path, []byte(key+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err := exec.Command("ssh-keygen", "-l", "-E", "sha256", "-f", path).CombinedOutput()
+	if err != nil {
+		t.Fatalf("ssh-keygen: %v\n%s", err, output)
+	}
+	fields := strings.Fields(string(output))
+	if len(fields) < 2 || !strings.HasPrefix(fields[1], "SHA256:") {
+		t.Fatalf("unexpected ssh-keygen output: %s", output)
+	}
+	summary := summarizeAuthorizedKey(`restrict,command="printf \"hello world\"" ` + key)
+	for _, text := range []string{"ssh-ed25519", fields[1], "含登录选项", "test@example"} {
+		if !strings.Contains(summary, text) {
+			t.Fatalf("summary %q does not contain %q", summary, text)
+		}
 	}
 }
 

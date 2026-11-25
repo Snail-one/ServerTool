@@ -5,11 +5,49 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"snail_tool/internal/system"
 	"snail_tool/internal/ui"
 )
+
+func TestDeletingLastKeyShowsImpactAndWaitsBeforeRefreshing(t *testing.T) {
+	account := &system.Account{Name: "test-user", Home: t.TempDir()}
+	path := authorizedKeysPath(account)
+	if err := os.Mkdir(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(generateTestPublicKey(t)+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	output, err := os.CreateTemp(t.TempDir(), "key-menu")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer output.Close()
+	view := newUIWithInput(t, "4\n1\ny\n\nq\nparent-next\n")
+	previous := os.Stdout
+	os.Stdout = output
+	err = configureSSHAuthorizedKeys(view, account)
+	os.Stdout = previous
+	if !errors.Is(err, ui.ErrReturnToMenu) {
+		t.Fatalf("expected menu return: %v", err)
+	}
+	if next, err := view.Ask("父菜单"); err != nil || next != "parent-next" {
+		t.Fatalf("unexpected navigation: next=%q err=%v", next, err)
+	}
+	menu := readTestFile(t, output.Name())
+	for _, text := range []string{"test-user", path, "即将删除此文件中的全部公钥", "SSH 公钥删除完成", "按回车返回菜单", "0 把"} {
+		if !strings.Contains(menu, text) {
+			t.Errorf("key menu is missing %q", text)
+		}
+	}
+	if IsConfigured(account) {
+		t.Fatal("the selected key is still present")
+	}
+}
 
 func TestKeyOperationCancellationStaysInKeyMenu(t *testing.T) {
 	oldKey, newKey := generateTestPublicKey(t), generateTestPublicKey(t)
