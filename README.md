@@ -134,7 +134,7 @@ go test ./...
 防火墙集成测试使用临时网络命名空间、虚拟网卡和实际 nftables 规则检查 Docker 网桥的转发方向、拒绝优先级与连接标记。Linux 环境安装 `nftables`、`iproute2`、`iputils-ping` 和 `procps` 后，可运行下列命令。也可省略 `-exec 'sudo -n'`，由支持非特权用户和网络命名空间的系统运行。
 
 ```bash
-go test -tags=integration -exec 'sudo -n' ./internal/firewall -run '^TestNftablesForwardingIntegration$' -count=1
+go test -tags=integration -exec 'sudo -n' ./internal/firewall/forward -run '^TestNftablesForwardingIntegration$' -count=1
 ```
 
 ### 自动发布
@@ -201,7 +201,7 @@ docs/                     使用说明与开发规范
 
 独立子菜单在父菜单目录下有对应的 Go 包。参数输入、确认和列表详情由所属页面处理。访问与转发规则共用草稿编辑器及防火墙配置存储，清理菜单调用各模块的清理入口。测试和模板位于其所验证的实现旁。
 
-`internal/firewall/` 根包负责菜单编排、规则解析和生成、功能之间的配置衔接。这里的测试覆盖菜单往返、旧配置兼容、保存失败和规则加载。配置模板与文件存储实现在 `internal/firewall/configuration/`。
+`internal/firewall/` 根包提供防火墙菜单和供其他模块使用的入口。主菜单和服务组装位于 `internal/firewall/internal/manager/`。配置模板和文件存储位于 `internal/firewall/configuration/`，规则、转发和常用设置的实现及测试分别位于对应子包。
 
 ### 开发计划
 

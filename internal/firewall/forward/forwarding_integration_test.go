@@ -1,6 +1,6 @@
 //go:build linux && integration
 
-package firewall
+package forward_test
 
 import (
 	"context"

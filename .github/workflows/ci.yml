@@ -52,4 +52,4 @@ jobs:
           sudo apt-get install -y nftables iproute2 iputils-ping procps
 
       - name: Test nftables in isolated network namespaces
-        run: go test -tags=integration -exec 'sudo -n' ./internal/firewall -run '^TestNftablesForwardingIntegration$' -count=1
+        run: go test -tags=integration -exec 'sudo -n' ./internal/firewall/forward -run '^TestNftablesForwardingIntegration$' -count=1

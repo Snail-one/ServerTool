@@ -1,4 +1,4 @@
-package firewall
+package configuration_test
 
 import (
 	"errors"
@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"snail_tool/internal/firewall/configuration"
+	"snail_tool/internal/firewall/internal/testenv"
 	"snail_tool/internal/firewall/loadedrules"
 	"snail_tool/internal/storage"
 	"snail_tool/internal/ui"
@@ -73,23 +74,23 @@ func TestEquivalentRulesIgnoresCountersHandlesAndIndependentTables(t *testing.T)
 func TestConfigSyncParsesOnlyInAnIsolatedNetworkNamespace(t *testing.T) {
 	for _, scenario := range []string{"synced", "changed rules", "missing table", "namespace denied", "concurrent edit", "no unshare"} {
 		t.Run(scenario, func(t *testing.T) {
-			setupTest(t)
+			env := testenv.New(t)
 			content := []byte("# configuration with include and symbolic definitions\n")
-			if err := os.WriteFile(configPath, content, 0644); err != nil {
+			if err := os.WriteFile(env.ConfigPath, content, 0644); err != nil {
 				t.Fatal(err)
 			}
-			commandExists = func(name string) bool { return name == "nft" || name == "unshare" && scenario != "no unshare" }
+			env.CommandExists = func(name string) bool { return name == "nft" || name == "unshare" && scenario != "no unshare" }
 			calls := 0
-			commandOutput = func(name string, args ...string) (string, error) {
+			env.CommandOutput = func(name string, args ...string) (string, error) {
 				calls++
-				if name != "unshare" || !reflect.DeepEqual(args, []string{"--net", "--", "sh", "-c", configuration.RenderConfigScript, "snail-nft-compare", configPath}) {
+				if name != "unshare" || !reflect.DeepEqual(args, []string{"--net", "--", "sh", "-c", configuration.RenderConfigScript, "snail-nft-compare", env.ConfigPath}) {
 					t.Fatalf("comparison must never load a config in the host namespace: %s %v", name, args)
 				}
 				if scenario == "namespace denied" {
 					return "unshare failed: Operation not permitted", errors.New("exit status 1")
 				}
 				if scenario == "concurrent edit" {
-					if err := os.WriteFile(configPath, []byte("# modified\n"), 0644); err != nil {
+					if err := os.WriteFile(env.ConfigPath, []byte("# modified\n"), 0644); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -101,7 +102,7 @@ func TestConfigSyncParsesOnlyInAnIsolatedNetworkNamespace(t *testing.T) {
 			} else if scenario == "missing table" {
 				live = loadedrules.Parse(`{"nftables":[]}`)
 			}
-			field := configStore().SyncField(content, nil, true, live.JSON, live.Err, commandExists)
+			field := env.Store().SyncField(content, nil, true, live.JSON, live.Err, env.CommandExists)
 			want := "无法比较"
 			if scenario == "synced" {
 				want = "已同步"
@@ -138,18 +139,18 @@ func TestReloadSkipsSyncedRulesAndConfirmsChangesOrUnknownState(t *testing.T) {
 		{"file changed", "", "", 0, true},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
-			setupTest(t)
+			env := testenv.New(t)
 			const original = "# saved configuration; whitespace and comments do not change rules\n"
-			if err := os.WriteFile(configPath, []byte(original), 0644); err != nil {
+			if err := os.WriteFile(env.ConfigPath, []byte(original), 0644); err != nil {
 				t.Fatal(err)
 			}
-			commandExists = func(name string) bool {
+			env.CommandExists = func(name string) bool {
 				return name == "nft" || name == "unshare" && scenario.name != "no unshare"
 			}
 			loads, checks := 0, 0
-			commandOutput = func(name string, args ...string) (string, error) {
+			env.CommandOutput = func(name string, args ...string) (string, error) {
 				if name == "unshare" {
-					want := []string{"--net", "--", "sh", "-c", configuration.RenderConfigScript, "snail-nft-compare", configPath}
+					want := []string{"--net", "--", "sh", "-c", configuration.RenderConfigScript, "snail-nft-compare", env.ConfigPath}
 					if !reflect.DeepEqual(args, want) {
 						t.Fatalf("comparison must stay isolated: %v", args)
 					}
@@ -157,7 +158,7 @@ func TestReloadSkipsSyncedRulesAndConfirmsChangesOrUnknownState(t *testing.T) {
 						return "Operation not permitted", errors.New("unshare denied")
 					}
 					if scenario.name == "file changed" {
-						if err := os.WriteFile(configPath, []byte("# external edit\n"), 0644); err != nil {
+						if err := os.WriteFile(env.ConfigPath, []byte("# external edit\n"), 0644); err != nil {
 							t.Fatal(err)
 						}
 					}
@@ -167,7 +168,7 @@ func TestReloadSkipsSyncedRulesAndConfirmsChangesOrUnknownState(t *testing.T) {
 					t.Fatalf("unexpected command: %s %v", name, args)
 				}
 				switch {
-				case reflect.DeepEqual(args, []string{"-c", "-f", configPath}):
+				case reflect.DeepEqual(args, []string{"-c", "-f", env.ConfigPath}):
 					checks++
 					return "", nil
 				case reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}):
@@ -178,7 +179,7 @@ func TestReloadSkipsSyncedRulesAndConfirmsChangesOrUnknownState(t *testing.T) {
 						return strings.Replace(loadedRules, "443,22,80", "443,2222,80", 1), nil
 					}
 					return loadedRules, nil
-				case reflect.DeepEqual(args, []string{"-f", configPath}):
+				case reflect.DeepEqual(args, []string{"-f", env.ConfigPath}):
 					loads++
 					return "", nil
 				default:
@@ -187,7 +188,7 @@ func TestReloadSkipsSyncedRulesAndConfirmsChangesOrUnknownState(t *testing.T) {
 				}
 			}
 			var loadErr error
-			output := capturePortOutput(t, func() { loadErr = loadConfig(inputUI(t, scenario.input)) })
+			output := testenv.CaptureOutput(t, func() { loadErr = env.LoadConfig(testenv.Input(t, scenario.input)) })
 			cancelled := scenario.input == "n\n"
 			if cancelled && !errors.Is(loadErr, ui.ErrReturnToMenu) || !cancelled && (loadErr != nil) != scenario.wantErr || loads != scenario.loads || checks != 1 {
 				t.Fatalf("err=%v checks=%d loads=%d, wantErr=%v wantLoads=%d", loadErr, checks, loads, scenario.wantErr, scenario.loads)
@@ -205,41 +206,41 @@ func TestReloadSkipsSyncedRulesAndConfirmsChangesOrUnknownState(t *testing.T) {
 func TestEditorWithoutContentChangesDoesNotBackUpOrLoad(t *testing.T) {
 	for _, exists := range []bool{true, false} {
 		t.Run(map[bool]string{true: "existing unchanged", false: "new file not saved"}[exists], func(t *testing.T) {
-			setupTest(t)
+			env := testenv.New(t)
 			if exists {
-				if err := os.WriteFile(configPath, []byte("table inet snail {}\n"), 0644); err != nil {
+				if err := os.WriteFile(env.ConfigPath, []byte("table inet snail {}\n"), 0644); err != nil {
 					t.Fatal(err)
 				}
 			}
 			var existingBackups []string
 			if exists {
 				for i := 0; i < storage.MaxBackupSnapshots; i++ {
-					if _, err := configStore().Backup(); err != nil {
+					if _, err := env.Store().Backup(); err != nil {
 						t.Fatal(err)
 					}
 				}
 				var err error
-				existingBackups, err = filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))
+				existingBackups, err = filepath.Glob(filepath.Join(env.BackupDir(), "nftables.conf.bak.*"))
 				if err != nil || len(existingBackups) != storage.MaxBackupSnapshots {
 					t.Fatalf("failed to seed backup history: %v %v", existingBackups, err)
 				}
 			}
-			commandExists = func(name string) bool { return name == "vim" }
-			commandRun = func(name string, args ...string) error {
+			env.CommandExists = func(name string) bool { return name == "vim" }
+			env.CommandRun = func(name string, args ...string) error {
 				if name != "vim" {
 					t.Fatalf("unexpected editor: %s", name)
 				}
-				draft := firewallEditPath(t, args)
+				draft := env.EditPath(t, args)
 				return os.WriteFile(draft, []byte(storage.ReadFileString(draft)), 0600)
 			}
-			output := capturePortOutput(t, func() {
+			output := testenv.CaptureOutput(t, func() {
 				for i := 0; i < storage.MaxBackupSnapshots; i++ {
-					if err := editConfig(); err != nil {
+					if err := env.EditConfig(); err != nil {
 						t.Fatal(err)
 					}
 				}
 			})
-			backups, err := filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))
+			backups, err := filepath.Glob(filepath.Join(env.BackupDir(), "nftables.conf.bak.*"))
 			if err != nil || !reflect.DeepEqual(backups, existingBackups) {
 				t.Fatalf("unchanged edit changed backup history: %v %v", backups, err)
 			}

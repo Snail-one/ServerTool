@@ -1,4 +1,4 @@
-package firewall
+package rules_test
 
 import (
 	"errors"
@@ -12,6 +12,7 @@ import (
 	"snail_tool/internal/firewall/configuration"
 	"snail_tool/internal/firewall/configuration/generate"
 	rulespkg "snail_tool/internal/firewall/internal/rules"
+	"snail_tool/internal/firewall/internal/testenv"
 	"snail_tool/internal/firewall/settings/ping"
 	"snail_tool/internal/firewall/settings/sshaccess"
 	"snail_tool/internal/storage"
@@ -80,9 +81,10 @@ func TestPolicySourceOperations(t *testing.T) {
 }
 
 func TestPolicyEditPreservesOtherConfigurationAndSSHLinkage(t *testing.T) {
+	env := testenv.New(t)
 	content, _ := generate.Build([]int{2222}, true, false)
 	content, _ = ping.Replace(content, true)
-	content, _ = withPacketCounters(content, false)
+	content, _ = testenv.WithPacketCounters(content, false)
 	rules := []rulespkg.Rule{{ID: "aaaaaaaa", Kind: "source_port", Source: "2001:db8::/32", Ports: "8443", Protocol: "tcp", Family: "ipv6"}}
 	content, err := rulespkg.ReplaceManagedRules(content, rules)
 	if err != nil {
@@ -92,7 +94,7 @@ func TestPolicyEditPreservesOtherConfigurationAndSSHLinkage(t *testing.T) {
 	multiline := "set snail_private_ipv6_udp_ports {\n        type inet_service\n        flags interval\n        elements = { 2222, 51820 }\n    } # VPN"
 	content = strings.Replace(content, marker, multiline, 1)
 	content += "\n# define snail_private_ipv6 = { ::/0 }\ntable inet custom {}\n"
-	if err := accessPolicy().ValidateConfig(content); err != nil {
+	if err := env.AccessPolicy().ValidateConfig(content); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := rulespkg.WithPolicyValue(content, access.Lists[7], "2222, 51820, 6000-6010")
@@ -117,6 +119,7 @@ func TestPolicyEditPreservesOtherConfigurationAndSSHLinkage(t *testing.T) {
 }
 
 func TestPolicyEditorRejectsUnsupportedDefinitions(t *testing.T) {
+	env := testenv.New(t)
 	base, _ := generate.Build([]int{2222}, false, false)
 	for _, bad := range []string{
 		strings.Replace(base, "set snail_public_ipv4_tcp_ports {\n        type inet_service\n        flags interval\n        elements = { 2222 }", "set snail_public_ipv4_tcp_ports {\n        type inet_service\n        flags interval\n        elements = { $other }", 1),
@@ -126,25 +129,25 @@ func TestPolicyEditorRejectsUnsupportedDefinitions(t *testing.T) {
 		base + "\ndefine snail_private_ipv6 = { ::/0 }\n",
 		strings.Replace(base, "hook input", "hook output", 1),
 	} {
-		if err := accessPolicy().ValidateConfig(bad); err == nil {
+		if err := env.AccessPolicy().ValidateConfig(bad); err == nil {
 			t.Fatal("unsupported or ambiguous configuration accepted")
 		}
 	}
 }
 
 func TestPolicyManagerBatchesDraftAndSavesOnce(t *testing.T) {
-	setupTest(t)
-	version := ruleTestConfig(t, nil)
-	calls := acceptRuleCommands(t)
+	env := testenv.New(t)
+	version := env.RuleConfig(t, nil)
+	calls := env.AcceptRuleCommands(t)
 	// Add to both public/private policies, subtract only from private IPv4 TCP,
 	// then edit both address lists and save the complete draft once.
 	input := "1\n3\n3\n1\n443,8000-8100\n" +
 		"3\n1\n1\n2\n8050-8060\nl\n1\n3\n10.20.1.1/16\n" +
 		"L\n2\n5\n2\n2001:db8:1::123/64\ns\n"
-	if err := runAccessRuleManager(inputUI(t, input+"\nq\n")); !errors.Is(err, ui.ErrReturnToMenu) {
+	if err := env.AccessPolicy().Run(testenv.Input(t, input+"\nq\n")); !errors.Is(err, ui.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
-	updated := storage.ReadFileString(configPath)
+	updated := storage.ReadFileString(env.ConfigPath)
 	for i, list := range access.Lists {
 		value, err := rulespkg.ReadPolicyValue(updated, list)
 		want := ""
@@ -165,7 +168,7 @@ func TestPolicyManagerBatchesDraftAndSavesOnce(t *testing.T) {
 	if !reflect.DeepEqual(*calls, []string{"check", "load"}) {
 		t.Fatalf("draft must validate and load exactly once: %v", *calls)
 	}
-	backups, _ := filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))
+	backups, _ := filepath.Glob(filepath.Join(env.BackupDir(), "nftables.conf.bak.*"))
 	if len(backups) != 1 || storage.ReadFileString(backups[0]) != string(version.Content) {
 		t.Fatal("original file not backed up exactly once")
 	}
@@ -182,12 +185,12 @@ func TestPolicyManagerCancellationAndRestoreNeverWrite(t *testing.T) {
 		"3\n1\n1\n1\n8443\n", // EOF also discards the draft.
 	} {
 		t.Run(input, func(t *testing.T) {
-			setupTest(t)
-			version := ruleTestConfig(t, nil)
-			if err := runAccessRuleManager(inputUI(t, input)); err == nil {
+			env := testenv.New(t)
+			version := env.RuleConfig(t, nil)
+			if err := env.AccessPolicy().Run(testenv.Input(t, input)); err == nil {
 				t.Fatal("cancelled/unfinished draft must not report saved")
 			}
-			if storage.ReadFileString(configPath) != string(version.Content) {
+			if storage.ReadFileString(env.ConfigPath) != string(version.Content) {
 				t.Fatal("discarded draft changed the file")
 			}
 		})
@@ -195,6 +198,7 @@ func TestPolicyManagerCancellationAndRestoreNeverWrite(t *testing.T) {
 }
 
 func TestPolicyBatchSelectorsTargetOnlyChosenLists(t *testing.T) {
+	env := testenv.New(t)
 	for _, tc := range []struct {
 		input string
 		want  []int
@@ -209,7 +213,7 @@ func TestPolicyBatchSelectorsTargetOnlyChosenLists(t *testing.T) {
 		{"1\n1\nq\n2\n\n", []int{2, 3}},
 		{"1\n1\n0\n2\n\n", []int{2, 3}},
 	} {
-		got, err := accessPolicy().PromptPolicyPortScope(inputUI(t, tc.input[2:]), tc.input[:1], nil)
+		got, err := env.AccessPolicy().PromptPolicyPortScope(testenv.Input(t, tc.input[2:]), tc.input[:1], nil)
 		if err != nil || !reflect.DeepEqual(got, tc.want) {
 			t.Fatalf("%q: got=%v want=%v err=%v", tc.input, got, tc.want, err)
 		}
@@ -217,14 +221,14 @@ func TestPolicyBatchSelectorsTargetOnlyChosenLists(t *testing.T) {
 }
 
 func TestPolicyEditorRetriesInvalidInputsWithoutChangingOtherLists(t *testing.T) {
-	setupTest(t)
-	version := ruleTestConfig(t, nil)
-	acceptRuleCommands(t)
+	env := testenv.New(t)
+	version := env.RuleConfig(t, nil)
+	env.AcceptRuleCommands(t)
 	input := "3\n1\n1\n1\n65536\n443,,80\n8443\nl\n1\n3\n::1\n10.42.1.1/16\ns\n"
-	if err := runAccessRuleManager(inputUI(t, input+"\nq\n")); !errors.Is(err, ui.ErrReturnToMenu) {
+	if err := env.AccessPolicy().Run(testenv.Input(t, input+"\nq\n")); !errors.Is(err, ui.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
-	updated := storage.ReadFileString(configPath)
+	updated := storage.ReadFileString(env.ConfigPath)
 	want, err := rulespkg.WithPolicyValue(string(version.Content), access.Lists[4], "2222, 8443")
 	if err != nil {
 		t.Fatal(err)
@@ -238,10 +242,10 @@ func TestPolicyEditorRetriesInvalidInputsWithoutChangingOtherLists(t *testing.T)
 func TestPolicyManagerPreservesDraftOrSavedConfigOnFailure(t *testing.T) {
 	for _, failure := range []string{"validation", "conflict", "load"} {
 		t.Run(failure, func(t *testing.T) {
-			setupTest(t)
-			version := ruleTestConfig(t, nil)
+			env := testenv.New(t)
+			version := env.RuleConfig(t, nil)
 			loads := 0
-			commandOutput = func(name string, args ...string) (string, error) {
+			env.CommandOutput = func(name string, args ...string) (string, error) {
 				if name != "nft" {
 					t.Fatalf("unexpected command: %s", name)
 				}
@@ -250,28 +254,28 @@ func TestPolicyManagerPreservesDraftOrSavedConfigOnFailure(t *testing.T) {
 						return "invalid", errors.New("syntax error")
 					}
 					if failure == "conflict" {
-						return "", os.WriteFile(configPath, []byte("# concurrent change\n"), 0644)
+						return "", os.WriteFile(env.ConfigPath, []byte("# concurrent change\n"), 0644)
 					}
 					return "", nil
 				}
-				if reflect.DeepEqual(args, []string{"-f", configPath}) {
+				if reflect.DeepEqual(args, []string{"-f", env.ConfigPath}) {
 					loads++
 					return "failed", errors.New("load failed")
 				}
 				t.Fatalf("unexpected args: %v", args)
 				return "", nil
 			}
-			view := inputUI(t, "3\n1\n1\n1\n8443\ns\nq\ny\n")
+			view := testenv.Input(t, "3\n1\n1\n1\n8443\ns\nq\ny\n")
 			var err error
-			output := capturePortOutput(t, func() {
-				err = runAccessRuleManager(view)
+			output := testenv.CaptureOutput(t, func() {
+				err = env.AccessPolicy().Run(view)
 			})
 			want := string(version.Content)
 			if failure == "conflict" {
 				want = "# concurrent change\n"
 			}
 			if failure == "load" {
-				if loads != 1 || err == nil || !strings.Contains(err.Error(), "已保存") || !strings.Contains(storage.ReadFileString(configPath), "8443") {
+				if loads != 1 || err == nil || !strings.Contains(err.Error(), "已保存") || !strings.Contains(storage.ReadFileString(env.ConfigPath), "8443") {
 					t.Fatalf("load failure must retain saved file and explain partial result: %v", err)
 				}
 			} else {
@@ -282,7 +286,7 @@ func TestPolicyManagerPreservesDraftOrSavedConfigOnFailure(t *testing.T) {
 				if strings.Count(output, "内网 IPv4 TCP：2222, 8443") != 2 {
 					t.Fatalf("draft changes must appear before and after failed save:\n%s", output)
 				}
-				if loads != 0 || storage.ReadFileString(configPath) != want {
+				if loads != 0 || storage.ReadFileString(env.ConfigPath) != want {
 					t.Fatal("validation/conflict failure overwrote config or loaded rules")
 				}
 			}
@@ -291,11 +295,11 @@ func TestPolicyManagerPreservesDraftOrSavedConfigOnFailure(t *testing.T) {
 }
 
 func TestPolicyManagerCanRetryRetainedDraft(t *testing.T) {
-	setupTest(t)
-	version := ruleTestConfig(t, nil)
-	calls := acceptRuleCommands(t)
-	query := commandOutput
-	commandOutput = func(name string, args ...string) (string, error) {
+	env := testenv.New(t)
+	version := env.RuleConfig(t, nil)
+	calls := env.AcceptRuleCommands(t)
+	query := env.CommandOutput
+	env.CommandOutput = func(name string, args ...string) (string, error) {
 		output, err := query(name, args...)
 		if reflect.DeepEqual(*calls, []string{"check"}) {
 			return "invalid", errors.New("temporary validation failure")
@@ -303,43 +307,15 @@ func TestPolicyManagerCanRetryRetainedDraft(t *testing.T) {
 		return output, err
 	}
 
-	view := inputUI(t, "3\n1\n1\n1\n8443\ns\ns\n\nq\n")
-	if err := runAccessRuleManager(view); !errors.Is(err, ui.ErrReturnToMenu) {
+	view := testenv.Input(t, "3\n1\n1\n1\n8443\ns\ns\n\nq\n")
+	if err := env.AccessPolicy().Run(view); !errors.Is(err, ui.ErrReturnToMenu) {
 		t.Fatalf("retry did not save and return to the editor: %v", err)
 	}
 	want, err := rulespkg.WithPolicyValue(string(version.Content), access.Lists[4], "2222, 8443")
-	if err != nil || storage.ReadFileString(configPath) != want {
+	if err != nil || storage.ReadFileString(env.ConfigPath) != want {
 		t.Fatalf("retry did not save the retained draft: %v", err)
 	}
 	if !reflect.DeepEqual(*calls, []string{"check", "check", "load"}) {
 		t.Fatalf("expected two validations and one load, got %v", *calls)
-	}
-}
-
-func TestInitialGenerationSupportsAdvancedPolicyDraft(t *testing.T) {
-	setupTest(t)
-	loads := 0
-	commandOutput = func(name string, args ...string) (string, error) {
-		if isSSHDTest(name, args) {
-			return sshdTestConfig(2222), nil
-		}
-		if name == "nft" && len(args) == 3 && args[0] == "-c" {
-			return "", nil
-		}
-		if name == "nft" && reflect.DeepEqual(args, []string{"-f", configPath}) {
-			loads++
-			return "", nil
-		}
-		t.Fatalf("unexpected command: %s %v", name, args)
-		return "", nil
-	}
-	// First generation -> custom private IPv6 UDP -> return to final confirmation -> save.
-	if err := configure(inputUI(t, "\n\nn\nn\n4\n3\n2\n2\n1\n51820\nl\n2\n3\nfd12::/48\ns\ny\n1\n")); err != nil {
-		t.Fatal(err)
-	}
-	content := storage.ReadFileString(configPath)
-	value, err := rulespkg.ReadPolicyValue(content, access.Lists[7])
-	if err != nil || value != "2222, 51820" || loads != 1 || !strings.Contains(content, "define snail_private_ipv6 = { fd12::/48 }") {
-		t.Fatalf("custom generation failed: ports=%q loads=%d err=%v", value, loads, err)
 	}
 }

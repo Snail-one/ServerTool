@@ -14,7 +14,7 @@ import (
 
 func portFixture(t *testing.T) string {
 	t.Helper()
-	data, err := os.ReadFile("testdata/ports_ruleset.json")
+	data, err := os.ReadFile("../internal/testenv/testdata/ports_ruleset.json")
 	if err != nil {
 		t.Fatal(err)
 	}

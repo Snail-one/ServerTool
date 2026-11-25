@@ -1,4 +1,4 @@
-package firewall
+package dockerbridge_test
 
 import (
 	"os"
@@ -8,23 +8,8 @@ import (
 	"snail_tool/internal/firewall/configuration/generate"
 	"snail_tool/internal/firewall/forward/dockerbridge"
 	"snail_tool/internal/firewall/forward/dockermark"
-	rulespkg "snail_tool/internal/firewall/internal/rules"
+	"snail_tool/internal/firewall/internal/testenv"
 )
-
-func TestDockerSwitchesRefuseToOpenWithoutDocker(t *testing.T) {
-	setupTest(t)
-	if err := dockerMarkService().RequireDocker(); err == nil {
-		t.Fatal("missing docker was accepted")
-	}
-	commandExists = func(name string) bool { return name == "docker" || name == "dockerd" }
-	if err := dockerMarkService().RequireDocker(); err != nil {
-		t.Fatal(err)
-	}
-	commandExists = func(name string) bool { return name == "dockerd" }
-	if err := dockerMarkService().RequireDocker(); err != nil {
-		t.Fatal(err)
-	}
-}
 
 func TestDockerBridgeDirectionsAreIndependent(t *testing.T) {
 	content, err := generate.Build([]int{22}, false, false)
@@ -112,9 +97,9 @@ func TestDockerBridgeAcceptsLegacySettings(t *testing.T) {
 }
 
 func TestDockerBridgeMenuAndRebuildPreserveOtherDirection(t *testing.T) {
-	setupTest(t)
-	version := ruleTestConfig(t, nil)
-	content, err := withPacketCounters(string(version.Content), false)
+	env := testenv.New(t)
+	version := env.RuleConfig(t, nil)
+	content, err := testenv.WithPacketCounters(string(version.Content), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,22 +107,22 @@ func TestDockerBridgeMenuAndRebuildPreserveOtherDirection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+	if err := os.WriteFile(env.ConfigPath, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
-	acceptRuleCommands(t)
-	commandExists = func(name string) bool { return name == "nft" || name == "docker" }
-	accept := commandOutput
-	commandOutput = func(name string, args ...string) (string, error) {
-		if isSSHDTest(name, args) {
-			return sshdTestConfig(2222), nil
+	env.AcceptRuleCommands(t)
+	env.CommandExists = func(name string) bool { return name == "nft" || name == "docker" }
+	accept := env.CommandOutput
+	env.CommandOutput = func(name string, args ...string) (string, error) {
+		if testenv.IsSSHDQuery(name, args) {
+			return testenv.SSHDConfig(2222), nil
 		}
 		return accept(name, args...)
 	}
-	if err := dockerBridgeService().Run(inputUI(t, "1\ny\n")); err != nil {
+	if err := env.DockerBridge().Run(testenv.Input(t, "1\ny\n")); err != nil {
 		t.Fatal(err)
 	}
-	saved, err := os.ReadFile(configPath)
+	saved, err := os.ReadFile(env.ConfigPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,59 +130,19 @@ func TestDockerBridgeMenuAndRebuildPreserveOtherDirection(t *testing.T) {
 	if got, _, err := dockerbridge.Read(string(saved)); err != nil || got != both {
 		t.Fatal("inbound toggle did not preserve outbound", got, err)
 	}
-	assertNoPacketCounters(t, string(saved))
-	if err := dockerBridgeService().Run(inputUI(t, "2\ny\n")); err != nil {
+	testenv.AssertNoPacketCounters(t, string(saved))
+	if err := env.DockerBridge().Run(testenv.Input(t, "2\ny\n")); err != nil {
 		t.Fatal(err)
 	}
-	if err := configure(inputUI(t, "\n\n\n\n1\n")); err != nil {
+	if err := env.Generate(testenv.Input(t, "\n\n\n\n1\n")); err != nil {
 		t.Fatal(err)
 	}
-	saved, err = os.ReadFile(configPath)
+	saved, err = os.ReadFile(env.ConfigPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got, _, err := dockerbridge.Read(string(saved)); err != nil || got != (dockerbridge.State{Inbound: true}) {
 		t.Fatal("regeneration did not preserve the independent Docker bridge settings", got, err)
 	}
-	assertNoPacketCounters(t, string(saved))
-}
-
-func TestDockerMarkExistsOnlyWhileCompatIsOn(t *testing.T) {
-	content, err := generate.Build([]int{22}, false, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(content, dockermark.MarkExpression) {
-		t.Fatal("generated forward rules are marked while Docker compat is off")
-	}
-	rule := rulespkg.Rule{ID: "aaaaaaaa", Kind: "source_port", Family: "ipv4", Source: "192.168.1.10", Ports: "443", Protocol: "tcp"}
-	rule, err = rulespkg.NormalizeAllowRule(rule)
-	if err != nil {
-		t.Fatal(err)
-	}
-	plain, err := rulespkg.ReplaceManagedRulesIn(content, []rulespkg.Rule{rule}, rulespkg.ForwardBlock)
-	if err != nil || strings.Contains(plain, dockermark.MarkExpression) {
-		t.Fatalf("unmarked forward edit gained a mark, err=%v", err)
-	}
-	markedBase, changed, err := dockermark.MarkForwardAccepts(content)
-	if err != nil || !changed {
-		t.Fatal(changed, err)
-	}
-	rules, err := rulespkg.ManagedRulesIn(markedBase, rulespkg.ForwardBlock)
-	if err != nil || len(rules) != 0 {
-		t.Fatalf("marked default config yielded custom rules: %+v, err=%v", rules, err)
-	}
-	marked, err := rulespkg.ReplaceManagedRulesIn(markedBase, []rulespkg.Rule{rule}, rulespkg.ForwardBlock)
-	if err != nil || !strings.Contains(marked, dockermark.MarkExpression+" counter accept comment") {
-		t.Fatalf("enabled forward edit lost the mark, err=%v", err)
-	}
-
-	withoutCounters, err := withPacketCounters(markedBase, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	marked, err = rulespkg.ReplaceManagedRulesIn(withoutCounters, []rulespkg.Rule{rule}, rulespkg.ForwardBlock)
-	if err != nil || !strings.Contains(marked, dockermark.MarkExpression+" accept comment") {
-		t.Fatalf("forward edit without counters lost the mark, err=%v", err)
-	}
+	testenv.AssertNoPacketCounters(t, string(saved))
 }

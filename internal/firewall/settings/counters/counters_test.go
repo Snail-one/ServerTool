@@ -1,4 +1,4 @@
-package firewall
+package counters_test
 
 import (
 	"errors"
@@ -11,7 +11,7 @@ import (
 	"snail_tool/internal/firewall/configuration"
 	"snail_tool/internal/firewall/configuration/generate"
 	rulespkg "snail_tool/internal/firewall/internal/rules"
-	"snail_tool/internal/firewall/settings"
+	"snail_tool/internal/firewall/internal/testenv"
 	"snail_tool/internal/firewall/settings/counters"
 	"snail_tool/internal/firewall/settings/ping"
 	"snail_tool/internal/firewall/settings/sshaccess"
@@ -19,26 +19,9 @@ import (
 	"snail_tool/internal/ui"
 )
 
-func withPacketCounters(content string, enabled bool) (string, error) {
-	return counters.Replace(content, enabled, settings.ValidateCounterConfig)
-}
-
-func assertNoPacketCounters(t *testing.T, content string) {
-	t.Helper()
-	tokens, err := configuration.Tokens(content)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, token := range tokens {
-		if token.Text == "counter" {
-			t.Fatal("statistics are disabled but an active counter remains")
-		}
-	}
-}
-
 func TestPacketCountersOnlyChangeStatisticsInManagedTable(t *testing.T) {
 	base, _ := generate.Build([]int{2222}, true, false)
-	rules := orderTestRules()
+	rules := testenv.OrderRules()
 	base, _ = rulespkg.ReplaceManagedRules(base, rules)
 	// Include manual rules, initialized counters, multiline sets and strings
 	// containing keywords. Other tables and text outside the block stay exact.
@@ -49,7 +32,7 @@ func TestPacketCountersOnlyChangeStatisticsInManagedTable(t *testing.T) {
 	base = strings.Replace(base, configuration.ManagedEnd, other+configuration.ManagedEnd, 1)
 	prefix, suffix := "# counter accept: keep this comment\n", "\n# keep tail\n"
 	base = prefix + base + suffix
-	off, err := withPacketCounters(base, false)
+	off, err := testenv.WithPacketCounters(base, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,11 +45,11 @@ func TestPacketCountersOnlyChangeStatisticsInManagedTable(t *testing.T) {
 		t.Fatal("turning counters off changed a match, verdict, or policy")
 	}
 	owned := strings.Replace(off, other, "", 1)
-	assertNoPacketCounters(t, owned)
+	testenv.AssertNoPacketCounters(t, owned)
 	if got, err := rulespkg.ManagedRules(off); err != nil || !reflect.DeepEqual(got, rules) {
 		t.Fatalf("rule identities or order changed: %v %v", got, err)
 	}
-	on, err := withPacketCounters(off, true)
+	on, err := testenv.WithPacketCounters(off, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +60,7 @@ func TestPacketCountersOnlyChangeStatisticsInManagedTable(t *testing.T) {
 	if err != nil || total == 0 || counted != total {
 		t.Fatalf("not all verdict rules counted: %d/%d %v", counted, total, err)
 	}
-	again, err := withPacketCounters(on, true)
+	again, err := testenv.WithPacketCounters(on, true)
 	if err != nil || again != on || strings.Contains(on, "counter counter") {
 		t.Fatal("repeated enabling duplicates or changes counters")
 	}
@@ -100,7 +83,7 @@ func TestPacketCountersRejectAmbiguousConfigurations(t *testing.T) {
 		"managed rule drift":    strings.Replace(base, ping.Begin, "icmp type echo-request accept\n"+ping.Begin, 1),
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := withPacketCounters(content, false); err == nil {
+			if _, err := testenv.WithPacketCounters(content, false); err == nil {
 				t.Fatal("unsafe configuration accepted")
 			}
 		})
@@ -112,11 +95,11 @@ func TestPacketCounterPreferenceSurvivesRulePingAndSSHUpdates(t *testing.T) {
 	if enabled, err := counters.Enabled(base); err != nil || !enabled {
 		t.Fatal("legacy configuration must default to counters on")
 	}
-	content, err := withPacketCounters(base, false)
+	content, err := testenv.WithPacketCounters(base, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rules := orderTestRules()
+	rules := testenv.OrderRules()
 	// Cover additions, replacement/editing, reordering and deletion.
 	for _, wanted := range [][]rulespkg.Rule{rules, {rules[3], rules[0]}, nil} {
 		content, err = rulespkg.ReplaceManagedRules(content, wanted)
@@ -126,7 +109,7 @@ func TestPacketCounterPreferenceSurvivesRulePingAndSSHUpdates(t *testing.T) {
 		if got, err := rulespkg.ManagedRules(content); err != nil || !reflect.DeepEqual(got, wanted) && !(len(got) == 0 && len(wanted) == 0) {
 			t.Fatalf("incorrect managed rules: %v %v", got, err)
 		}
-		assertNoPacketCounters(t, content)
+		testenv.AssertNoPacketCounters(t, content)
 	}
 	for _, enabled := range []bool{true, false} {
 		content, err = ping.Replace(content, enabled)
@@ -140,13 +123,13 @@ func TestPacketCounterPreferenceSurvivesRulePingAndSSHUpdates(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		assertNoPacketCounters(t, content)
+		testenv.AssertNoPacketCounters(t, content)
 	}
 	content, err = ping.Remove(content)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertNoPacketCounters(t, content)
+	testenv.AssertNoPacketCounters(t, content)
 	if enabled, err := counters.Enabled(content); err != nil || enabled {
 		t.Fatal("packet counter preference was lost")
 	}
@@ -155,22 +138,22 @@ func TestPacketCounterPreferenceSurvivesRulePingAndSSHUpdates(t *testing.T) {
 func TestConfigurePacketCountersValidatesBacksUpAndLoads(t *testing.T) {
 	for _, scenario := range []string{"off", "on", "invalid", "concurrent", "load failure"} {
 		t.Run(scenario, func(t *testing.T) {
-			setupTest(t)
-			version := ruleTestConfig(t, orderTestRules())
+			env := testenv.New(t)
+			version := env.RuleConfig(t, testenv.OrderRules())
 			input, enabled := "2\ny\n", false
 			if scenario == "on" {
-				content, err := withPacketCounters(string(version.Content), false)
+				content, err := testenv.WithPacketCounters(string(version.Content), false)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+				if err := os.WriteFile(env.ConfigPath, []byte(content), 0600); err != nil {
 					t.Fatal(err)
 				}
-				version, _ = configStore().Read()
+				version, _ = env.Store().Read()
 				input, enabled = "1\ny\n", true
 			}
 			var calls []string
-			commandOutput = func(name string, args ...string) (string, error) {
+			env.CommandOutput = func(name string, args ...string) (string, error) {
 				if name == "nft" && len(args) == 3 && args[0] == "-c" && args[1] == "-f" {
 					calls = append(calls, "check")
 					proposed := storage.ReadFileString(args[2])
@@ -178,19 +161,19 @@ func TestConfigurePacketCountersValidatesBacksUpAndLoads(t *testing.T) {
 						t.Fatal("wrong proposed packet counter setting")
 					}
 					if !enabled {
-						assertNoPacketCounters(t, proposed)
+						testenv.AssertNoPacketCounters(t, proposed)
 					}
 					if scenario == "invalid" {
 						return "syntax error", errors.New("invalid")
 					}
 					if scenario == "concurrent" {
-						if err := os.WriteFile(configPath, []byte("# external edit\n"), 0600); err != nil {
+						if err := os.WriteFile(env.ConfigPath, []byte("# external edit\n"), 0600); err != nil {
 							t.Fatal(err)
 						}
 					}
 					return "", nil
 				}
-				if name == "nft" && reflect.DeepEqual(args, []string{"-f", configPath}) {
+				if name == "nft" && reflect.DeepEqual(args, []string{"-f", env.ConfigPath}) {
 					calls = append(calls, "load")
 					if scenario == "load failure" {
 						return "load failed", errors.New("failed")
@@ -200,9 +183,9 @@ func TestConfigurePacketCountersValidatesBacksUpAndLoads(t *testing.T) {
 				t.Fatalf("unexpected command: %s %v", name, args)
 				return "", nil
 			}
-			err := counterService().Run(inputUI(t, input))
-			backups, _ := filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))
-			saved := storage.ReadFileString(configPath)
+			err := env.Counters().Run(testenv.Input(t, input))
+			backups, _ := filepath.Glob(filepath.Join(env.BackupDir(), "nftables.conf.bak.*"))
+			saved := storage.ReadFileString(env.ConfigPath)
 			if scenario == "invalid" || scenario == "concurrent" {
 				wanted := string(version.Content)
 				if scenario == "concurrent" {
@@ -219,7 +202,7 @@ func TestConfigurePacketCountersValidatesBacksUpAndLoads(t *testing.T) {
 			if scenario == "load failure" && !strings.Contains(err.Error(), "未成功加载") {
 				t.Fatal("load failure claimed success")
 			}
-			if got, err := rulespkg.ManagedRules(saved); err != nil || !reflect.DeepEqual(got, orderTestRules()) {
+			if got, err := rulespkg.ManagedRules(saved); err != nil || !reflect.DeepEqual(got, testenv.OrderRules()) {
 				t.Fatal("packet counter switch changed rule identities or order")
 			}
 		})
@@ -229,13 +212,13 @@ func TestConfigurePacketCountersValidatesBacksUpAndLoads(t *testing.T) {
 func TestPacketCounterCancelReturnsWithoutWritingOrExtraPrompt(t *testing.T) {
 	for _, input := range []string{"q\n", "返回\n", "1\nn\n", "2\nq\nq\n"} {
 		t.Run(input, func(t *testing.T) {
-			setupTest(t)
-			version := ruleTestConfig(t, nil)
-			view := inputUI(t, input+"next\n")
-			if err := counterService().Run(view); !errors.Is(err, ui.ErrReturnToMenu) {
+			env := testenv.New(t)
+			version := env.RuleConfig(t, nil)
+			view := testenv.Input(t, input+"next\n")
+			if err := env.Counters().Run(view); !errors.Is(err, ui.ErrReturnToMenu) {
 				t.Fatal(err)
 			}
-			if storage.ReadFileString(configPath) != string(version.Content) {
+			if storage.ReadFileString(env.ConfigPath) != string(version.Content) {
 				t.Fatal("cancel modified the file")
 			}
 			if next, err := view.Ask("next"); err != nil || next != "next" {
@@ -248,9 +231,9 @@ func TestPacketCounterCancelReturnsWithoutWritingOrExtraPrompt(t *testing.T) {
 func TestRegenerationRetainsDisabledCounters(t *testing.T) {
 	for _, removePing := range []bool{false, true} {
 		t.Run(map[bool]string{false: "ping allowed", true: "ping not set"}[removePing], func(t *testing.T) {
-			setupTest(t)
-			version := ruleTestConfig(t, orderTestRules())
-			content, _ := withPacketCounters(string(version.Content), false)
+			env := testenv.New(t)
+			version := env.RuleConfig(t, testenv.OrderRules())
+			content, _ := testenv.WithPacketCounters(string(version.Content), false)
 			var err error
 			if removePing {
 				content, err = ping.Remove(content)
@@ -260,22 +243,22 @@ func TestRegenerationRetainsDisabledCounters(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+			if err := os.WriteFile(env.ConfigPath, []byte(content), 0600); err != nil {
 				t.Fatal(err)
 			}
-			acceptRuleCommands(t)
-			accept := commandOutput
-			commandOutput = func(name string, args ...string) (string, error) {
-				if isSSHDTest(name, args) {
-					return sshdTestConfig(2222), nil
+			env.AcceptRuleCommands(t)
+			accept := env.CommandOutput
+			env.CommandOutput = func(name string, args ...string) (string, error) {
+				if testenv.IsSSHDQuery(name, args) {
+					return testenv.SSHDConfig(2222), nil
 				}
 				return accept(name, args...)
 			}
-			if err := configure(inputUI(t, "\n\n\n\n1\n")); err != nil {
+			if err := env.Generate(testenv.Input(t, "\n\n\n\n1\n")); err != nil {
 				t.Fatal(err)
 			}
-			saved := storage.ReadFileString(configPath)
-			assertNoPacketCounters(t, saved)
+			saved := storage.ReadFileString(env.ConfigPath)
+			testenv.AssertNoPacketCounters(t, saved)
 			if value, err := counters.Enabled(saved); err != nil || value {
 				t.Fatal("regeneration forgot the disabled preference")
 			}
@@ -287,31 +270,31 @@ func TestRegenerationRetainsDisabledCounters(t *testing.T) {
 }
 
 func TestSSHLivePortUpdateHonorsDisabledCounters(t *testing.T) {
-	setupTest(t)
-	version := ruleTestConfig(t, nil)
-	content, err := withPacketCounters(string(version.Content), false)
+	env := testenv.New(t)
+	version := env.RuleConfig(t, nil)
+	content, err := testenv.WithPacketCounters(string(version.Content), false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+	if err := os.WriteFile(env.ConfigPath, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
 	loaded := false
-	commandOutput = func(name string, args ...string) (string, error) {
+	env.CommandOutput = func(name string, args ...string) (string, error) {
 		switch {
 		case name == "ss":
 			return `LISTEN 0 128 *:2222 *:* users:(("sshd",pid=1,fd=3))`, nil
 		case name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}):
-			return activeSSHFirewall, nil
+			return testenv.ActiveSSHRules, nil
 		case name == "nft" && len(args) == 3 && args[0] == "-c" && args[1] == "-f":
-			assertNoPacketCounters(t, storage.ReadFileString(args[2]))
+			testenv.AssertNoPacketCounters(t, storage.ReadFileString(args[2]))
 			return "", nil
 		case name == "nft" && len(args) == 2 && args[0] == "-f":
-			if args[1] == configPath {
+			if args[1] == env.ConfigPath {
 				t.Fatal("SSH update must use a small live transaction")
 			}
 			batch := storage.ReadFileString(args[1])
-			assertNoPacketCounters(t, batch)
+			testenv.AssertNoPacketCounters(t, batch)
 			if !strings.Contains(batch, "tcp dport { 2222, 3022 } accept") || !strings.Contains(batch, "udp dport { 2222, 3022 } accept") {
 				t.Fatal("current/new SSH listeners not preserved")
 			}
@@ -322,8 +305,8 @@ func TestSSHLivePortUpdateHonorsDisabledCounters(t *testing.T) {
 			return "", nil
 		}
 	}
-	if active, err := EnsureSSHPorts([]int{3022}); err != nil || !active || !loaded {
+	if active, err := env.SSHAccess().EnsureSSHPorts([]int{3022}); err != nil || !active || !loaded {
 		t.Fatalf("SSH update failed: %v %v", active, err)
 	}
-	assertNoPacketCounters(t, storage.ReadFileString(configPath))
+	testenv.AssertNoPacketCounters(t, storage.ReadFileString(env.ConfigPath))
 }

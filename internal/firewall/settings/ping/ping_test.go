@@ -1,4 +1,4 @@
-package firewall
+package ping_test
 
 import (
 	"errors"
@@ -12,6 +12,7 @@ import (
 	"snail_tool/internal/firewall/configuration"
 	"snail_tool/internal/firewall/configuration/generate"
 	rulespkg "snail_tool/internal/firewall/internal/rules"
+	"snail_tool/internal/firewall/internal/testenv"
 	"snail_tool/internal/firewall/loadedrules"
 	autostartconfig "snail_tool/internal/firewall/settings/autostart"
 	"snail_tool/internal/firewall/settings/ping"
@@ -84,20 +85,20 @@ func TestPingRefusesDamagedUnreachableAndManuallyChangedBlocks(t *testing.T) {
 func TestConfigurePingValidationBackupLoadAndConcurrentEdits(t *testing.T) {
 	for _, scenario := range []string{"on", "off", "invalid", "concurrent", "load failure"} {
 		t.Run(scenario, func(t *testing.T) {
-			setupTest(t)
-			version := ruleTestConfig(t, orderTestRules())
+			env := testenv.New(t)
+			version := env.RuleConfig(t, testenv.OrderRules())
 			wantEnabled := scenario != "off"
 			input := "1\ny\n"
 			if !wantEnabled {
 				on, _ := ping.Replace(string(version.Content), true)
-				if err := os.WriteFile(configPath, []byte(on), 0600); err != nil {
+				if err := os.WriteFile(env.ConfigPath, []byte(on), 0600); err != nil {
 					t.Fatal(err)
 				}
-				version, _ = configStore().Read()
+				version, _ = env.Store().Read()
 				input = "2\ny\n"
 			}
 			var calls []string
-			commandOutput = func(name string, args ...string) (string, error) {
+			env.CommandOutput = func(name string, args ...string) (string, error) {
 				if name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
 					return `{"nftables":[]}`, nil
 				}
@@ -107,13 +108,13 @@ func TestConfigurePingValidationBackupLoadAndConcurrentEdits(t *testing.T) {
 						return "syntax error", errors.New("invalid")
 					}
 					if scenario == "concurrent" {
-						if err := os.WriteFile(configPath, []byte("# external edit\n"), 0600); err != nil {
+						if err := os.WriteFile(env.ConfigPath, []byte("# external edit\n"), 0600); err != nil {
 							t.Fatal(err)
 						}
 					}
 					return "", nil
 				}
-				if name == "nft" && reflect.DeepEqual(args, []string{"-f", configPath}) {
+				if name == "nft" && reflect.DeepEqual(args, []string{"-f", env.ConfigPath}) {
 					calls = append(calls, "load")
 					if scenario == "load failure" {
 						return "load failed", errors.New("failed")
@@ -123,9 +124,9 @@ func TestConfigurePingValidationBackupLoadAndConcurrentEdits(t *testing.T) {
 				t.Fatalf("unexpected command: %s %v", name, args)
 				return "", nil
 			}
-			err := pingService().Run(inputUI(t, input))
-			backups, _ := filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))
-			saved := storage.ReadFileString(configPath)
+			err := env.Ping().Run(testenv.Input(t, input))
+			backups, _ := filepath.Glob(filepath.Join(env.BackupDir(), "nftables.conf.bak.*"))
+			saved := storage.ReadFileString(env.ConfigPath)
 			if scenario == "invalid" || scenario == "concurrent" {
 				want := string(version.Content)
 				if scenario == "concurrent" {
@@ -150,7 +151,7 @@ func TestConfigurePingValidationBackupLoadAndConcurrentEdits(t *testing.T) {
 				t.Fatal("incorrect saved Ping setting")
 			}
 			got, err := rulespkg.ManagedRules(saved)
-			if err != nil || !reflect.DeepEqual(got, orderTestRules()) {
+			if err != nil || !reflect.DeepEqual(got, testenv.OrderRules()) {
 				t.Fatal("Ping setting changed managed allow rules")
 			}
 		})
@@ -160,20 +161,20 @@ func TestConfigurePingValidationBackupLoadAndConcurrentEdits(t *testing.T) {
 func TestPingCancelDoesNotWriteOrConsumeNextInput(t *testing.T) {
 	for _, input := range []string{"q\n", "返回\n", "1\nn\n", "2\n\n", "1\nq\nq\n", "3\nn\n", "3\nq\nq\n"} {
 		t.Run(input, func(t *testing.T) {
-			setupTest(t)
-			version := ruleTestConfig(t, nil)
-			commandOutput = func(name string, args ...string) (string, error) {
+			env := testenv.New(t)
+			version := env.RuleConfig(t, nil)
+			env.CommandOutput = func(name string, args ...string) (string, error) {
 				if name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
 					return `{"nftables":[]}`, nil
 				}
 				t.Fatalf("unexpected query: %s %v", name, args)
 				return "", nil
 			}
-			view := inputUI(t, input+"next\n")
-			if err := pingService().Run(view); !errors.Is(err, ui.ErrReturnToMenu) {
+			view := testenv.Input(t, input+"next\n")
+			if err := env.Ping().Run(view); !errors.Is(err, ui.ErrReturnToMenu) {
 				t.Fatalf("cancel did not return directly: %v", err)
 			}
-			if storage.ReadFileString(configPath) != string(version.Content) {
+			if storage.ReadFileString(env.ConfigPath) != string(version.Content) {
 				t.Fatal("cancel changed configuration")
 			}
 			if next, err := view.Ask("next"); err != nil || next != "next" {
@@ -186,8 +187,8 @@ func TestPingCancelDoesNotWriteOrConsumeNextInput(t *testing.T) {
 func TestRemovePingConfigurationKeepsOtherRulesAndDoesNotRecreateOnRegeneration(t *testing.T) {
 	for _, scenario := range []string{"allowed", "blocked", "not set"} {
 		t.Run(scenario, func(t *testing.T) {
-			setupTest(t)
-			version := ruleTestConfig(t, orderTestRules())
+			env := testenv.New(t)
+			version := env.RuleConfig(t, testenv.OrderRules())
 			content, err := ping.Replace(string(version.Content), scenario == "allowed")
 			if scenario == "not set" {
 				content, err = ping.Remove(content)
@@ -199,17 +200,17 @@ func TestRemovePingConfigurationKeepsOtherRulesAndDoesNotRecreateOnRegeneration(
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+			if err := os.WriteFile(env.ConfigPath, []byte(content), 0600); err != nil {
 				t.Fatal(err)
 			}
-			calls := acceptRuleCommands(t)
-			accept := commandOutput
-			commandOutput = func(name string, args ...string) (string, error) {
+			calls := env.AcceptRuleCommands(t)
+			accept := env.CommandOutput
+			env.CommandOutput = func(name string, args ...string) (string, error) {
 				if name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
 					return `{"nftables":[]}`, nil
 				}
-				if isSSHDTest(name, args) {
-					return sshdTestConfig(2222), nil
+				if testenv.IsSSHDQuery(name, args) {
+					return testenv.SSHDConfig(2222), nil
 				}
 				return accept(name, args...)
 			}
@@ -217,14 +218,14 @@ func TestRemovePingConfigurationKeepsOtherRulesAndDoesNotRecreateOnRegeneration(
 			if scenario == "not set" {
 				input = "3\nnext\n"
 			}
-			view := inputUI(t, input)
-			if err := pingService().Run(view); err != nil {
+			view := testenv.Input(t, input)
+			if err := env.Ping().Run(view); err != nil {
 				t.Fatal(err)
 			}
 			if next, err := view.Ask("next"); err != nil || next != "next" {
 				t.Fatal("removal consumed an unexpected confirmation or pause")
 			}
-			saved := storage.ReadFileString(configPath)
+			saved := storage.ReadFileString(env.ConfigPath)
 			if strings.Contains(saved, "snail:ping") || strings.Contains(saved, ping.Begin) || strings.Contains(saved, ping.End) {
 				t.Fatal("dedicated Ping rules or markers remain")
 			}
@@ -233,7 +234,7 @@ func TestRemovePingConfigurationKeepsOtherRulesAndDoesNotRecreateOnRegeneration(
 			if !configuration.SameTokens(saved, without) || !strings.Contains(saved, "elements = { 2222, 3022 }") {
 				t.Fatal("removal changed unrelated rules")
 			}
-			backups, _ := filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))
+			backups, _ := filepath.Glob(filepath.Join(env.BackupDir(), "nftables.conf.bak.*"))
 			if scenario == "not set" {
 				if len(*calls) != 0 || len(backups) != 0 || saved != content {
 					t.Fatal("absent configuration should not be written, backed up or loaded")
@@ -241,14 +242,14 @@ func TestRemovePingConfigurationKeepsOtherRulesAndDoesNotRecreateOnRegeneration(
 			} else if !reflect.DeepEqual(*calls, []string{"check", "load"}) || len(backups) != 1 || storage.ReadFileString(backups[0]) != content {
 				t.Fatal("removal must validate, preserve one original backup, and load once")
 			}
-			if err := configure(inputUI(t, "\n\n\n\n1\n")); err != nil {
+			if err := env.Generate(testenv.Input(t, "\n\n\n\n1\n")); err != nil {
 				t.Fatal(err)
 			}
-			regenerated := storage.ReadFileString(configPath)
+			regenerated := storage.ReadFileString(env.ConfigPath)
 			if _, found, err := ping.Read(regenerated); err != nil || found {
 				t.Fatal("regeneration recreated the removed setting")
 			}
-			want, _ := generate.OmitUnconvertedPortRules(orderTestRules())
+			want, _ := generate.OmitUnconvertedPortRules(testenv.OrderRules())
 			if rules, err := rulespkg.ManagedRules(regenerated); err != nil || !reflect.DeepEqual(rules, want) {
 				t.Fatal("regeneration lost unrelated allow rules")
 			}
@@ -257,34 +258,34 @@ func TestRemovePingConfigurationKeepsOtherRulesAndDoesNotRecreateOnRegeneration(
 }
 
 func TestRegenerationKeepsPingEnabledAndMenuEntryWorks(t *testing.T) {
-	setupTest(t)
-	version := ruleTestConfig(t, nil)
+	env := testenv.New(t)
+	version := env.RuleConfig(t, nil)
 	enabled, _ := ping.Replace(string(version.Content), true)
-	if err := os.WriteFile(configPath, []byte(enabled), 0600); err != nil {
+	if err := os.WriteFile(env.ConfigPath, []byte(enabled), 0600); err != nil {
 		t.Fatal(err)
 	}
-	calls := acceptRuleCommands(t)
-	accept := commandOutput
-	commandOutput = func(name string, args ...string) (string, error) {
-		if isSSHDTest(name, args) {
-			return sshdTestConfig(2222), nil
+	calls := env.AcceptRuleCommands(t)
+	accept := env.CommandOutput
+	env.CommandOutput = func(name string, args ...string) (string, error) {
+		if testenv.IsSSHDQuery(name, args) {
+			return testenv.SSHDConfig(2222), nil
 		}
 		if name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
 			return `{"nftables":[]}`, nil
 		}
 		return accept(name, args...)
 	}
-	if err := configure(inputUI(t, "\n\n\n\n1\n")); err != nil {
+	if err := env.Generate(testenv.Input(t, "\n\n\n\n1\n")); err != nil {
 		t.Fatal(err)
 	}
-	state, _, err := ping.Read(storage.ReadFileString(configPath))
+	state, _, err := ping.Read(storage.ReadFileString(env.ConfigPath))
 	if err != nil || !state {
 		t.Fatal("regeneration lost enabled Ping")
 	}
-	if err := Run(inputUI(t, "8\n2\n2\ny\n\nq\nq\n")); !errors.Is(err, ui.ErrReturnToMenu) {
+	if err := env.Run(testenv.Input(t, "8\n2\n2\ny\n\nq\nq\n")); !errors.Is(err, ui.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
-	state, _, err = ping.Read(storage.ReadFileString(configPath))
+	state, _, err = ping.Read(storage.ReadFileString(env.ConfigPath))
 	if err != nil || state || !reflect.DeepEqual(*calls, []string{"check", "load", "check", "load"}) {
 		t.Fatalf("menu did not save and load disabled Ping: %v %v", err, *calls)
 	}
@@ -307,7 +308,7 @@ func TestLoadedEchoReadsActualRulesAndTheirOrder(t *testing.T) {
 			// This fixture includes a manual all-protocol IPv4 source exception.
 			want |= ping.EchoAllow
 		}
-		if state := ping.LoadedEchoState(portFixture(t), ipv6); state != want {
+		if state := ping.LoadedEchoState(testenv.PortRules(), ipv6); state != want {
 			t.Fatalf("source exceptions in legacy fixture were lost: ipv6=%v state=%d", ipv6, state)
 		}
 	}
@@ -345,26 +346,26 @@ func TestLoadedEchoReadsActualRulesAndTheirOrder(t *testing.T) {
 }
 
 func TestEchoCardsSeparateSavedSwitchFromLoadedBlocking(t *testing.T) {
-	setupTest(t)
-	version := ruleTestConfig(t, nil)
+	env := testenv.New(t)
+	version := env.RuleConfig(t, nil)
 	allowed, _ := ping.Replace(string(version.Content), true)
-	if err := os.WriteFile(configPath, []byte(allowed), 0600); err != nil {
+	if err := os.WriteFile(env.ConfigPath, []byte(allowed), 0600); err != nil {
 		t.Fatal(err)
 	}
 	// File allows Ping, but the loaded input chain still drops it.
 	loaded := echoTestRules(echoTestRule("input", `{"drop":null}`))
-	commandOutput = func(name string, args ...string) (string, error) {
+	env.CommandOutput = func(name string, args ...string) (string, error) {
 		if name != "nft" || !reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
 			t.Fatalf("unexpected query: %s %v", name, args)
 		}
 		return loaded, nil
 	}
-	fields := currentConfigFields(autostartconfig.Status{})
-	if fieldValue(fields, "ICMP 回显") != "已拦截" || fieldValue(fields, "ICMPv6 回显") != "已拦截" {
+	fields := env.StatusFields(autostartconfig.Status{})
+	if testenv.FieldValue(fields, "ICMP 回显") != "已拦截" || testenv.FieldValue(fields, "ICMPv6 回显") != "已拦截" {
 		t.Fatal("main card inferred loaded state from saved switch")
 	}
-	output := capturePortOutput(t, func() {
-		if err := pingService().Run(inputUI(t, "q\n")); err == nil {
+	output := testenv.CaptureOutput(t, func() {
+		if err := env.Ping().Run(testenv.Input(t, "q\n")); err == nil {
 			t.Fatal("expected return sentinel")
 		}
 	})

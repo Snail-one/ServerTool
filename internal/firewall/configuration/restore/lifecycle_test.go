@@ -1,4 +1,4 @@
-package firewall
+package restore_test
 
 import (
 	"bytes"
@@ -10,61 +10,9 @@ import (
 
 	"snail_tool/internal/firewall/configuration"
 	"snail_tool/internal/firewall/configuration/generate"
-	autostartconfig "snail_tool/internal/firewall/settings/autostart"
+	"snail_tool/internal/firewall/internal/testenv"
 	"snail_tool/internal/storage"
 )
-
-// Model kernel/service state; unexpected commands fail rather than touching the host.
-func originalFixture(t *testing.T, boot string) (*string, *bool, *[][]string) {
-	t.Helper()
-	setupTest(t)
-	preserveOriginal = saveOriginalState
-	loaded := false
-	var commands [][]string
-	commandExists = func(name string) bool { return name == "nft" || name == "systemctl" }
-	commandOutput = func(name string, args ...string) (string, error) {
-		switch {
-		case name == "systemctl" && len(args) > 0 && args[0] == "show":
-			return autostartProperties(boot), nil
-		case name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}):
-			objects := `{"table":{"family":"ip","name":"docker"}}`
-			if loaded {
-				objects += `,{"table":{"family":"inet","name":"snail"}}`
-			}
-			return `{"nftables":[` + objects + `]}`, nil
-		case name == "nft" && reflect.DeepEqual(args, []string{"delete", "table", "inet", "snail"}):
-			commands = append(commands, append([]string{name}, args...))
-			loaded = false
-			return "", nil
-		case name == "nft" && len(args) == 3 && args[0] == "-c" && args[1] == "-f":
-			return "", nil
-		case name == "nft" && reflect.DeepEqual(args, []string{"-f", configPath}):
-			commands = append(commands, append([]string{name}, args...))
-			loaded = true
-			return "", nil
-		default:
-			t.Fatalf("unexpected command: %s %v", name, args)
-			return "", errors.New("unexpected command")
-		}
-	}
-	commandRun = func(name string, args ...string) error {
-		commands = append(commands, append([]string{name}, args...))
-		switch {
-		case name == "systemctl" && reflect.DeepEqual(args, []string{"disable", autostartconfig.Unit}):
-			boot = "disabled"
-		case name == "systemctl" && reflect.DeepEqual(args, []string{"disable", "--runtime", autostartconfig.Unit}):
-			boot = "disabled"
-		case name == "systemctl" && reflect.DeepEqual(args, []string{"enable", autostartconfig.Unit}):
-			boot = "enabled"
-		case name == "systemctl" && reflect.DeepEqual(args, []string{"enable", "--runtime", autostartconfig.Unit}):
-			boot = "enabled-runtime"
-		default:
-			t.Fatalf("unexpected mutation: %s %v", name, args)
-		}
-		return nil
-	}
-	return &boot, &loaded, &commands
-}
 
 func TestCleanupRestoresFirstConfigAndAutostartWithoutFlushingOtherTables(t *testing.T) {
 	for _, exists := range []bool{true, false} {
@@ -74,22 +22,22 @@ func TestCleanupRestoresFirstConfigAndAutostartWithoutFlushingOtherTables(t *tes
 				name = boot + "/existing"
 			}
 			t.Run(name, func(t *testing.T) {
-				state, loaded, commands := originalFixture(t, boot)
+				env, state, loaded, commands := testenv.Original(t, boot)
 				const initial = "# pre-tool configuration\ntable inet custom { }\n"
 				if exists {
-					if err := os.WriteFile(configPath, []byte(initial), 0600); err != nil {
+					if err := os.WriteFile(env.ConfigPath, []byte(initial), 0600); err != nil {
 						t.Fatal(err)
 					}
 				}
 				config, _ := generate.Build([]int{2222}, false, false)
-				if err := configStore().Write(config); err != nil {
+				if err := env.Store().Write(config); err != nil {
 					t.Fatal(err)
 				}
-				first, err := readOriginalState()
+				first, err := env.ReadOriginal()
 				if err != nil || first == nil || first.Autostart != boot || (first.Config != nil) != exists {
 					t.Fatalf("missing pre-mutation snapshot: %+v %v", first, err)
 				}
-				if err := configStore().Apply([]byte(config)); err != nil {
+				if err := env.Store().Apply([]byte(config)); err != nil {
 					t.Fatal(err)
 				}
 				// Later changes must never replace the first snapshot.
@@ -99,22 +47,22 @@ func TestCleanupRestoresFirstConfigAndAutostartWithoutFlushingOtherTables(t *tes
 				} else if boot == "enabled-runtime" {
 					*state = "enabled"
 				}
-				if err := configStore().Write(config + "\n# later change\n"); err != nil {
+				if err := env.Store().Write(config + "\n# later change\n"); err != nil {
 					t.Fatal(err)
 				}
-				later, err := readOriginalState()
+				later, err := env.ReadOriginal()
 				if err != nil || !reflect.DeepEqual(first, later) {
 					t.Fatalf("first snapshot replaced: %v", err)
 				}
-				if err := Cleanup(nil); err != nil {
+				if err := env.Restore().Run(); err != nil {
 					t.Fatal(err)
 				}
-				data, present, err := storage.ReadRegularFile(configPath)
+				data, present, err := storage.ReadRegularFile(env.ConfigPath)
 				if err != nil || present != exists || exists && string(data) != initial {
 					t.Fatalf("original config not restored: present=%v data=%q err=%v", present, data, err)
 				}
 				if exists {
-					info, _ := os.Stat(configPath)
+					info, _ := os.Stat(env.ConfigPath)
 					if info.Mode().Perm() != 0600 {
 						t.Fatal("original permissions not restored")
 					}
@@ -122,10 +70,10 @@ func TestCleanupRestoresFirstConfigAndAutostartWithoutFlushingOtherTables(t *tes
 				if *loaded || *state != boot {
 					t.Fatalf("runtime/boot state not restored: loaded=%v boot=%s commands=%v", *loaded, *state, *commands)
 				}
-				if err := Cleanup(nil); err != nil {
+				if err := env.Restore().Run(); err != nil {
 					t.Fatalf("cleanup must be repeatable: %v", err)
 				}
-				if original, err := readOriginalState(); err != nil || original == nil {
+				if original, err := env.ReadOriginal(); err != nil || original == nil {
 					t.Fatal("cleanup removed the recovery snapshot")
 				}
 			})
@@ -136,84 +84,84 @@ func TestCleanupRestoresFirstConfigAndAutostartWithoutFlushingOtherTables(t *tes
 func TestCleanupCancellationAndConcurrentEditNeverMutate(t *testing.T) {
 	for _, answer := range []string{"n\n", "\n", ""} {
 		t.Run("answer="+answer, func(t *testing.T) {
-			_, _, commands := originalFixture(t, "disabled")
+			env, _, _, commands := testenv.Original(t, "disabled")
 			config, _ := generate.Build([]int{22}, false, false)
-			if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+			if err := os.WriteFile(env.ConfigPath, []byte(config), 0644); err != nil {
 				t.Fatal(err)
 			}
-			err := CleanupWithConfirm(inputUI(t, answer))
-			if err == nil || len(*commands) != 0 || storage.ReadFileString(configPath) != config {
+			err := env.Restore().RunWithConfirm(testenv.Input(t, answer))
+			if err == nil || len(*commands) != 0 || storage.ReadFileString(env.ConfigPath) != config {
 				t.Fatalf("missing/refused confirmation changed state: commands=%v err=%v", *commands, err)
 			}
-			entries, _ := (storage.BackupStore{Root: dataDir, Module: "firewall"}).List()
+			entries, _ := (storage.BackupStore{Root: env.DataDir, Module: "firewall"}).List()
 			if len(entries) != 0 {
 				t.Fatal("cancellation must not create backups or first snapshots")
 			}
 		})
 	}
 	t.Run("concurrent edit", func(t *testing.T) {
-		_, _, commands := originalFixture(t, "disabled")
+		env, _, _, commands := testenv.Original(t, "disabled")
 		config, _ := generate.Build([]int{22}, false, false)
-		if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+		if err := os.WriteFile(env.ConfigPath, []byte(config), 0644); err != nil {
 			t.Fatal(err)
 		}
-		plan, err := cleanupService().Prepare()
+		plan, err := env.Restore().Prepare()
 		if err != nil {
 			t.Fatal(err)
 		}
 		changed := config + "\n# another editor\n"
-		if err := os.WriteFile(configPath, []byte(changed), 0644); err != nil {
+		if err := os.WriteFile(env.ConfigPath, []byte(changed), 0644); err != nil {
 			t.Fatal(err)
 		}
-		if err := plan.Run(); err == nil || len(*commands) != 0 || storage.ReadFileString(configPath) != changed {
+		if err := plan.Run(); err == nil || len(*commands) != 0 || storage.ReadFileString(env.ConfigPath) != changed {
 			t.Fatalf("concurrent config overwritten: %v", err)
 		}
 	})
 }
 
 func TestBrokenOriginalSnapshotBlocksWritesAndCleanup(t *testing.T) {
-	_, _, commands := originalFixture(t, "disabled")
+	env, _, _, commands := testenv.Original(t, "disabled")
 	const initial = "# original\n"
-	if err := os.WriteFile(configPath, []byte(initial), 0644); err != nil {
+	if err := os.WriteFile(env.ConfigPath, []byte(initial), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := saveOriginalState(); err != nil {
+	if err := env.SaveOriginal(); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(originalStore().OriginalPath(), []byte("broken json"), 0600); err != nil {
+	if err := os.WriteFile(env.Store().OriginalPath(), []byte("broken json"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	config, _ := generate.Build([]int{22}, false, false)
-	if err := configStore().Write(config); err == nil {
+	if err := env.Store().Write(config); err == nil {
 		t.Fatal("corrupt snapshot must prevent mutation")
 	}
-	if err := Cleanup(nil); err == nil || len(*commands) != 0 || storage.ReadFileString(configPath) != initial {
+	if err := env.Restore().Run(); err == nil || len(*commands) != 0 || storage.ReadFileString(env.ConfigPath) != initial {
 		t.Fatalf("corrupt snapshot cleanup must stop: %v", err)
 	}
 }
 
 func TestCleanupDeleteFailurePreservesLegacyOwnershipForRetry(t *testing.T) {
-	_, loaded, _ := originalFixture(t, "enabled")
+	env, _, loaded, _ := testenv.Original(t, "enabled")
 	config, _ := generate.Build([]int{22}, false, false)
-	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+	if err := os.WriteFile(env.ConfigPath, []byte(config), 0644); err != nil {
 		t.Fatal(err)
 	}
 	*loaded = true
-	output := commandOutput
-	commandOutput = func(name string, args ...string) (string, error) {
+	output := env.CommandOutput
+	env.CommandOutput = func(name string, args ...string) (string, error) {
 		if name == "nft" && len(args) > 0 && args[0] == "delete" {
 			return "denied", errors.New("delete failed")
 		}
 		return output(name, args...)
 	}
-	if err := Cleanup(nil); err == nil || !strings.Contains(err.Error(), "delete failed") {
+	if err := env.Restore().Run(); err == nil || !strings.Contains(err.Error(), "delete failed") {
 		t.Fatalf("delete failure not reported: %v", err)
 	}
-	if !*loaded || storage.ReadFileString(configPath) != config {
+	if !*loaded || storage.ReadFileString(env.ConfigPath) != config {
 		t.Fatal("failed rule deletion must keep config ownership for retry")
 	}
-	commandOutput = output
-	if err := Cleanup(nil); err != nil || *loaded {
+	env.CommandOutput = output
+	if err := env.Restore().Run(); err != nil || *loaded {
 		t.Fatalf("cleanup retry failed: %v", err)
 	}
 }
@@ -221,27 +169,27 @@ func TestCleanupDeleteFailurePreservesLegacyOwnershipForRetry(t *testing.T) {
 func TestFirstSnapshotFailurePreventsConfigAndServiceMutations(t *testing.T) {
 	for _, operation := range []string{"generate", "edit", "load", "autostart"} {
 		t.Run(operation, func(t *testing.T) {
-			_, _, commands := originalFixture(t, "enabled")
+			env, _, _, commands := testenv.Original(t, "enabled")
 			const initial = "# original\n"
-			if err := os.WriteFile(configPath, []byte(initial), 0644); err != nil {
+			if err := os.WriteFile(env.ConfigPath, []byte(initial), 0644); err != nil {
 				t.Fatal(err)
 			}
-			preserveOriginal = func() error { return errors.New("snapshot unavailable") }
+			env.PreserveOriginal = func() error { return errors.New("snapshot unavailable") }
 			var err error
 			switch operation {
 			case "generate":
 				config, _ := generate.Build([]int{22}, false, false)
-				err = configStore().Write(config)
+				err = env.Store().Write(config)
 			case "edit":
-				exists := commandExists
-				commandExists = func(name string) bool { return name == "vim" || exists(name) }
-				err = editConfig()
+				exists := env.CommandExists
+				env.CommandExists = func(name string) bool { return name == "vim" || exists(name) }
+				err = env.EditConfig()
 			case "load":
-				err = configStore().Apply([]byte(initial))
+				err = env.Store().Apply([]byte(initial))
 			case "autostart":
-				err = autostartService().Toggle(inputUI(t, "y\n"))
+				err = env.Autostart().Toggle(testenv.Input(t, "y\n"))
 			}
-			if err == nil || !strings.Contains(err.Error(), "snapshot unavailable") || len(*commands) != 0 || !bytes.Equal([]byte(storage.ReadFileString(configPath)), []byte(initial)) {
+			if err == nil || !strings.Contains(err.Error(), "snapshot unavailable") || len(*commands) != 0 || !bytes.Equal([]byte(storage.ReadFileString(env.ConfigPath)), []byte(initial)) {
 				t.Fatalf("mutation continued after snapshot failure: commands=%v err=%v", *commands, err)
 			}
 		})
@@ -249,35 +197,35 @@ func TestFirstSnapshotFailurePreventsConfigAndServiceMutations(t *testing.T) {
 }
 
 func TestConfirmedCleanupKeepsRecoveryBackups(t *testing.T) {
-	state, loaded, _ := originalFixture(t, "disabled")
+	env, state, loaded, _ := testenv.Original(t, "disabled")
 	const original = "# original file\n"
-	if err := os.WriteFile(configPath, []byte(original), 0600); err != nil {
+	if err := os.WriteFile(env.ConfigPath, []byte(original), 0600); err != nil {
 		t.Fatal(err)
 	}
 	config, _ := generate.Build([]int{22}, false, false)
-	if err := configStore().Write(config); err != nil {
+	if err := env.Store().Write(config); err != nil {
 		t.Fatal(err)
 	}
 	*loaded, *state = true, "enabled"
-	if err := os.Chmod(configPath, 0644); err != nil {
+	if err := os.Chmod(env.ConfigPath, 0644); err != nil {
 		t.Fatal(err)
 	}
-	output := capturePortOutput(t, func() {
-		if err := CleanupWithConfirm(inputUI(t, "y\n")); err != nil {
+	output := testenv.CaptureOutput(t, func() {
+		if err := env.Restore().RunWithConfirm(testenv.Input(t, "y\n")); err != nil {
 			t.Fatal(err)
 		}
 	})
-	if *loaded || *state != "disabled" || storage.ReadFileString(configPath) != original {
+	if *loaded || *state != "disabled" || storage.ReadFileString(env.ConfigPath) != original {
 		t.Fatalf("cleanup did not restore original state: loaded=%v boot=%s", *loaded, *state)
 	}
-	info, _ := os.Stat(configPath)
+	info, _ := os.Stat(env.ConfigPath)
 	if info.Mode().Perm() != 0600 {
 		t.Fatal("cleanup did not restore original permissions")
 	}
 	if !strings.Contains(output, "清理配置") || !strings.Contains(output, "防火墙清理完成") {
 		t.Fatalf("cleanup path/result missing: %s", output)
 	}
-	entries, err := (storage.BackupStore{Root: dataDir, Module: "firewall"}).List()
+	entries, err := (storage.BackupStore{Root: env.DataDir, Module: "firewall"}).List()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,33 +243,33 @@ func TestConfirmedCleanupKeepsRecoveryBackups(t *testing.T) {
 }
 
 func TestCleanupServiceFailurePreservesConfigAndRules(t *testing.T) {
-	state, loaded, _ := originalFixture(t, "disabled")
+	env, state, loaded, _ := testenv.Original(t, "disabled")
 	config, _ := generate.Build([]int{22}, false, false)
-	if err := configStore().Write(config); err != nil {
+	if err := env.Store().Write(config); err != nil {
 		t.Fatal(err)
 	}
 	*state, *loaded = "enabled", true
-	commandRun = func(string, ...string) error { return errors.New("service failure") }
-	if err := Cleanup(nil); err == nil || !strings.Contains(err.Error(), "service failure") {
+	env.CommandRun = func(string, ...string) error { return errors.New("service failure") }
+	if err := env.Restore().Run(); err == nil || !strings.Contains(err.Error(), "service failure") {
 		t.Fatalf("service failure not reported: %v", err)
 	}
-	if !*loaded || storage.ReadFileString(configPath) != config {
+	if !*loaded || storage.ReadFileString(env.ConfigPath) != config {
 		t.Fatal("service restore failure should not remove config or rules")
 	}
-	if original, err := readOriginalState(); err != nil || original == nil {
+	if original, err := env.ReadOriginal(); err != nil || original == nil {
 		t.Fatal("service failure discarded recovery data")
 	}
 }
 
 func TestCleanupRemovesOnlyManagedFirewallBlockAndSnailTable(t *testing.T) {
-	setupTest(t)
+	env := testenv.New(t)
 	config, _ := generate.Build([]int{2222}, false, false)
 	manual := "table inet custom { }\n"
-	if err := os.WriteFile(configPath, []byte(config+"\n"+manual), 0600); err != nil {
+	if err := os.WriteFile(env.ConfigPath, []byte(config+"\n"+manual), 0600); err != nil {
 		t.Fatal(err)
 	}
 	var mutations [][]string
-	commandOutput = func(name string, args ...string) (string, error) {
+	env.CommandOutput = func(name string, args ...string) (string, error) {
 		if name != "nft" {
 			t.Fatal(name)
 		}
@@ -334,13 +282,13 @@ func TestCleanupRemovesOnlyManagedFirewallBlockAndSnailTable(t *testing.T) {
 		mutations = append(mutations, args)
 		return "", nil
 	}
-	if err := Cleanup(nil); err != nil {
+	if err := env.Restore().Run(); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(mutations, [][]string{{"delete", "table", "inet", "snail"}}) {
 		t.Fatalf("must never flush other tables: %v", mutations)
 	}
-	content := storage.ReadFileString(configPath)
+	content := storage.ReadFileString(env.ConfigPath)
 	if strings.Contains(content, "table inet snail") || !strings.Contains(content, manual) {
 		t.Fatalf("manual rules or managed removal incorrect: %s", content)
 	}
@@ -349,24 +297,24 @@ func TestCleanupRemovesOnlyManagedFirewallBlockAndSnailTable(t *testing.T) {
 func TestCleanupFirewallRefusesInvalidMarkersOrFailedInspection(t *testing.T) {
 	for _, scenario := range []string{"broken marker", "query failure", "nft missing"} {
 		t.Run(scenario, func(t *testing.T) {
-			setupTest(t)
+			env := testenv.New(t)
 			content, _ := generate.Build([]int{22}, false, false)
 			if scenario == "broken marker" {
 				content = strings.Replace(content, configuration.ManagedEnd, "", 1)
 			}
-			if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+			if err := os.WriteFile(env.ConfigPath, []byte(content), 0600); err != nil {
 				t.Fatal(err)
 			}
 			if scenario == "nft missing" {
-				commandExists = func(string) bool { return false }
+				env.CommandExists = func(string) bool { return false }
 			}
-			commandOutput = func(name string, args ...string) (string, error) {
+			env.CommandOutput = func(name string, args ...string) (string, error) {
 				if scenario != "query failure" || !reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
 					t.Fatalf("unexpected command: %s %v", name, args)
 				}
 				return "permission denied", errors.New("query failed")
 			}
-			if err := Cleanup(nil); err == nil || storage.ReadFileString(configPath) != content {
+			if err := env.Restore().Run(); err == nil || storage.ReadFileString(env.ConfigPath) != content {
 				t.Fatalf("unsafe cleanup changed configuration: %v", err)
 			}
 		})

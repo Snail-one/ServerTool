@@ -1,4 +1,4 @@
-package firewall
+package forward_test
 
 import (
 	"reflect"

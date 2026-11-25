@@ -1,4 +1,4 @@
-package firewall
+package access_test
 
 import (
 	"errors"
@@ -11,6 +11,7 @@ import (
 	"snail_tool/internal/firewall/access"
 	"snail_tool/internal/firewall/configuration/generate"
 	rulespkg "snail_tool/internal/firewall/internal/rules"
+	"snail_tool/internal/firewall/internal/testenv"
 	"snail_tool/internal/storage"
 	"snail_tool/internal/ui"
 )
@@ -35,11 +36,11 @@ func TestAccessSummaryMergesMatchingPoliciesAndShowsActualSSHPorts(t *testing.T)
 }
 
 func TestAccessManagerSharesOneDraftAndOneSaveAcrossPortsAndSources(t *testing.T) {
-	setupTest(t)
-	version := ruleTestConfig(t, nil)
-	calls := acceptRuleCommands(t)
-	query := commandOutput
-	commandOutput = func(name string, args ...string) (string, error) {
+	env := testenv.New(t)
+	version := env.RuleConfig(t, nil)
+	calls := env.AcceptRuleCommands(t)
+	query := env.CommandOutput
+	env.CommandOutput = func(name string, args ...string) (string, error) {
 		if name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
 			return `{"nftables":[]}`, nil
 		}
@@ -50,15 +51,15 @@ func TestAccessManagerSharesOneDraftAndOneSaveAcrossPortsAndSources(t *testing.T
 			if len(rules) != 1 || rules[0].Ports != "3306" || ports != "2222, 8443" {
 				t.Fatal("save did not contain the complete shared draft")
 			}
-			if storage.ReadFileString(configPath) != string(version.Content) {
+			if storage.ReadFileString(env.ConfigPath) != string(version.Content) {
 				t.Fatal("a subpage wrote the configuration before the final save")
 			}
 		}
 		return query(name, args...)
 	}
 	input := "1\n3\n1\n1\n1\n8443\n5\nn\n\n1\n192.168.1.10\n\n\n\n\n3306\n1\n\nq\ns\n\nq\nq\n"
-	output := capturePortOutput(t, func() {
-		if err := Run(inputUI(t, input)); !errors.Is(err, ui.ErrReturnToMenu) {
+	output := testenv.CaptureOutput(t, func() {
+		if err := env.Run(testenv.Input(t, input)); !errors.Is(err, ui.ErrReturnToMenu) {
 			t.Fatal(err)
 		}
 	})
@@ -73,7 +74,7 @@ func TestAccessManagerSharesOneDraftAndOneSaveAcrossPortsAndSources(t *testing.T
 	if strings.Contains(output, "端口与内网设置") || strings.Contains(output, "放行规则管理") || !strings.Contains(output, "访问规则管理") {
 		t.Fatal("retired top-level entries are still visible")
 	}
-	backups, _ := filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))
+	backups, _ := filepath.Glob(filepath.Join(env.BackupDir(), "nftables.conf.bak.*"))
 	if len(backups) != 1 || storage.ReadFileString(backups[0]) != string(version.Content) {
 		t.Fatal("the shared draft must create exactly one backup of the original")
 	}
@@ -82,13 +83,13 @@ func TestAccessManagerSharesOneDraftAndOneSaveAcrossPortsAndSources(t *testing.T
 func TestAccessDraftDiscardAndRestoreIncludeSourceChanges(t *testing.T) {
 	for _, ending := range []string{"q\ny\n", "r\ns\nq\n"} {
 		t.Run(ending, func(t *testing.T) {
-			setupTest(t)
-			version := ruleTestConfig(t, nil)
+			env := testenv.New(t)
+			version := env.RuleConfig(t, nil)
 			input := "3\n\n\n1\n8443\n5\nn\n\n1\n192.168.1.10\n\n\n\n\n3306\n1\n\nq\n" + ending
-			if err := runAccessRuleManager(inputUI(t, input)); !errors.Is(err, ui.ErrReturnToMenu) {
+			if err := env.AccessPolicy().Run(testenv.Input(t, input)); !errors.Is(err, ui.ErrReturnToMenu) {
 				t.Fatal(err)
 			}
-			if storage.ReadFileString(configPath) != string(version.Content) {
+			if storage.ReadFileString(env.ConfigPath) != string(version.Content) {
 				t.Fatal("discard/reset wrote a source or port change")
 			}
 		})
@@ -96,6 +97,7 @@ func TestAccessDraftDiscardAndRestoreIncludeSourceChanges(t *testing.T) {
 }
 
 func TestNewSourceExceptionsDoNotOfferGlobalPortCreation(t *testing.T) {
+	env := testenv.New(t)
 	for _, tc := range []struct {
 		input string
 		want  rulespkg.Rule
@@ -104,10 +106,10 @@ func TestNewSourceExceptionsDoNotOfferGlobalPortCreation(t *testing.T) {
 		{"\n2\n2001:db8::123/32\n\n\n\n\n\n3\n", rulespkg.Rule{ID: "aaaaaaaa", Kind: "source", Family: "ipv6", Source: "2001:db8::/32", Protocol: "both"}},
 	} {
 		var rule rulespkg.Rule
-		output := capturePortOutput(t, func() {
+		output := testenv.CaptureOutput(t, func() {
 			var err error
 			// Both permissions must remain limited to the source entered first.
-			rule, err = accessPolicy().AskAllowRule(inputUI(t, tc.input), rulespkg.Rule{ID: "aaaaaaaa"})
+			rule, err = env.AccessPolicy().AskAllowRule(testenv.Input(t, tc.input), rulespkg.Rule{ID: "aaaaaaaa"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -163,12 +165,12 @@ func TestGlobalPortMigrationPreservesOtherRulesAndSelectsCorrectLists(t *testing
 }
 
 func TestMigrationIsVisibleAndOnlySavedWithTheParentDraft(t *testing.T) {
-	setupTest(t)
+	env := testenv.New(t)
 	rules := []rulespkg.Rule{{ID: "aaaaaaaa", Kind: "port", Family: "ipv6", Ports: "51820", Protocol: "udp"}}
-	version := ruleTestConfig(t, rules)
-	calls := acceptRuleCommands(t)
-	output := capturePortOutput(t, func() {
-		if err := runAccessRuleManager(inputUI(t, "5\n1\n3\n\nq\np\n\ns\n\nq\n")); !errors.Is(err, ui.ErrReturnToMenu) {
+	version := env.RuleConfig(t, rules)
+	calls := env.AcceptRuleCommands(t)
+	output := testenv.CaptureOutput(t, func() {
+		if err := env.AccessPolicy().Run(testenv.Input(t, "5\n1\n3\n\nq\np\n\ns\n\nq\n")); !errors.Is(err, ui.ErrReturnToMenu) {
 			t.Fatal(err)
 		}
 	})
@@ -176,23 +178,23 @@ func TestMigrationIsVisibleAndOnlySavedWithTheParentDraft(t *testing.T) {
 		!strings.Contains(output, "公网 IPv6 UDP") || !strings.Contains(output, "内网 IPv6 UDP") || !reflect.DeepEqual(*calls, []string{"check", "load"}) {
 		t.Fatal("legacy conversion was not reviewable or saved atomically")
 	}
-	if storage.ReadFileString(configPath) == string(version.Content) {
+	if storage.ReadFileString(env.ConfigPath) == string(version.Content) {
 		t.Fatal("migration not saved")
 	}
 }
 
 func TestSourceEditingStillWorksWithCustomBusinessPortExpressions(t *testing.T) {
-	setupTest(t)
-	version := ruleTestConfig(t, nil)
+	env := testenv.New(t)
+	version := env.RuleConfig(t, nil)
 	custom := strings.Replace(string(version.Content), "elements = { 2222 }", "elements = { 2222, $custom_ports }", 1)
-	if err := os.WriteFile(configPath, []byte(custom), 0644); err != nil {
+	if err := os.WriteFile(env.ConfigPath, []byte(custom), 0644); err != nil {
 		t.Fatal(err)
 	}
-	acceptRuleCommands(t)
-	if err := runAccessRuleManager(inputUI(t, "5\nn\n\n1\n192.168.1.10\n\n\n\n\n3306\n1\n\nq\ns\n\nq\n")); !errors.Is(err, ui.ErrReturnToMenu) {
+	env.AcceptRuleCommands(t)
+	if err := env.AccessPolicy().Run(testenv.Input(t, "5\nn\n\n1\n192.168.1.10\n\n\n\n\n3306\n1\n\nq\ns\n\nq\n")); !errors.Is(err, ui.ErrReturnToMenu) {
 		t.Fatal(err)
 	}
-	updated := storage.ReadFileString(configPath)
+	updated := storage.ReadFileString(env.ConfigPath)
 	if !strings.Contains(updated, "$custom_ports") {
 		t.Fatal("source editing changed an unsupported business-port expression")
 	}

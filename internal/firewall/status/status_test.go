@@ -1,4 +1,4 @@
-package firewall
+package status_test
 
 import (
 	"errors"
@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"snail_tool/internal/firewall/configuration/generate"
+	"snail_tool/internal/firewall/internal/testenv"
 	"snail_tool/internal/firewall/loadedrules"
 	autostartconfig "snail_tool/internal/firewall/settings/autostart"
 	"snail_tool/internal/firewall/settings/counters"
@@ -36,13 +37,13 @@ func TestFirewallEnabledStateRequiresLiveInputHook(t *testing.T) {
 		{"other firewall", foreign, "未开启（本工具）", false},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
-			setupTest(t)
+			env := testenv.New(t)
 			output := fmt.Sprintf(`{"nftables":[%s]}`, scenario.objects)
 			live := loadedrules.Parse(output)
 			if live.Err != nil || live.InputActive != scenario.active {
 				t.Fatalf("incorrect input-hook state: %+v", live)
 			}
-			commandOutput = func(name string, args ...string) (string, error) {
+			env.CommandOutput = func(name string, args ...string) (string, error) {
 				if name != "nft" || !reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
 					t.Fatalf("unexpected query: %s %v", name, args)
 				}
@@ -50,14 +51,14 @@ func TestFirewallEnabledStateRequiresLiveInputHook(t *testing.T) {
 			}
 			// Boot enablement must never stand in for current kernel state.
 			for _, boot := range []string{"已开启", "已关闭"} {
-				fields := currentConfigFields(autostartconfig.Status{Label: boot})
-				if fields[0].Label != "防火墙" || fieldValue(fields, "防火墙") != scenario.state || fieldValue(fields, "开机自启") != boot {
+				fields := env.StatusFields(autostartconfig.Status{Label: boot})
+				if fields[0].Label != "防火墙" || testenv.FieldValue(fields, "防火墙") != scenario.state || testenv.FieldValue(fields, "开机自启") != boot {
 					t.Fatalf("runtime and startup state conflated: %+v", fields)
 				}
-				if scenario.active && fieldValue(fields, "入站策略") == "" {
+				if scenario.active && testenv.FieldValue(fields, "入站策略") == "" {
 					t.Fatal("active input policy missing")
 				}
-				if scenario.name == "other firewall" && fieldValue(fields, "其他入站链") == "" {
+				if scenario.name == "other firewall" && testenv.FieldValue(fields, "其他入站链") == "" {
 					t.Fatal("must acknowledge other inbound filters when this tool is disabled")
 				}
 			}
@@ -66,15 +67,15 @@ func TestFirewallEnabledStateRequiresLiveInputHook(t *testing.T) {
 }
 
 func TestStatusCountsOwnRulesAndKeepsDetectionFailureUnknown(t *testing.T) {
-	setupTest(t)
-	commandOutput = func(string, ...string) (string, error) { return portFixture(t), nil }
-	fields := currentConfigFields(autostartconfig.Status{Label: "已关闭"})
-	if fieldValue(fields, "本工具规则") != "4 条链 · 26 条规则" {
-		t.Fatalf("counts must be scoped to inet snail: %s", fieldValue(fields, "本工具规则"))
+	env := testenv.New(t)
+	env.CommandOutput = func(string, ...string) (string, error) { return testenv.PortRules(), nil }
+	fields := env.StatusFields(autostartconfig.Status{Label: "已关闭"})
+	if testenv.FieldValue(fields, "本工具规则") != "4 条链 · 26 条规则" {
+		t.Fatalf("counts must be scoped to inet snail: %s", testenv.FieldValue(fields, "本工具规则"))
 	}
-	commandExists = func(string) bool { return false }
-	fields = currentConfigFields(autostartconfig.Status{Label: "不支持"})
-	if fieldValue(fields, "防火墙") != "无法检测（未安装 nftables）" {
+	env.CommandExists = func(string) bool { return false }
+	fields = env.StatusFields(autostartconfig.Status{Label: "不支持"})
+	if testenv.FieldValue(fields, "防火墙") != "无法检测（未安装 nftables）" {
 		t.Fatalf("missing nft must not imply all firewalls are disabled: %+v", fields)
 	}
 }
@@ -105,20 +106,20 @@ func TestPacketCounterStatusUsesLoadedRulesAndOneSharedQuery(t *testing.T) {
 		{"query failed", "", "检测失败", true, errors.New("permission denied")},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
-			setupTest(t)
+			env := testenv.New(t)
 			// Keep the saved setting opposite to the loaded state where possible.
 			// A pending edit must not be presented as the kernel's current switch.
 			base, _ := generate.Build([]int{2222}, false, false)
-			content, err := withPacketCounters(base, scenario.want != ui.PrimaryText("已开启"))
+			content, err := testenv.WithPacketCounters(base, scenario.want != ui.PrimaryText("已开启"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+			if err := os.WriteFile(env.ConfigPath, []byte(content), 0600); err != nil {
 				t.Fatal(err)
 			}
-			commandExists = func(name string) bool { return name == "nft" && scenario.installed }
+			env.CommandExists = func(name string) bool { return name == "nft" && scenario.installed }
 			queries := 0
-			commandOutput = func(name string, args ...string) (string, error) {
+			env.CommandOutput = func(name string, args ...string) (string, error) {
 				if name != "nft" || !reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
 					t.Fatalf("unexpected query: %s %v", name, args)
 				}
@@ -130,8 +131,8 @@ func TestPacketCounterStatusUsesLoadedRulesAndOneSharedQuery(t *testing.T) {
 				}
 				return `{"nftables":[` + objects + `]}`, scenario.queryErr
 			}
-			fields := currentConfigFields(autostartconfig.Status{Label: "已关闭"})
-			if got := fieldValue(fields, "数据包统计"); got != scenario.want {
+			fields := env.StatusFields(autostartconfig.Status{Label: "已关闭"})
+			if got := testenv.FieldValue(fields, "数据包统计"); got != scenario.want {
 				t.Fatalf("counter status=%q, want %q", got, scenario.want)
 			}
 			wantQueries := 0
@@ -154,44 +155,10 @@ func TestPacketCounterStatusUsesLoadedRulesAndOneSharedQuery(t *testing.T) {
 	}
 }
 
-func TestParseLiveRulesCountsAllTablesAndScopesPolicyToSnail(t *testing.T) {
-	output := `{"nftables":[
-		{"metainfo":{"version":"1.1.3"}},
-		{"table":{"family":"inet","name":"snail"}},
-		{"table":{"family":"ip","name":"docker"}},
-		{"table":{"family":"ip6","name":"other"}},
-		{"chain":{"family":"inet","table":"snail","name":"input","type":"filter","hook":"input","policy":"drop"}},
-		{"chain":{"family":"ip","table":"docker","name":"forward","type":"filter","hook":"forward","policy":"accept"}},
-		{"chain":{"family":"ip6","table":"other","name":"input","type":"filter","hook":"input","policy":"accept"}},
-		{"rule":{"family":"inet","table":"snail","chain":"input","expr":[{"accept":null}]}},
-		{"rule":{"family":"ip","table":"docker","chain":"forward","expr":[{"accept":null}]}}
-	]}`
-	got := loadedrules.Parse(output)
-	if got.Err != nil || got.Version != "1.1.3" || got.Tables != 3 || got.Chains != 3 || got.Rules != 2 || !got.SnailLoaded {
-		t.Fatalf("incorrect full ruleset summary: %+v", got)
-	}
-	if got.InputPolicy != "input：默认丢弃（drop）" {
-		t.Fatalf("policy must come only from inet snail: %q", got.InputPolicy)
-	}
-	if !got.InputActive || got.SnailChains != 1 || got.SnailRules != 1 || got.OtherInputChains != 1 {
-		t.Fatalf("incorrect active state or own-table counts: %+v", got)
-	}
-	for _, output := range []string{`{"nftables":[]}`, `{"nftables":[{"table":{"family":"ip","name":"snail"}}]}`} {
-		if got := loadedrules.Parse(output); got.Err != nil || got.SnailLoaded {
-			t.Fatalf("missing inet snail table misreported: %+v", got)
-		}
-	}
-	for _, output := range []string{`{}`, `{"nftables":null}`, `invalid json`} {
-		if got := loadedrules.Parse(output); got.Err == nil {
-			t.Fatalf("unreadable status must be an error, not an empty ruleset: %q", output)
-		}
-	}
-}
-
 func TestCurrentConfigFieldsShowsOnlyFirewallStatus(t *testing.T) {
 	for _, scenario := range []string{"managed", "unmarked", "empty", "missing", "query failure"} {
 		t.Run(scenario, func(t *testing.T) {
-			setupTest(t)
+			env := testenv.New(t)
 			content, _ := generate.Build([]int{2222}, false, false)
 			if scenario == "unmarked" {
 				content = "table inet filter {}\n"
@@ -199,11 +166,11 @@ func TestCurrentConfigFieldsShowsOnlyFirewallStatus(t *testing.T) {
 				content = " \n"
 			}
 			if scenario != "missing" {
-				if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+				if err := os.WriteFile(env.ConfigPath, []byte(content), 0644); err != nil {
 					t.Fatal(err)
 				}
 			}
-			commandOutput = func(name string, args ...string) (string, error) {
+			env.CommandOutput = func(name string, args ...string) (string, error) {
 				if name != "nft" || !reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
 					t.Fatalf("unexpected status query: %s %v", name, args)
 				}
@@ -212,34 +179,25 @@ func TestCurrentConfigFieldsShowsOnlyFirewallStatus(t *testing.T) {
 				}
 				return `{"nftables":[{"metainfo":{"version":"1.1.3"}}]}`, nil
 			}
-			fields := currentConfigFields(autostartService().Inspect())
+			fields := env.StatusFields(env.Autostart().Inspect())
 			for _, label := range []string{"配置文件", "文件状态", "最后修改", "本工具表", "生成配置", "手动编辑"} {
-				if fieldValue(fields, label) != "" {
+				if testenv.FieldValue(fields, label) != "" {
 					t.Fatalf("status card must not include %s", label)
 				}
 			}
 			if scenario == "query failure" {
-				if fieldValue(fields, "防火墙") != "检测失败" || fieldValue(fields, "入站策略") != "" {
+				if testenv.FieldValue(fields, "防火墙") != "检测失败" || testenv.FieldValue(fields, "入站策略") != "" {
 					t.Fatal("query failure must not be reported as unloaded")
 				}
-			} else if fieldValue(fields, "防火墙") != "未开启（本工具）" || !strings.Contains(fieldValue(fields, "nftables"), "v1.1.3") {
+			} else if testenv.FieldValue(fields, "防火墙") != "未开启（本工具）" || !strings.Contains(testenv.FieldValue(fields, "nftables"), "v1.1.3") {
 				t.Fatal("saved config must not imply loaded rules; installed version should be shown")
 			}
 			if scenario != "query failure" && len(fields) != 9 {
 				t.Fatalf("unloaded status card should have nine fields, got %d", len(fields))
 			}
-			if scenario == "managed" && fieldValue(fields, "工具接管") != "已接管" {
+			if scenario == "managed" && testenv.FieldValue(fields, "工具接管") != "已接管" {
 				t.Fatal("owned config should show managed even when not active")
 			}
 		})
 	}
-}
-
-func fieldValue(fields []ui.CardField, label string) string {
-	for _, field := range fields {
-		if field.Label == label {
-			return field.Value
-		}
-	}
-	return ""
 }

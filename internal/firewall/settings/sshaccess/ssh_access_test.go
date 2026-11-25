@@ -1,4 +1,4 @@
-package firewall
+package sshaccess_test
 
 import (
 	"errors"
@@ -9,6 +9,7 @@ import (
 
 	"snail_tool/internal/firewall/configuration"
 	"snail_tool/internal/firewall/configuration/generate"
+	"snail_tool/internal/firewall/internal/testenv"
 	"snail_tool/internal/firewall/settings/ping"
 	"snail_tool/internal/firewall/settings/sshaccess"
 	"snail_tool/internal/storage"
@@ -100,65 +101,65 @@ func TestSSHAccessStatusReportsPartialLists(t *testing.T) {
 }
 
 func TestConfigureSSHAccessFromMenu(t *testing.T) {
-	setupTest(t)
+	env := testenv.New(t)
 	content, err := generate.Build([]int{2222}, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+	if err := os.WriteFile(env.ConfigPath, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
-	calls := acceptRuleCommands(t)
-	output := commandOutput
-	commandOutput = func(name string, args ...string) (string, error) {
+	calls := env.AcceptRuleCommands(t)
+	output := env.CommandOutput
+	env.CommandOutput = func(name string, args ...string) (string, error) {
 		if name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
 			return `{"nftables":[]}`, nil
 		}
 		return output(name, args...)
 	}
-	text := capturePortOutput(t, func() {
-		if err := Run(inputUI(t, "8\n5\n2\ny\n\nq\nq\n")); !errors.Is(err, ui.ErrReturnToMenu) {
+	text := testenv.CaptureOutput(t, func() {
+		if err := env.Run(testenv.Input(t, "8\n5\n2\ny\n\nq\nq\n")); !errors.Is(err, ui.ErrReturnToMenu) {
 			t.Fatal(err)
 		}
 	})
-	saved := storage.ReadFileString(configPath)
+	saved := storage.ReadFileString(env.ConfigPath)
 	if !strings.Contains(saved, "set snail_public_ipv4_tcp_ports {\n        type inet_service\n        flags interval\n        elements = { 80, 443 }\n    }") ||
 		!strings.Contains(saved, "set snail_private_ipv4_tcp_ports {\n        type inet_service\n        flags interval\n        elements = { 2222 }\n    }") ||
 		!strings.Contains(text, "公网 SSH 已关闭") ||
 		!reflect.DeepEqual(*calls, []string{"check", "load"}) {
 		t.Fatalf("menu did not close only public SSH: calls=%v", *calls)
 	}
-	field := sshAccessService().StateField()
+	field := env.SSHAccess().StateField()
 	if field.Label != "SSH 访问" || !strings.Contains(field.Value, "公网"+sshaccess.ScopeText(sshaccess.ScopeClosed)) || !strings.Contains(field.Value, "局域网"+sshaccess.ScopeText(sshaccess.ScopeOpen)) {
 		t.Fatalf("feature status did not reflect the switch: %#v", field)
 	}
 }
 
 func TestConfigureSSHAccessCancelDoesNotWrite(t *testing.T) {
-	setupTest(t)
+	env := testenv.New(t)
 	content, err := generate.Build([]int{2222}, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+	if err := os.WriteFile(env.ConfigPath, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
-	commandOutput = func(name string, args ...string) (string, error) {
+	env.CommandOutput = func(name string, args ...string) (string, error) {
 		if name == "nft" && reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
 			return `{"nftables":[]}`, nil
 		}
 		t.Fatalf("cancel must not validate or load: %s %v", name, args)
 		return "", nil
 	}
-	output := capturePortOutput(t, func() {
-		if err := Run(inputUI(t, "8\n5\n2\nn\nq\nq\n")); !errors.Is(err, ui.ErrReturnToMenu) {
+	output := testenv.CaptureOutput(t, func() {
+		if err := env.Run(testenv.Input(t, "8\n5\n2\nn\nq\nq\n")); !errors.Is(err, ui.ErrReturnToMenu) {
 			t.Fatal(err)
 		}
 	})
 	if !strings.Contains(output, "回车或 n 返回常用功能设置，0/q 返回上一步") {
 		t.Fatal("confirmation should explain both cancellation options")
 	}
-	if storage.ReadFileString(configPath) != content {
+	if storage.ReadFileString(env.ConfigPath) != content {
 		t.Fatal("declining the confirmation rewrote the config")
 	}
 }

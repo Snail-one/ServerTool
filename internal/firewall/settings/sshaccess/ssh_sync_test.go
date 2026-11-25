@@ -1,4 +1,4 @@
-package firewall
+package sshaccess_test
 
 import (
 	"errors"
@@ -11,41 +11,33 @@ import (
 	"snail_tool/internal/firewall/access"
 	"snail_tool/internal/firewall/configuration/generate"
 	rulespkg "snail_tool/internal/firewall/internal/rules"
+	"snail_tool/internal/firewall/internal/testenv"
 	"snail_tool/internal/firewall/settings/sshaccess"
 )
 
-const activeSSHFirewall = `{"nftables":[
- {"table":{"family":"inet","name":"snail"}},
- {"chain":{"family":"inet","table":"snail","name":"input","type":"filter","hook":"input","policy":"drop"}},
- {"rule":{"family":"inet","table":"snail","chain":"input","handle":40,"comment":"snail:ssh-ports"}},
- {"rule":{"family":"inet","table":"snail","chain":"input","handle":41,"comment":"snail:ssh-ports"}},
- {"rule":{"family":"inet","table":"snail","chain":"input","handle":42,"comment":"manual-rule"}},
- {"rule":{"family":"inet","table":"other","chain":"input","handle":43,"comment":"snail:ssh-ports"}}
-]}`
-
 func TestEnsureSSHPortsPreservesMultipleListenersAndUnrelatedRules(t *testing.T) {
-	setupTest(t)
+	env := testenv.New(t)
 	original, err := generate.Build([]int{22, 2200}, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	original += "\n# pending edit: keep this content without loading it\n"
-	if err := os.WriteFile(configPath, []byte(original), 0644); err != nil {
+	if err := os.WriteFile(env.ConfigPath, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
 	var transactions []string
 	var validations int
-	commandOutput = func(name string, args ...string) (string, error) {
+	env.CommandOutput = func(name string, args ...string) (string, error) {
 		switch {
 		case name == "ss":
 			return "LISTEN 0 128 *:22 *:* users:((\"sshd\",pid=1,fd=3))\nLISTEN 0 128 [::]:2200 [::]:* users:((\"sshd\",pid=1,fd=4))", nil
 		case reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}):
-			return activeSSHFirewall, nil
+			return testenv.ActiveSSHRules, nil
 		case len(args) == 3 && args[0] == "-c" && args[1] == "-f":
 			validations++
 			return "", nil
 		case len(args) == 2 && args[0] == "-f":
-			if args[1] == configPath {
+			if args[1] == env.ConfigPath {
 				t.Fatal("must not load pending edits or replace unrelated live rules")
 			}
 			data, err := os.ReadFile(args[1])
@@ -61,7 +53,7 @@ func TestEnsureSSHPortsPreservesMultipleListenersAndUnrelatedRules(t *testing.T)
 	}
 	// Repeated updates change only the set, without appending persistent rules.
 	for i := 0; i < 2; i++ {
-		active, err := EnsureSSHPorts([]int{3022, 4022, 3022})
+		active, err := env.SSHAccess().EnsureSSHPorts([]int{3022, 4022, 3022})
 		if err != nil || !active {
 			t.Fatalf("active=%v err=%v", active, err)
 		}
@@ -75,7 +67,7 @@ func TestEnsureSSHPortsPreservesMultipleListenersAndUnrelatedRules(t *testing.T)
 	if transactions[0] != want || transactions[1] != want {
 		t.Fatalf("unexpected transactions: %q", transactions)
 	}
-	updated, err := os.ReadFile(configPath)
+	updated, err := os.ReadFile(env.ConfigPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,14 +79,14 @@ func TestEnsureSSHPortsPreservesMultipleListenersAndUnrelatedRules(t *testing.T)
 	if strings.Contains(string(updated), sshaccess.LegacyBegin) || strings.Contains(string(updated), sshaccess.RuleTag) {
 		t.Fatal("transitional old listeners must not be persisted as separate rules")
 	}
-	backups, err := filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))
+	backups, err := filepath.Glob(filepath.Join(env.BackupDir(), "nftables.conf.bak.*"))
 	if err != nil || len(backups) != 1 {
 		t.Fatalf("backups=%v err=%v", backups, err)
 	}
 	if data, err := os.ReadFile(backups[0]); err != nil || string(data) != original {
 		t.Fatalf("backup mismatch: %v", err)
 	}
-	if files, _ := filepath.Glob(filepath.Join(filepath.Dir(configPath), ".snail-*.nft")); len(files) != 0 {
+	if files, _ := filepath.Glob(filepath.Join(filepath.Dir(env.ConfigPath), ".snail-*.nft")); len(files) != 0 {
 		t.Fatalf("temporary files left: %v", files)
 	}
 }
@@ -102,18 +94,18 @@ func TestEnsureSSHPortsPreservesMultipleListenersAndUnrelatedRules(t *testing.T)
 func TestEnsureSSHPortsInactiveDoesNotEnableFirewall(t *testing.T) {
 	for _, installed := range []bool{false, true} {
 		t.Run(map[bool]string{false: "not installed", true: "not loaded"}[installed], func(t *testing.T) {
-			setupTest(t)
-			commandExists = func(string) bool { return installed }
-			commandOutput = func(name string, args ...string) (string, error) {
+			env := testenv.New(t)
+			env.CommandExists = func(string) bool { return installed }
+			env.CommandOutput = func(name string, args ...string) (string, error) {
 				if name != "nft" || !reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
 					t.Fatalf("unexpected command: %s %v", name, args)
 				}
 				return `{"nftables":[{"table":{"family":"inet","name":"other"}}]}`, nil
 			}
-			if active, err := EnsureSSHPorts([]int{2222}); err != nil || active {
+			if active, err := env.SSHAccess().EnsureSSHPorts([]int{2222}); err != nil || active {
 				t.Fatalf("active=%v err=%v", active, err)
 			}
-			if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+			if _, err := os.Stat(env.ConfigPath); !os.IsNotExist(err) {
 				t.Fatalf("inactive firewall file created: %v", err)
 			}
 		})
@@ -123,15 +115,15 @@ func TestEnsureSSHPortsInactiveDoesNotEnableFirewall(t *testing.T) {
 func TestEnsureSSHPortsStopsOnFailuresAndRestoresFile(t *testing.T) {
 	for _, failure := range []string{"query", "chain", "listeners", "missing file", "batch validation", "config validation", "load", "concurrent edit"} {
 		t.Run(failure, func(t *testing.T) {
-			setupTest(t)
+			env := testenv.New(t)
 			original, _ := generate.Build([]int{22}, false, false)
 			if failure != "missing file" {
-				if err := os.WriteFile(configPath, []byte(original), 0644); err != nil {
+				if err := os.WriteFile(env.ConfigPath, []byte(original), 0644); err != nil {
 					t.Fatal(err)
 				}
 			}
 			loads := 0
-			commandOutput = func(name string, args ...string) (string, error) {
+			env.CommandOutput = func(name string, args ...string) (string, error) {
 				switch {
 				case name == "ss":
 					if failure == "listeners" {
@@ -143,16 +135,16 @@ func TestEnsureSSHPortsStopsOnFailuresAndRestoresFile(t *testing.T) {
 						return "", errors.New("permission denied")
 					}
 					if failure == "chain" {
-						return strings.Replace(activeSSHFirewall, `"hook":"input"`, `"hook":"output"`, 1), nil
+						return strings.Replace(testenv.ActiveSSHRules, `"hook":"input"`, `"hook":"output"`, 1), nil
 					}
-					return activeSSHFirewall, nil
+					return testenv.ActiveSSHRules, nil
 				case len(args) == 3 && args[0] == "-c":
 					isBatch := strings.Contains(filepath.Base(args[2]), "ssh-ports")
 					if (isBatch && failure == "batch validation") || (!isBatch && failure == "config validation") {
 						return "bad rule", errors.New("invalid config")
 					}
 					if !isBatch && failure == "concurrent edit" {
-						if err := os.WriteFile(configPath, []byte("# changed by editor\n"), 0644); err != nil {
+						if err := os.WriteFile(env.ConfigPath, []byte("# changed by editor\n"), 0644); err != nil {
 							t.Fatal(err)
 						}
 					}
@@ -165,7 +157,7 @@ func TestEnsureSSHPortsStopsOnFailuresAndRestoresFile(t *testing.T) {
 					return "", nil
 				}
 			}
-			if active, err := EnsureSSHPorts([]int{3022}); err == nil || active {
+			if active, err := env.SSHAccess().EnsureSSHPorts([]int{3022}); err == nil || active {
 				t.Fatalf("must fail: active=%v err=%v", active, err)
 			}
 			wantLoads := 0
@@ -180,7 +172,7 @@ func TestEnsureSSHPortsStopsOnFailuresAndRestoresFile(t *testing.T) {
 				if failure == "concurrent edit" {
 					want = "# changed by editor\n"
 				}
-				if data, err := os.ReadFile(configPath); err != nil || string(data) != want {
+				if data, err := os.ReadFile(env.ConfigPath); err != nil || string(data) != want {
 					t.Fatalf("file not preserved: %s %v", data, err)
 				}
 			}
