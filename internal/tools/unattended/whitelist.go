@@ -66,9 +66,9 @@ func parseWhitelist(output string) whitelistState {
 func (state whitelistState) menuStatus() string {
 	if len(state.patterns) == 0 {
 		if state.strict {
-			return "未设置 · 严格匹配"
+			return "空名单 · 严格匹配"
 		}
-		return "未设置"
+		return "按更新来源和排除规则"
 	}
 	if state.strict {
 		return fmt.Sprintf("%d 条 · 严格匹配", len(state.patterns))
@@ -89,14 +89,21 @@ func (state whitelistState) strictLabel() string {
 func (state whitelistState) detail() string {
 	switch {
 	case len(state.patterns) == 0 && state.strict:
-		return "名单为空且严格匹配开启时，自动更新不会安装软件包"
+		return "严格匹配已开启，空名单通常会阻止自动安装更新"
 	case len(state.patterns) == 0:
-		return "未设置名单时，已允许来源中的软件包都会更新"
+		return "按已允许的更新来源、软件包排除规则和 APT 策略筛选更新"
 	case state.strict:
 		return "只有名单中的软件包会更新，依赖也必须写在名单里"
 	default:
 		return "名单中的软件包及其依赖会更新"
 	}
+}
+
+func (state whitelistState) clearHint() string {
+	if state.strict {
+		return "清空后保留严格匹配，通常会阻止自动安装更新"
+	}
+	return "清空后按更新来源和排除规则筛选"
 }
 
 func printWhitelistSyntax() {
@@ -126,6 +133,25 @@ func normalizeWhitelistPattern(value string) (string, error) {
 		return "", fmt.Errorf("规则不能包含双引号")
 	}
 	return value, nil
+}
+
+func (service manager) validateWhitelistPattern(pattern string) error {
+	const script = `import re
+import sys
+
+try:
+    re.compile(sys.argv[1])
+except (re.error, OverflowError, RecursionError) as error:
+    print(error)
+`
+	output, err := service.query("python3", "-I", "-c", script, pattern)
+	if err != nil {
+		return fmt.Errorf("无法校验 Python 正则，请检查 python3: %w", err)
+	}
+	if detail := strings.TrimSpace(output); detail != "" {
+		return fmt.Errorf("Python 正则无效: %s", detail)
+	}
+	return nil
 }
 
 // renderWhitelist replaces every earlier allow-list. APT appends list values
@@ -196,7 +222,7 @@ func (service manager) whitelistMenu(view *ui.UI) error {
 			fmt.Println()
 			ui.MenuOptionHint("1", "添加规则", "软件包名或正则")
 			ui.MenuOptionHint("2", "删除规则", "")
-			ui.MenuOptionHint("3", "清空名单", "清空后不再按名单限制软件包")
+			ui.MenuOptionHint("3", "清空名单", state.clearHint())
 			ui.MenuOptionStatus("4", "严格匹配", ui.SwitchBadge(state.strict))
 			if state.managed {
 				fmt.Println()
@@ -237,7 +263,7 @@ func containsPattern(patterns []string, pattern string) bool {
 
 func emptyLabel(patterns []string) string {
 	if len(patterns) == 0 {
-		return "未设置"
+		return "空名单"
 	}
 	return fmt.Sprintf("%d 条", len(patterns))
 }
@@ -260,10 +286,11 @@ func (service manager) addWhitelistPattern(view *ui.UI, state whitelistState, pr
 	if err != nil {
 		return err
 	}
-	for _, current := range state.patterns {
-		if current == pattern {
-			return fmt.Errorf("这条规则已经在允许名单中")
-		}
+	if containsPattern(state.patterns, pattern) {
+		return fmt.Errorf("这条规则已经在允许名单中")
+	}
+	if err := service.validateWhitelistPattern(pattern); err != nil {
+		return err
 	}
 	next := append(append([]string{}, state.patterns...), pattern)
 	return service.confirmWhitelist(view, state, previous, exists, next, state.strict, "添加规则 "+pattern)

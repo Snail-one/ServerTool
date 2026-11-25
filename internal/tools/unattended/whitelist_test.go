@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"snail_tool/internal/system/packagemanager"
 	"snail_tool/internal/ui"
 )
 
@@ -23,8 +24,15 @@ Unattended-Upgrade::Package-Whitelist-Strict "true";
 		t.Fatalf("parsed whitelist = %+v", state)
 	}
 	unset := parseWhitelist("Unattended-Upgrade::Package-Whitelist \"\";\n")
-	if unset.explicit || unset.strict || len(unset.patterns) != 0 || unset.strictLabel() != "关闭（默认）" || unset.menuStatus() != "未设置" {
+	if unset.explicit || unset.strict || len(unset.patterns) != 0 || unset.strictLabel() != "关闭（默认）" || unset.menuStatus() != "按更新来源和排除规则" {
 		t.Fatalf("empty whitelist = %+v (%s)", unset, unset.menuStatus())
+	}
+	if got := unset.clearHint(); got != "清空后按更新来源和排除规则筛选" {
+		t.Fatalf("clear hint with strict matching off = %q", got)
+	}
+	emptyStrict := whitelistState{strict: true}
+	if got := emptyStrict.menuStatus(); got != "空名单 · 严格匹配" {
+		t.Fatalf("empty strict whitelist status = %q", got)
 	}
 }
 
@@ -38,6 +46,46 @@ func TestNormalizeWhitelistPatternRejectsQuotesAndBlankInput(t *testing.T) {
 	}
 	if _, err := normalizeWhitelistPattern("   "); err == nil {
 		t.Fatal("blank pattern was accepted")
+	}
+}
+
+func TestAddWhitelistRejectsInvalidPythonPatternBeforeSaving(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is unavailable")
+	}
+	service := manager{
+		path:  filepath.Join(t.TempDir(), "policy.conf"),
+		root:  func() bool { return true },
+		query: packagemanager.QueryOutput,
+	}
+	if err := service.validateWhitelistPattern(`nginx(?=-|$)`); err != nil {
+		t.Fatalf("valid Python lookahead was rejected: %v", err)
+	}
+
+	input, err := os.CreateTemp(t.TempDir(), "invalid-pattern")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.Close()
+	if _, err := input.WriteString("nginx(\ny\n"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := input.Seek(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	previousInput := os.Stdin
+	os.Stdin = input
+	view := ui.New()
+	os.Stdin = previousInput
+	err = service.addWhitelistPattern(view, whitelistState{}, nil, false)
+	if err == nil || !strings.Contains(err.Error(), "Python 正则无效") {
+		t.Fatalf("adding invalid pattern: %v", err)
+	}
+	if _, err := os.Stat(service.whitelistPath()); !os.IsNotExist(err) {
+		t.Fatalf("invalid pattern reached configuration write: %v", err)
+	}
+	if next, err := view.Ask("检查下一条输入"); err != nil || next != "y" {
+		t.Fatalf("invalid pattern reached confirmation: next=%q, err=%v", next, err)
 	}
 }
 
@@ -87,6 +135,7 @@ func TestWhitelistMenuShowsEffectivePatterns(t *testing.T) {
 	}
 	for _, want := range []string{
 		"软件包允许名单", "2 条 · 严格匹配", "添加规则", "删除规则", "清空名单", "严格匹配",
+		"清空后保留严格匹配，通常会阻止自动安装更新",
 		"规则 1：bash", "规则 2：^nginx$", "只有名单中的软件包会更新",
 		"规则说明", "Python 正则，从软件包名开头匹配", "不必写 ^",
 		"前缀：nginx", "精确名称：nginx$", "任意后缀：nginx.*",
