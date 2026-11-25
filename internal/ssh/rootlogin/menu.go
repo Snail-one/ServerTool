@@ -11,10 +11,9 @@ func Run(view *ui.UI, current func() (string, error), update func(string) error)
 	for {
 		ui.ClearScreen()
 		value, readErr := current()
-		choices := map[string]string{"r": "refresh"}
+		var choices map[string]string
 		if readErr == nil {
-			choices["1"] = "prohibit-password"
-			choices["2"] = "no"
+			choices = map[string]string{"1": "prohibit-password", "2": "no"}
 		}
 		draw := func() {
 			ui.MenuTitle("SSH 管理", "Root SSH 登录策略")
@@ -26,16 +25,11 @@ func Run(view *ui.UI, current func() (string, error), update func(string) error)
 				ui.MenuOptionStatus("1", "仅允许 root 公钥登录", ui.CurrentBadge(value == "仅允许密钥登录", true))
 				ui.MenuOptionStatus("2", "禁用 root SSH 登录（包括公钥）", ui.CurrentBadge(value == "已禁止", false))
 			}
-			fmt.Println()
-			ui.MenuShortcutHint("r", "刷新状态", "")
 			ui.MenuExit("0/q", "返回 SSH 管理")
 		}
 		choice, err := ui.AskMenuChoice(view, "请选择", "", choices, draw)
 		if err != nil {
 			return err
-		}
-		if choice == "refresh" {
-			continue
 		}
 		ui.RunAction(view, "修改失败，已返回 Root SSH 登录策略", func() error {
 			if err := applyPolicy(view, choice, update); err != nil {

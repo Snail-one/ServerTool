@@ -48,8 +48,8 @@ func TestSSHPagesReturnToManagementWithoutExtraPause(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(text), "设置 SSH 端口和认证策略\n\n  r   刷新状态") {
-		t.Error("numeric actions and letter shortcuts should have a blank line between them")
+	if strings.Contains(string(text), "刷新状态") || strings.Count(string(text), "r   刷新配置") != 2 {
+		t.Error("only the effective configuration page should show a refresh shortcut")
 	}
 	for title, want := range map[string]int{
 		"SSH 管理  ›  SSH 安全策略":      1,
