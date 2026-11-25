@@ -24,7 +24,7 @@ func (store Store) Show() error {
 	return nil
 }
 
-func (store Store) Reload(view *ui.UI, isRoot func() bool, compare func([]byte) (bool, error)) error {
+func (store Store) Reload(view *ui.UI, isRoot func() bool, commandExists func(string) bool) error {
 	if !isRoot() {
 		return fmt.Errorf("加载防火墙配置需要 root 权限，请使用 sudo 运行本工具")
 	}
@@ -48,7 +48,7 @@ func (store Store) Reload(view *ui.UI, isRoot func() bool, compare func([]byte) 
 	if err := store.Validate(version); err != nil {
 		return err
 	}
-	equal, compareErr := compare(content)
+	equal, compareErr := store.compareLoaded(content, commandExists)
 	if err := store.Check(version); err != nil {
 		return err
 	}

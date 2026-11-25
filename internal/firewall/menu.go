@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"snail_tool/internal/firewall/configuration/ownership"
 	"snail_tool/internal/firewall/listeners"
 	"snail_tool/internal/firewall/loadedrules"
 	"snail_tool/internal/firewall/portmapping"
@@ -53,7 +54,7 @@ func Run(view *ui.UI) error {
 		case "3":
 			ui.RunAction(view, "端口映射设置失败，已返回防火墙管理", func() error {
 				return (portmapping.Service{
-					Store: configStore(), HasManagedConfig: hasManagedConfig,
+					Store: configStore(), HasManagedConfig: ownership.HasManagedConfig,
 					ForwardingStatus: ipForwardingService().StatusField,
 				}).Run(view)
 			})
@@ -109,7 +110,7 @@ func showMenu() {
 	switch {
 	case err != nil:
 		ui.MenuShortcutHint("d", "生成基础配置", "配置状态未知，选择查看原因")
-	case hasManagedConfig(string(version.Content)):
+	case ownership.HasManagedConfig(string(version.Content)):
 		ui.MenuShortcutHint("d", "重建基础配置", "重新设置端口策略，未转换的旧规则不保留")
 	case version.Exists:
 		ui.MenuShortcutHint("d", "生成默认配置", "备份现有配置后替换，首次配置开启自启")

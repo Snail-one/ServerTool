@@ -212,7 +212,7 @@ func (service Service) Run(view *ui.UI) error {
 			ui.CardField{Label: "操作", Value: action + scopeName + " SSH 访问", Changed: true},
 			ui.CardField{Label: "生效方式", Value: "保存并加载整份当前配置，包括其他待加载修改"},
 		)
-		confirmed, err := service.Confirm(view, "确认"+action+scopeName+" SSH 端口 "+PortList(ports)+" 并加载当前配置？")
+		confirmed, err := ui.ConfirmMenuChange(view, "确认"+action+scopeName+" SSH 端口 "+PortList(ports)+" 并加载当前配置？", "常用功能设置")
 		if errors.Is(err, ui.ErrReturnToMenu) {
 			continue
 		}

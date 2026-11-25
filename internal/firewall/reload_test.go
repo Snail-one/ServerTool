@@ -101,7 +101,7 @@ func TestConfigSyncParsesOnlyInAnIsolatedNetworkNamespace(t *testing.T) {
 			} else if scenario == "missing table" {
 				live = loadedrules.Parse(`{"nftables":[]}`)
 			}
-			field := configSyncField(content, nil, true, live)
+			field := configStore().SyncField(content, nil, true, live.JSON, live.Err, commandExists)
 			want := "无法比较"
 			if scenario == "synced" {
 				want = "已同步"

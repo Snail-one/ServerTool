@@ -11,6 +11,7 @@ import (
 	"snail_tool/internal/firewall/configuration"
 	"snail_tool/internal/firewall/configuration/generate"
 	rulespkg "snail_tool/internal/firewall/internal/rules"
+	"snail_tool/internal/firewall/settings"
 	"snail_tool/internal/firewall/settings/counters"
 	"snail_tool/internal/firewall/settings/ping"
 	"snail_tool/internal/firewall/settings/sshaccess"
@@ -19,7 +20,7 @@ import (
 )
 
 func withPacketCounters(content string, enabled bool) (string, error) {
-	return counters.Replace(content, enabled, validateCounterConfig)
+	return counters.Replace(content, enabled, settings.ValidateCounterConfig)
 }
 
 func assertNoPacketCounters(t *testing.T, content string) {
@@ -199,7 +200,7 @@ func TestConfigurePacketCountersValidatesBacksUpAndLoads(t *testing.T) {
 				t.Fatalf("unexpected command: %s %v", name, args)
 				return "", nil
 			}
-			err := configurePacketCounters(inputUI(t, input))
+			err := counterService().Run(inputUI(t, input))
 			backups, _ := filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))
 			saved := storage.ReadFileString(configPath)
 			if scenario == "invalid" || scenario == "concurrent" {
@@ -231,7 +232,7 @@ func TestPacketCounterCancelReturnsWithoutWritingOrExtraPrompt(t *testing.T) {
 			setupTest(t)
 			version := ruleTestConfig(t, nil)
 			view := inputUI(t, input+"next\n")
-			if err := configurePacketCounters(view); !errors.Is(err, ui.ErrReturnToMenu) {
+			if err := counterService().Run(view); !errors.Is(err, ui.ErrReturnToMenu) {
 				t.Fatal(err)
 			}
 			if storage.ReadFileString(configPath) != string(version.Content) {

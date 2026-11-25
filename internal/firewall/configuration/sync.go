@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"snail_tool/internal/firewall/internal/nftjson"
+	"snail_tool/internal/firewall/loadedrules"
 	"snail_tool/internal/ui"
 )
 
@@ -42,6 +43,14 @@ func (store Store) SyncField(content []byte, fileErr error, installed bool, live
 		field.Detail += "；输入 r 校验加载配置"
 	}
 	return field
+}
+
+func (store Store) compareLoaded(content []byte, commandExists func(string) bool) (bool, error) {
+	if !commandExists("unshare") {
+		return false, fmt.Errorf("缺少 unshare，无法对比配置与内核规则")
+	}
+	live := loadedrules.Inspect(store.CommandOutput)
+	return store.Compare(content, live.JSON, live.Err, commandExists)
 }
 
 func (store Store) Compare(content []byte, liveJSON string, liveErr error, commandExists func(string) bool) (bool, error) {

@@ -123,7 +123,7 @@ func TestConfigurePingValidationBackupLoadAndConcurrentEdits(t *testing.T) {
 				t.Fatalf("unexpected command: %s %v", name, args)
 				return "", nil
 			}
-			err := configurePing(inputUI(t, input))
+			err := pingService().Run(inputUI(t, input))
 			backups, _ := filepath.Glob(filepath.Join(firewallBackupDir(), "nftables.conf.bak.*"))
 			saved := storage.ReadFileString(configPath)
 			if scenario == "invalid" || scenario == "concurrent" {
@@ -170,7 +170,7 @@ func TestPingCancelDoesNotWriteOrConsumeNextInput(t *testing.T) {
 				return "", nil
 			}
 			view := inputUI(t, input+"next\n")
-			if err := configurePing(view); !errors.Is(err, ui.ErrReturnToMenu) {
+			if err := pingService().Run(view); !errors.Is(err, ui.ErrReturnToMenu) {
 				t.Fatalf("cancel did not return directly: %v", err)
 			}
 			if storage.ReadFileString(configPath) != string(version.Content) {
@@ -218,7 +218,7 @@ func TestRemovePingConfigurationKeepsOtherRulesAndDoesNotRecreateOnRegeneration(
 				input = "3\nnext\n"
 			}
 			view := inputUI(t, input)
-			if err := configurePing(view); err != nil {
+			if err := pingService().Run(view); err != nil {
 				t.Fatal(err)
 			}
 			if next, err := view.Ask("next"); err != nil || next != "next" {
@@ -364,7 +364,7 @@ func TestEchoCardsSeparateSavedSwitchFromLoadedBlocking(t *testing.T) {
 		t.Fatal("main card inferred loaded state from saved switch")
 	}
 	output := capturePortOutput(t, func() {
-		if err := configurePing(inputUI(t, "q\n")); err == nil {
+		if err := pingService().Run(inputUI(t, "q\n")); err == nil {
 			t.Fatal("expected return sentinel")
 		}
 	})
@@ -379,7 +379,7 @@ func TestEchoCardsSeparateSavedSwitchFromLoadedBlocking(t *testing.T) {
 		}
 	}
 	for _, live := range []loadedrules.Snapshot{{}, {Err: errors.New("denied")}} {
-		for _, field := range echoStateFields(true, live) {
+		for _, field := range ping.StateFields(true, live.InputActive, live.JSON, live.Err) {
 			if field.Value == "已允许" || field.Value == "已拦截" {
 				t.Fatal("inactive or unreadable firewall was assigned an active verdict")
 			}

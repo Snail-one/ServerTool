@@ -3,25 +3,54 @@ package settings
 import (
 	"fmt"
 
+	"snail_tool/internal/firewall/loadedrules"
+	"snail_tool/internal/firewall/settings/autostart"
+	"snail_tool/internal/firewall/settings/counters"
+	"snail_tool/internal/firewall/settings/ipforwarding"
+	"snail_tool/internal/firewall/settings/ping"
+	"snail_tool/internal/firewall/settings/sshaccess"
 	"snail_tool/internal/ui"
 )
 
-type Snapshot struct {
+type snapshot struct {
 	Fields               []ui.CardField
 	AutostartUnavailable bool
 	AutostartEnabled     bool
 }
 
-type Actions struct {
-	Inspect                                    func() Snapshot
-	Autostart, Ping, Counters, Forwarding, SSH func(*ui.UI) error
+type Service struct {
+	CommandExists func(string) bool
+	CommandOutput func(string, ...string) (string, error)
+	Autostart     autostart.Service
+	Ping          ping.Service
+	Counters      counters.Service
+	Forwarding    ipforwarding.Service
+	SSH           sshaccess.Service
 }
 
-func Run(view *ui.UI, actions Actions) error {
+func (service Service) inspect() snapshot {
+	boot := service.Autostart.Inspect()
+	installed := service.CommandExists("nft")
+	live := loadedrules.Snapshot{}
+	if installed {
+		live = loadedrules.Inspect(service.CommandOutput)
+	}
+	autostartLabel := ui.StateText(boot.Label, boot.Enabled || boot.State == "enabled-runtime")
+	fields := []ui.CardField{{Label: "开机自启", Value: autostartLabel}}
+	fields = append(fields, ping.StateFields(installed, live.InputActive, live.JSON, live.Err)...)
+	fields = append(fields, counters.StateField(installed, live.InputActive, live.JSON, live.Err))
+	fields = append(fields, service.Forwarding.StatusField())
+	fields = append(fields, service.SSH.StateField())
+	return snapshot{
+		Fields: fields, AutostartUnavailable: boot.Err != nil, AutostartEnabled: boot.Enabled,
+	}
+}
+
+func (service Service) Run(view *ui.UI) error {
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("防火墙管理", "常用功能设置")
-		snapshot := actions.Inspect()
+		snapshot := service.inspect()
 		ui.PrintInfoCard("功能状态", snapshot.Fields...)
 		fmt.Println()
 		states := make(map[string]string, len(snapshot.Fields))
@@ -55,23 +84,23 @@ func Run(view *ui.UI, actions Actions) error {
 		switch choice {
 		case "1":
 			ui.RunAction(view, "修改开机自启失败，已返回常用功能设置", func() error {
-				return actions.Autostart(view)
+				return service.Autostart.Toggle(view)
 			})
 		case "2":
 			ui.RunAction(view, "设置 ICMP 回显失败，已返回常用功能设置", func() error {
-				return actions.Ping(view)
+				return service.Ping.Run(view)
 			})
 		case "3":
 			ui.RunAction(view, "设置数据包统计失败，已返回常用功能设置", func() error {
-				return actions.Counters(view)
+				return service.Counters.Run(view)
 			})
 		case "4":
 			ui.RunAction(view, "设置内核转发失败，已返回常用功能设置", func() error {
-				return actions.Forwarding(view)
+				return service.Forwarding.Run(view)
 			})
 		case "5":
 			ui.RunAction(view, "设置 SSH 访问失败，已返回常用功能设置", func() error {
-				return actions.SSH(view)
+				return service.SSH.Run(view)
 			})
 		}
 	}

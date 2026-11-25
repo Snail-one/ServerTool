@@ -2,6 +2,7 @@ package firewall
 
 import (
 	"snail_tool/internal/firewall/access"
+	"snail_tool/internal/firewall/configuration/ownership"
 	"snail_tool/internal/firewall/forward"
 	"snail_tool/internal/firewall/internal/rules"
 	"snail_tool/internal/ui"
@@ -9,7 +10,7 @@ import (
 
 func ruleOptions() rules.Options {
 	return rules.Options{
-		Store: configStore(), IsRoot: isRoot, HasManagedConfig: hasManagedConfig,
+		Store: configStore(), IsRoot: isRoot, HasManagedConfig: ownership.HasManagedConfig,
 	}
 }
 

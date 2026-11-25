@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"snail_tool/internal/firewall/configuration"
+	"snail_tool/internal/firewall/loadedrules"
 	"snail_tool/internal/firewall/settings/counters"
 	"snail_tool/internal/ui"
 )
@@ -15,7 +16,6 @@ type Service struct {
 	IsRoot           func() bool
 	HasManagedConfig func(string) bool
 	CommandExists    func(string) bool
-	InspectLive      func() (json string, inputActive bool, err error)
 }
 
 const (
@@ -133,15 +133,13 @@ func (service Service) Run(view *ui.UI) error {
 			state = Label(enabled)
 		}
 		installed := service.CommandExists("nft")
-		var liveJSON string
-		var liveErr error
-		inputActive := false
+		live := loadedrules.Snapshot{}
 		if installed {
-			liveJSON, inputActive, liveErr = service.InspectLive()
+			live = loadedrules.Inspect(service.Store.CommandOutput)
 		}
-		fields := StateFields(installed, inputActive, liveJSON, liveErr)
+		fields := StateFields(installed, live.InputActive, live.JSON, live.Err)
 		fields = append(fields, ui.CardField{Label: "保存的开关", Value: state})
-		sync := service.Store.SyncField(version.Content, nil, installed, liveJSON, liveErr, service.CommandExists)
+		sync := service.Store.SyncField(version.Content, nil, installed, live.JSON, live.Err, service.CommandExists)
 		sync.Value, _, _ = strings.Cut(sync.Value, " · ")
 		if sync.Value == "已同步" || sync.Value == "未同步" {
 			sync.Detail = ""

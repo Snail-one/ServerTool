@@ -27,16 +27,15 @@ func TestRuntimeStatusFieldsIncludeDockerLogAndProxy(t *testing.T) {
 }
 
 func TestRuntimeByChoiceSelectsDockerOrPodman(t *testing.T) {
-	installed := []Runtime{{Name: "docker", Display: "Docker"}, {Name: "podman", Display: "Podman"}}
-	dockerRuntime, ok := runtimeByChoice(installed, "1")
-	if !ok || dockerRuntime.Name != "docker" {
-		t.Fatalf("choice 1 = %#v ok=%v", dockerRuntime, ok)
+	name, ok := runtimeByChoice("1")
+	if !ok || name != "docker" {
+		t.Fatalf("choice 1 = %q ok=%v", name, ok)
 	}
-	podmanRuntime, ok := runtimeByChoice(installed, "2")
-	if !ok || podmanRuntime.Name != "podman" {
-		t.Fatalf("choice 2 = %#v ok=%v", podmanRuntime, ok)
+	name, ok = runtimeByChoice("2")
+	if !ok || name != "podman" {
+		t.Fatalf("choice 2 = %q ok=%v", name, ok)
 	}
-	if _, ok := runtimeByChoice(installed, "3"); ok {
+	if _, ok := runtimeByChoice("3"); ok {
 		t.Fatal("choice 3 was accepted")
 	}
 }

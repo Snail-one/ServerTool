@@ -12,55 +12,62 @@ import (
 )
 
 func Manage(view *ui.UI) error {
-	if err := ensure(view); err != nil {
-		return err
-	}
-
+	noted := false
 	for {
 		installed := probe(system.CommandExists, system.Output, nil)
-		if len(installed) == 0 {
-			return ui.ErrReturnToMenu
-		}
-		if len(installed) == 1 {
-			return runInstalled(view, installed[0], false)
+		if !noted && len(installed) > 0 {
+			displays := make([]string, 0, len(installed))
+			for _, item := range installed {
+				displays = append(displays, item.Display)
+			}
+			log.Info("已检测到容器运行时：", strings.Join(displays, "、"))
+			noted = true
 		}
 		name, err := chooseRuntime(view, installed)
 		if err != nil {
 			return err
 		}
-		selected, ok := findRuntime(installed, name)
-		if !ok {
-			continue
+		if selected, ok := findRuntime(installed, name); ok {
+			err = runInstalled(view, selected, true)
+			if errors.Is(err, ErrBackToRuntimes) || errors.Is(err, podman.ErrBackToRuntimes) {
+				continue
+			}
+			return err
 		}
-		err = runInstalled(view, selected, true)
-		if errors.Is(err, ErrBackToRuntimes) || errors.Is(err, podman.ErrBackToRuntimes) {
+		err = installMissing(view, name)
+		if errors.Is(err, ui.ErrReturnToMenu) {
 			continue
 		}
 		return err
 	}
 }
 
-func ensure(view *ui.UI) error {
+func installMissing(view *ui.UI, name string) error {
+	if err := ensureAbsent(system.CommandExists, system.Output); err != nil {
+		log.Error(err)
+		view.Pause()
+		return ui.ErrReturnToMenu
+	}
+	switch name {
+	case "docker":
+		return chooseDockerInstall(view)
+	case "podman":
+		return installPodman(view)
+	default:
+		return nil
+	}
+}
+
+func chooseDockerInstall(view *ui.UI) error {
 	invalidChoice := false
 	for {
-		runtimes := probe(system.CommandExists, system.Output, nil)
-		if len(runtimes) > 0 {
-			displays := make([]string, 0, len(runtimes))
-			for _, item := range runtimes {
-				displays = append(displays, item.Display)
-			}
-			log.Info("已检测到容器运行时：", strings.Join(displays, "、"))
-			return nil
-		}
-
 		ui.ClearScreen()
-		ui.MenuTitle("容器管理", "安装容器运行时")
-		fmt.Println("未检测到 Docker 或 Podman。")
+		ui.MenuTitle("容器管理", "安装 Docker")
+		fmt.Println("未检测到 Docker。")
 		fmt.Println()
 		ui.MenuSection("请选择安装方式")
 		ui.MenuOptionHint("1", "安装 Docker", "Docker 官方签名 stable 仓库")
 		ui.MenuOptionHint("2", "安装 Docker", "Docker 官方脚本 get.docker.com")
-		ui.MenuOptionHint("3", "安装 Podman", "apt 软件包")
 		ui.MenuExit("0/q", "返回")
 
 		if invalidChoice {
@@ -78,26 +85,9 @@ func ensure(view *ui.UI) error {
 		}
 		switch strings.ToLower(strings.TrimSpace(choice)) {
 		case "1":
-			if err := installFromRepository(view); err != nil {
-				if errors.Is(err, ui.ErrReturnToMenu) {
-					continue
-				}
-				return err
-			}
+			return installFromRepository(view)
 		case "2":
-			if err := installFromScript(view); err != nil {
-				if errors.Is(err, ui.ErrReturnToMenu) {
-					continue
-				}
-				return err
-			}
-		case "3":
-			if err := installPodman(view); err != nil {
-				if errors.Is(err, ui.ErrReturnToMenu) {
-					continue
-				}
-				return err
-			}
+			return installFromScript(view)
 		default:
 			invalidChoice = true
 		}
@@ -151,8 +141,10 @@ func chooseRuntime(view *ui.UI, installed []Runtime) (string, error) {
 		}
 		ui.PrintInfoCard("容器运行时状态", runtimeStatusFields(installed, logSummary, proxySummary, clientProxySummary)...)
 		fmt.Println()
-		ui.MenuOption("1", "Docker")
-		ui.MenuOption("2", "Podman")
+		_, dockerInstalled := findRuntime(installed, "docker")
+		_, podmanInstalled := findRuntime(installed, "podman")
+		ui.MenuOptionStatus("1", "Docker", ui.InstallationBadge(dockerInstalled))
+		ui.MenuOptionStatus("2", "Podman", ui.InstallationBadge(podmanInstalled))
 		ui.MenuExit("0/q", "返回")
 
 		choice, err := view.Ask("请选择：")
@@ -163,20 +155,23 @@ func chooseRuntime(view *ui.UI, installed []Runtime) (string, error) {
 		if ui.IsReturnChoice(choice) {
 			return "", ui.ErrReturnToMenu
 		}
-		if selected, ok := runtimeByChoice(installed, choice); ok {
-			return selected.Name, nil
+		if name, ok := runtimeByChoice(choice); ok {
+			return name, nil
 		}
 		ui.InvalidChoice()
 		view.Pause()
 	}
 }
 
-func runtimeByChoice(installed []Runtime, choice string) (Runtime, bool) {
-	name := map[string]string{"1": "docker", "2": "podman"}[strings.ToLower(strings.TrimSpace(choice))]
-	if name == "" {
-		return Runtime{}, false
+func runtimeByChoice(choice string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(choice)) {
+	case "1":
+		return "docker", true
+	case "2":
+		return "podman", true
+	default:
+		return "", false
 	}
-	return findRuntime(installed, name)
 }
 
 func findRuntime(installed []Runtime, name string) (Runtime, bool) {

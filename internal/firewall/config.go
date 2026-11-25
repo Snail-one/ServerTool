@@ -1,11 +1,10 @@
 package firewall
 
 import (
-	"fmt"
-
 	"snail_tool/internal/firewall/configuration"
 	"snail_tool/internal/firewall/configuration/generate"
-	"snail_tool/internal/firewall/loadedrules"
+	"snail_tool/internal/firewall/configuration/ownership"
+	"snail_tool/internal/firewall/settings"
 	"snail_tool/internal/storage"
 	"snail_tool/internal/ui"
 )
@@ -15,8 +14,14 @@ var (
 	dataDir    = storage.DataDir
 )
 
+func originalStore() configuration.Store {
+	return configuration.Store{Path: configPath, DataDir: dataDir, CommandOutput: commandOutput}
+}
+
 func configStore() configuration.Store {
-	return configuration.Store{Path: configPath, DataDir: dataDir, CommandOutput: commandOutput, PreserveOriginal: preserveOriginal}
+	store := originalStore()
+	store.PreserveOriginal = preserveOriginal
+	return store
 }
 
 func editConfig() error {
@@ -24,25 +29,12 @@ func editConfig() error {
 }
 
 func loadConfig(view *ui.UI) error {
-	return configStore().Reload(view, isRoot, func(content []byte) (bool, error) {
-		if !commandExists("unshare") {
-			return false, fmt.Errorf("缺少 unshare，无法对比配置与内核规则")
-		}
-		return compareConfigRules(content, inspectLiveRules())
-	})
+	return configStore().Reload(view, isRoot, commandExists)
 }
 
 func configure(view *ui.UI) error {
 	return (generate.Service{
-		Store: configStore(), IsRoot: isRoot, EnsureNftables: ensureNftables, HasManagedConfig: hasManagedConfig,
-		Autostart: autostartService(), SSH: sshAccessService(), DockerMark: dockerMarkService(), ValidateCounterConfig: validateCounterConfig,
+		Store: configStore(), IsRoot: isRoot, EnsureNftables: ensureNftables, HasManagedConfig: ownership.HasManagedConfig,
+		Autostart: autostartService(), SSH: sshAccessService(), DockerMark: dockerMarkService(), ValidateCounterConfig: settings.ValidateCounterConfig,
 	}).Run(view)
-}
-
-func configSyncField(content []byte, fileErr error, installed bool, live loadedrules.Snapshot) ui.CardField {
-	return configStore().SyncField(content, fileErr, installed, live.JSON, live.Err, commandExists)
-}
-
-func compareConfigRules(content []byte, live loadedrules.Snapshot) (bool, error) {
-	return configStore().Compare(content, live.JSON, live.Err, commandExists)
 }
