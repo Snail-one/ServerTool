@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,7 +10,39 @@ import (
 
 	"snail_tool/internal/storage"
 	"snail_tool/internal/system"
+	"snail_tool/internal/ui"
 )
+
+func TestEnvironmentProxyAddressInput(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		visible, secret []string
+		want            string
+		wantErr         error
+	}{
+		{name: "visible input and retry", visible: []string{"bad address", "192.168.1.1:7890"}, want: "http://192.168.1.1:7890"},
+		{name: "hidden authentication", visible: []string{"a"}, secret: []string{"user:pa%40ss@proxy:7890"}, want: "http://user:pa%40ss@proxy:7890"},
+		{name: "back from authentication", visible: []string{"A", "[::1]:7890"}, secret: []string{"q"}, want: "http://[::1]:7890"},
+		{name: "back from visible address", visible: []string{"0"}, wantErr: ui.ErrReturnToMenu},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			read := func(kind string, values *[]string) func(string) (string, error) {
+				return func(prompt string) (string, error) {
+					if len(*values) == 0 {
+						t.Fatalf("unexpected %s prompt %q", kind, prompt)
+					}
+					value := (*values)[0]
+					*values = (*values)[1:]
+					return value, nil
+				}
+			}
+			got, err := promptEnvironmentProxyURL(read("visible", &tc.visible), read("hidden", &tc.secret))
+			if got != tc.want || !errors.Is(err, tc.wantErr) || len(tc.visible)+len(tc.secret) != 0 {
+				t.Fatalf("address = %q, error = %v, remaining inputs = %d", got, err, len(tc.visible)+len(tc.secret))
+			}
+		})
+	}
+}
 
 func TestMaskProxyURL(t *testing.T) {
 	got := maskProxyURL("http://admin:secret@192.168.1.1:8888")

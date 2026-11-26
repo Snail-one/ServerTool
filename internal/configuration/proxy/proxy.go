@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -62,8 +63,8 @@ func ConfigureProxy(view *ui.UI) error {
 		return err
 	}
 
-	log.Info("配置代理环境变量")
-	fmt.Println()
+	ui.ClearScreen()
+	ui.MenuTitle("配置管理", "HTTP/HTTPS 代理")
 	if currentProxy, ok := CurrentProxyURL(account); ok {
 		ui.PrintInfoCard("当前代理配置", ui.CardField{Label: "代理服务器", Value: maskProxyURL(currentProxy)})
 		fmt.Println()
@@ -87,10 +88,8 @@ func ConfigureProxy(view *ui.UI) error {
 			return nil
 		}},
 		ui.PromptStep{Run: func() error {
-			log.Info("支持 IP/主机名:端口或 [IPv6]:端口，可带 http:// 或 https://")
-			log.Info("认证格式：用户名:密码@地址；密码中的 @、#、% 等字符请使用 URL 编码")
 			var err error
-			proxyURL, err = PromptURL(view.AskSecret, "请输入代理地址（输入不显示，0/q 返回上一步）：")
+			proxyURL, err = promptEnvironmentProxyURL(view.Ask, view.AskSecret)
 			return err
 		}},
 	)
@@ -148,10 +147,36 @@ func NormalizeProxy(raw string) (string, error) {
 	return normalizeProxy(raw)
 }
 
-// PromptURL reads credentials without terminal echo and retries invalid addresses.
-func PromptURL(askSecret func(string) (string, error), prompt string) (string, error) {
+func promptEnvironmentProxyURL(ask, askSecret func(string) (string, error)) (string, error) {
+	ui.PrintInfoCard("代理地址格式",
+		ui.CardField{Label: "IP 或主机名", Value: "192.168.1.1:7890 或 proxy.example:7890"},
+		ui.CardField{Label: "IPv6", Value: "[2001:db8::1]:7890"},
+		ui.CardField{Label: "协议", Value: "支持 http:// 和 https://，省略时使用 HTTP"},
+	)
+	fmt.Println()
+	ui.MenuShortcutHint("a", "输入带认证的地址", "隐藏输入")
+	return PromptURL(func(prompt string) (string, error) {
+		for {
+			raw, err := ask(prompt)
+			if err != nil || !strings.EqualFold(raw, "a") {
+				return raw, err
+			}
+			ui.PrintInfoCard("代理认证",
+				ui.CardField{Label: "格式", Value: "用户名:密码@主机:端口"},
+				ui.CardField{Label: "URL 编码", Value: "密码中的 @、#、% 分别输入 %40、%23、%25"},
+			)
+			value, err := PromptURL(askSecret, "请输入带认证的代理地址（隐藏输入，0/q 返回代理地址）：")
+			if !errors.Is(err, ui.ErrReturnToMenu) {
+				return value, err
+			}
+		}
+	}, "请输入代理地址（a 输入认证地址，0/q 返回上一步）：")
+}
+
+// PromptURL validates a proxy address and retries invalid input using the supplied prompt reader.
+func PromptURL(ask func(string) (string, error), prompt string) (string, error) {
 	for {
-		raw, err := askSecret(prompt)
+		raw, err := ask(prompt)
 		if err != nil {
 			return "", err
 		}
