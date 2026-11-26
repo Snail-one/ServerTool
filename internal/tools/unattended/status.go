@@ -67,11 +67,13 @@ func (service manager) overview(current settings, settingsErr error, installed b
 			upgradeStatus = "未生效 · 定时安装策略未开启"
 		}
 	}
-	return policy, []ui.CardField{
+	timers = []ui.CardField{
 		refresh.overviewField(refreshTimer, refreshStatus, refreshErr),
 		upgrade.overviewField(upgradeTimer, upgradeStatus, upgradeErr),
-	}, settingsErr == nil && installed && current.periodic != "0" && current.automaticUpdatesConfigured() &&
+	}
+	canRetry = settingsErr == nil && installed && current.periodic != "0" && current.automaticUpdatesConfigured() &&
 		(refreshErr != nil || upgradeErr != nil || !refresh.running() || !upgrade.running())
+	return policy, timers, canRetry
 }
 
 func (state timer) overviewField(name, taskStatus string, err error) ui.CardField {
