@@ -33,8 +33,9 @@ func Run(view *ui.UI) error {
 		ui.MenuOptionStatusHint("2", "Vim 配置", ui.ConfiguredBadge(status.vim), "~/.vimrc")
 		ui.MenuOptionStatus("3", "Bash 配置", ui.ConfiguredBadge(status.bash))
 		ui.MenuOptionStatusHint("4", "Bash 自动补全", ui.InstallationBadge(status.completion), "bash-completion")
-		ui.MenuOptionStatus("5", "HTTP/HTTPS 代理", ui.ConfiguredBadge(status.proxy))
 		ui.MenuOptionStatusHint("6", "tmux 配置", ui.ConfiguredBadge(status.tmux), "~/.tmux.conf")
+		fmt.Println()
+		ui.MenuShortcutStatusHint("p", "HTTP/HTTPS 代理", ui.ConfiguredBadge(status.proxy), "")
 		ui.MenuExit("0/q", "返回")
 
 		choice, err := view.Ask("请选择：")
@@ -63,12 +64,12 @@ func Run(view *ui.UI) error {
 			ui.RunAction(view, "Bash 自动补全安装失败，已返回配置管理", func() error {
 				return commoncompletion.Run(view)
 			})
-		case "5":
+		case "6":
+			ui.RunAction(view, "tmux 配置失败，已返回配置管理", commontmux.Run)
+		case "p":
 			ui.RunAction(view, "代理配置失败，已返回配置管理", func() error {
 				return commonproxy.Run(view)
 			})
-		case "6":
-			ui.RunAction(view, "tmux 配置失败，已返回配置管理", commontmux.Run)
 		default:
 			ui.InvalidChoice()
 			view.Pause()
