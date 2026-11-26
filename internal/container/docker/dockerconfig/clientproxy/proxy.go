@@ -20,7 +20,7 @@ var managedStore = storage.BackupStore{Root: storage.DataDir, Module: "docker"}
 var proxyKeys = []string{"httpProxy", "httpsProxy", "noProxy"}
 
 type promptReader interface {
-	AskSecret(string) (string, error)
+	Ask(string) (string, error)
 	Confirm(string) (bool, error)
 }
 
@@ -72,7 +72,7 @@ func configure(view promptReader, account *system.Account) error {
 	fmt.Println("认证格式：用户名:密码@地址；密码中的 @、#、% 等字符请使用 URL 编码。")
 	ui.MenuExit("0/q", "返回")
 	for {
-		proxyURL, err := commonproxy.PromptURL(view.AskSecret, "请输入构建与容器代理地址（输入不显示）：")
+		proxyURL, err := commonproxy.PromptURL(view.Ask, "请输入构建与容器代理地址（输入可见）：")
 		if err != nil {
 			return err
 		}

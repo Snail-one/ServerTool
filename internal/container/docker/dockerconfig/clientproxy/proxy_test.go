@@ -219,8 +219,8 @@ type fakePrompt struct {
 	ok     bool
 }
 
-func (p fakePrompt) AskSecret(string) (string, error) { return p.answer, nil }
-func (p fakePrompt) Confirm(string) (bool, error)     { return p.ok, nil }
+func (p fakePrompt) Ask(string) (string, error)   { return p.answer, nil }
+func (p fakePrompt) Confirm(string) (bool, error) { return p.ok, nil }
 
 func TestConfigureReturnAndOverwriteCancellationLeaveConfigUntouched(t *testing.T) {
 	account, path := setup(t)

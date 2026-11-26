@@ -15,30 +15,26 @@ import (
 
 func TestEnvironmentProxyAddressInput(t *testing.T) {
 	for _, tc := range []struct {
-		name            string
-		visible, secret []string
-		want            string
-		wantErr         error
+		name    string
+		input   []string
+		want    string
+		wantErr error
 	}{
-		{name: "visible input and retry", visible: []string{"bad address", "192.168.1.1:7890"}, want: "http://192.168.1.1:7890"},
-		{name: "hidden authentication", visible: []string{"a"}, secret: []string{"user:pa%40ss@proxy:7890"}, want: "http://user:pa%40ss@proxy:7890"},
-		{name: "back from authentication", visible: []string{"A", "[::1]:7890"}, secret: []string{"q"}, want: "http://[::1]:7890"},
-		{name: "back from visible address", visible: []string{"0"}, wantErr: ui.ErrReturnToMenu},
+		{name: "visible input and retry", input: []string{"bad address", "192.168.1.1:7890"}, want: "http://192.168.1.1:7890"},
+		{name: "inline authentication", input: []string{"user:pa%40ss@[::1]:7890"}, want: "http://user:pa%40ss@[::1]:7890"},
+		{name: "back from visible address", input: []string{"0"}, wantErr: ui.ErrReturnToMenu},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			read := func(kind string, values *[]string) func(string) (string, error) {
-				return func(prompt string) (string, error) {
-					if len(*values) == 0 {
-						t.Fatalf("unexpected %s prompt %q", kind, prompt)
-					}
-					value := (*values)[0]
-					*values = (*values)[1:]
-					return value, nil
+			got, err := promptEnvironmentProxyURL(func(prompt string) (string, error) {
+				if len(tc.input) == 0 || !strings.Contains(prompt, "输入可见") {
+					t.Fatalf("unexpected prompt %q", prompt)
 				}
-			}
-			got, err := promptEnvironmentProxyURL(read("visible", &tc.visible), read("hidden", &tc.secret))
-			if got != tc.want || !errors.Is(err, tc.wantErr) || len(tc.visible)+len(tc.secret) != 0 {
-				t.Fatalf("address = %q, error = %v, remaining inputs = %d", got, err, len(tc.visible)+len(tc.secret))
+				value := tc.input[0]
+				tc.input = tc.input[1:]
+				return value, nil
+			})
+			if got != tc.want || !errors.Is(err, tc.wantErr) || len(tc.input) != 0 {
+				t.Fatalf("address = %q, error = %v, remaining inputs = %d", got, err, len(tc.input))
 			}
 		})
 	}

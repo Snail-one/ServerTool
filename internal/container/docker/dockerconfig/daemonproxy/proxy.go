@@ -44,7 +44,7 @@ func ConfigureDockerDaemonProxy(view *ui.UI) error {
 	fmt.Println("认证格式：用户名:密码@地址；密码中的 @、#、% 等字符请使用 URL 编码。")
 	ui.MenuExit("0/q", "返回")
 
-	proxyURL, err := commonproxy.PromptURL(view.AskSecret, "请输入 Docker 代理地址（输入不显示）：")
+	proxyURL, err := commonproxy.PromptURL(view.Ask, "请输入 Docker 服务代理地址（输入可见）：")
 	if err != nil {
 		return err
 	}

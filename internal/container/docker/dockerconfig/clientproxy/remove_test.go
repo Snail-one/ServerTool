@@ -12,8 +12,8 @@ type removalPrompt struct {
 	confirm func() (bool, error)
 }
 
-func (p removalPrompt) AskSecret(string) (string, error) { panic("unexpected proxy address prompt") }
-func (p removalPrompt) Confirm(string) (bool, error)     { return p.confirm() }
+func (p removalPrompt) Ask(string) (string, error)   { panic("unexpected proxy address prompt") }
+func (p removalPrompt) Confirm(string) (bool, error) { return p.confirm() }
 
 func TestRemoveClientProxyPreservesCredentialsAndCreatesBackup(t *testing.T) {
 	account, path := setup(t)

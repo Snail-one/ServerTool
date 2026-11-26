@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -89,7 +88,7 @@ func ConfigureProxy(view *ui.UI) error {
 		}},
 		ui.PromptStep{Run: func() error {
 			var err error
-			proxyURL, err = promptEnvironmentProxyURL(view.Ask, view.AskSecret)
+			proxyURL, err = promptEnvironmentProxyURL(view.Ask)
 			return err
 		}},
 	)
@@ -147,30 +146,15 @@ func NormalizeProxy(raw string) (string, error) {
 	return normalizeProxy(raw)
 }
 
-func promptEnvironmentProxyURL(ask, askSecret func(string) (string, error)) (string, error) {
+func promptEnvironmentProxyURL(ask func(string) (string, error)) (string, error) {
 	ui.PrintInfoCard("代理地址格式",
 		ui.CardField{Label: "IP 或主机名", Value: "192.168.1.1:7890 或 proxy.example:7890"},
 		ui.CardField{Label: "IPv6", Value: "[2001:db8::1]:7890"},
 		ui.CardField{Label: "协议", Value: "支持 http:// 和 https://，省略时使用 HTTP"},
+		ui.CardField{Label: "代理认证", Value: "用户名:密码@主机:端口", Detail: "密码中的 @、#、% 分别输入 %40、%23、%25"},
 	)
 	fmt.Println()
-	ui.MenuShortcutHint("a", "输入带认证的地址", "隐藏输入")
-	return PromptURL(func(prompt string) (string, error) {
-		for {
-			raw, err := ask(prompt)
-			if err != nil || !strings.EqualFold(raw, "a") {
-				return raw, err
-			}
-			ui.PrintInfoCard("代理认证",
-				ui.CardField{Label: "格式", Value: "用户名:密码@主机:端口"},
-				ui.CardField{Label: "URL 编码", Value: "密码中的 @、#、% 分别输入 %40、%23、%25"},
-			)
-			value, err := PromptURL(askSecret, "请输入带认证的代理地址（隐藏输入，0/q 返回代理地址）：")
-			if !errors.Is(err, ui.ErrReturnToMenu) {
-				return value, err
-			}
-		}
-	}, "请输入代理地址（a 输入认证地址，0/q 返回上一步）：")
+	return PromptURL(ask, "请输入代理地址（输入可见，0/q 返回上一步）：")
 }
 
 // PromptURL validates a proxy address and retries invalid input using the supplied prompt reader.
