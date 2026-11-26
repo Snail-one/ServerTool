@@ -105,7 +105,7 @@ func Generate(view *ui.UI, generation Generation) error {
 		ui.CardField{Label: "局域网 SSH", Value: sshChoiceLabel(selection.PrivateSSH)},
 		ui.CardField{Label: "当前状态", Value: "配置已校验并立即生效"},
 		ui.CardField{Label: "开机自启", Value: autostartAction},
-		ui.CardField{Label: "查看规则", Value: "选择 4 查看端口策略，选择 5 查看全部规则"},
+		ui.CardField{Label: "查看规则", Value: "选择 c 查看端口策略，选择 5 查看全部规则"},
 	)
 	return nil
 }

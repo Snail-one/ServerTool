@@ -59,13 +59,13 @@ func (env *Environment) Run(view *ui.UI) error {
 				}).Run(view)
 			})
 		case "4":
-			ui.RunAction(view, "读取端口策略失败，已返回防火墙管理", (portpolicy.Service{CommandExists: env.CommandExists, CommandOutput: env.CommandOutput}).Show)
+			ui.RunAction(view, "读取配置文件失败，已返回防火墙管理", env.Store().Show)
 		case "5":
 			ui.RunAction(view, "读取已加载规则失败，已返回防火墙管理", func() error { return loadedrules.Show(env.CommandOutput) })
 		case "6":
 			ui.RunAction(view, "读取开放端口失败，已返回防火墙管理", func() error { return listeners.Show(env.CommandOutput) })
 		case "c":
-			ui.RunAction(view, "读取配置文件失败，已返回防火墙管理", env.Store().Show)
+			ui.RunAction(view, "读取端口策略失败，已返回防火墙管理", (portpolicy.Service{CommandExists: env.CommandExists, CommandOutput: env.CommandOutput}).Show)
 		case "v":
 			ui.RunAction(view, "编辑或加载配置失败，已返回防火墙管理", env.EditConfig)
 		case "r":
@@ -97,14 +97,14 @@ func (env *Environment) showMenu() {
 	ui.MenuOptionHint("2", "转发规则管理", "转发端口 · 内网范围 · 规则配置 · Docker 放行")
 	ui.MenuOptionHint("3", "端口映射管理", "将本机端口映射到指定 IP 和端口")
 	fmt.Println()
-	ui.MenuOptionHint("4", "查看端口策略", "公网 / 内网 · Docker 发布端口")
+	ui.MenuOptionHint("4", "查看配置文件", env.ConfigPath)
 	ui.MenuOptionHint("5", "查看全部规则", "当前已加载的完整规则")
 	ui.MenuOptionHint("6", "查看开放端口", "IP、端口、进程和用户")
 	fmt.Println()
 	ui.MenuOptionHint("8", "常用功能设置", "自启、访问和转发等开关")
 	ui.MenuOptionHint("9", "实时查看规则", "每秒刷新，支持切换规则表")
 	fmt.Println()
-	ui.MenuShortcutHint("c", "查看配置文件", env.ConfigPath)
+	ui.MenuShortcutHint("c", "查看端口策略", "公网 / 内网 · Docker 发布端口")
 	ui.MenuShortcutHint("v", "编辑配置文件", "保存退出后自动校验并加载")
 	version, err := env.Store().Read()
 	switch {

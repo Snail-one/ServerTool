@@ -90,7 +90,7 @@ func (store Store) loadAndShow(content []byte) error {
 	ui.PrintSuccessCard("防火墙配置已加载",
 		ui.CardField{Label: "配置文件", Value: store.Path},
 		ui.CardField{Label: "当前状态", Value: "已立即生效"},
-		ui.CardField{Label: "查看规则", Value: "选择 4 查看端口策略，选择 5 查看全部规则"},
+		ui.CardField{Label: "查看规则", Value: "选择 c 查看端口策略，选择 5 查看全部规则"},
 	)
 	return nil
 }

@@ -253,8 +253,12 @@ func TestForwardingMenuAndBothCardsRefreshAfterChange(t *testing.T) {
 	}
 }
 
-func TestLoadedPortsMenuUsesReadOnlyKernelQueries(t *testing.T) {
+func TestFirewallMenuOpensConfigAndPortPolicy(t *testing.T) {
 	env := testenv.New(t)
+	const config = "# firewall menu config\n"
+	if err := os.WriteFile(env.ConfigPath, []byte(config), 0600); err != nil {
+		t.Fatal(err)
+	}
 	env.CommandOutput = func(name string, args ...string) (string, error) {
 		if name != "nft" || !reflect.DeepEqual(args, []string{"-j", "list", "ruleset"}) {
 			t.Fatalf("port view must not validate or apply configuration: %s %v", name, args)
@@ -262,11 +266,13 @@ func TestLoadedPortsMenuUsesReadOnlyKernelQueries(t *testing.T) {
 		return testenv.PortRules(), nil
 	}
 	output := testenv.CaptureOutput(t, func() {
-		if err := env.Run(testenv.Input(t, "4\n\nq\n")); !errors.Is(err, ui.ErrReturnToMenu) {
+		if err := env.Run(testenv.Input(t, "4\n\nc\n\nq\n")); !errors.Is(err, ui.ErrReturnToMenu) {
 			t.Fatal(err)
 		}
 	})
-	if !strings.Contains(output, "公网 IPv4 TCP") || !strings.Contains(output, "DHCPv6 客户端") {
-		t.Fatal("menu did not render the loaded-port summary")
+	configStart := strings.Index(output, config)
+	policyStart := strings.Index(output, "公网 IPv4 TCP")
+	if configStart < 0 || policyStart <= configStart || !strings.Contains(output, "DHCPv6 客户端") {
+		t.Fatal("expected 4 to display the configuration and c to display the loaded-port summary")
 	}
 }
