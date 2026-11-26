@@ -14,6 +14,7 @@ const (
 	configPath    = "/etc/apt/apt.conf.d/99-z-servertool-unattended-upgrades.conf"
 	refreshTimer  = "apt-daily.timer"
 	upgradeTimer  = "apt-daily-upgrade.timer"
+	upgradeUnit   = "apt-daily-upgrade.service"
 	managedHeader = "// Managed by ServerTool.\n"
 )
 
@@ -128,10 +129,14 @@ func (service manager) change(view *ui.UI, enable bool) error {
 		title = "开启自动更新"
 	}
 	showPage(title)
-	ui.PrintInfoCard("应用范围",
-		ui.CardField{Label: "操作", Value: message, Changed: true},
-		ui.CardField{Label: "配置文件", Value: service.path},
-	)
+	fields := []ui.CardField{
+		{Label: "操作", Value: message, Changed: true},
+		{Label: "配置文件", Value: service.path},
+	}
+	if enable {
+		fields = append(fields, ui.CardField{Label: "索引刷新", Value: "沿用当前频率，未开启时设为每天一次"})
+	}
+	ui.PrintInfoCard("应用范围", fields...)
 	fmt.Println()
 	confirmed, err := view.Confirm("确认执行？(y/N)：")
 	if err != nil {
@@ -166,17 +171,9 @@ func (service manager) apply(enable bool, previous []byte, exists bool) error {
 		if current.periodic == "0" {
 			return fmt.Errorf("APT::Periodic::Enable 已全局关闭，请先检查 APT 配置")
 		}
-		for _, name := range []string{refreshTimer, upgradeTimer} {
-			state, err := service.timer(name)
-			if err != nil {
-				return err
-			}
-			if state.load != "loaded" || state.file == "masked" || state.file == "masked-runtime" {
-				return fmt.Errorf("定时器 %s 不可用（%s）", name, state.load)
-			}
-			if !state.running() {
-				timers = append(timers, name)
-			}
+		timers, err = service.pendingTimers()
+		if err != nil {
+			return err
 		}
 		if !service.exists("unattended-upgrade") {
 			apt, err := packagemanager.Detect(service.exists)
@@ -197,7 +194,7 @@ func (service manager) apply(enable bool, previous []byte, exists bool) error {
 				options[upgradeKey] = "1"
 			}
 		}
-		if current.refresh == "" {
+		if !activeInterval(current.refresh) {
 			options[refreshKey] = "1"
 		}
 		if current.preferredShutdown == "true" {
@@ -207,11 +204,62 @@ func (service manager) apply(enable bool, previous []byte, exists bool) error {
 	if err := service.saveOptions(previous, exists, options); err != nil {
 		return err
 	}
+	if err := service.startTimers(timers); err != nil {
+		return fmt.Errorf("APT 策略已保存，可用快捷键 t 重试定时器: %w", err)
+	}
+	return nil
+}
+
+func (service manager) pendingTimers() ([]string, error) {
+	var pending []string
+	for _, name := range []string{refreshTimer, upgradeTimer} {
+		state, err := service.timer(name)
+		if err != nil {
+			return nil, err
+		}
+		if state.load != "loaded" || state.file == "masked" || state.file == "masked-runtime" {
+			return nil, fmt.Errorf("定时器 %s 不可用（%s）", name, state.statusLabel())
+		}
+		if !state.running() {
+			pending = append(pending, name)
+		}
+	}
+	return pending, nil
+}
+
+func (service manager) retryTimers(view *ui.UI) error {
+	if !service.root() {
+		return fmt.Errorf("启动自动更新定时器需要 root 权限")
+	}
+	showPage("重试启动定时器")
+	ui.PrintInfoCard("操作范围", ui.CardField{Label: "定时器", Value: "启用并启动尚未就绪的 APT 定时器"})
+	if err := confirm(view, "确认重试启动定时器？(y/N)："); err != nil {
+		return err
+	}
+	current, err := service.settings()
+	if err != nil {
+		return err
+	}
+	if !service.exists("unattended-upgrade") || current.periodic == "0" || !current.automaticUpdatesConfigured() {
+		return fmt.Errorf("自动更新策略未开启或软件包未安装，请先检查当前策略")
+	}
+	timers, err := service.pendingTimers()
+	if err != nil {
+		return err
+	}
+	if err := service.startTimers(timers); err != nil {
+		return err
+	}
+	ui.PrintSuccessCard("APT 定时器已启用并启动")
+	return nil
+}
+
+func (service manager) startTimers(timers []string) error {
 	if len(timers) == 0 {
 		return nil
 	}
 	if err := service.run("systemctl", append([]string{"enable", "--now"}, timers...)...); err != nil {
-		return fmt.Errorf("APT 配置已保存，但定时器未全部启用: %w", err)
+		return fmt.Errorf("定时器未全部启用: %w", err)
 	}
 	for _, name := range timers {
 		state, err := service.timer(name)
@@ -219,7 +267,7 @@ func (service manager) apply(enable bool, previous []byte, exists bool) error {
 			return err
 		}
 		if !state.running() {
-			return fmt.Errorf("APT 配置已保存，但定时器 %s 尚未启用或启动", name)
+			return fmt.Errorf("定时器 %s 尚未启用或启动", name)
 		}
 	}
 	return nil

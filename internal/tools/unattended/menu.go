@@ -20,7 +20,13 @@ func (service manager) menu(view *ui.UI) error {
 		ui.ClearScreen()
 		installed := service.exists("unattended-upgrade")
 		current, settingsErr := service.settings()
-		policy, timers := service.overview(current, settingsErr, installed)
+		policy, timers, canRetry := service.overview(current, settingsErr, installed)
+		if canRetry {
+			choices["t"] = "retry-timers"
+		} else {
+			delete(choices, "t")
+		}
+		history := service.updateHistory()
 		enable := !installed || !current.automaticUpdatesConfigured()
 		toggleLabel, toggleHint := "关闭自动更新", ""
 		toggleStatus := "已配置"
@@ -58,6 +64,8 @@ func (service manager) menu(view *ui.UI) error {
 			fmt.Println()
 			ui.PrintInfoCard("系统定时器", timers...)
 			fmt.Println()
+			ui.PrintInfoCard("最近更新结果", history.fields(false)...)
+			fmt.Println()
 			ui.MenuSection("更新设置")
 			ui.MenuOptionHint("1", "更新范围与开关", "安全更新、内核与 Docker")
 			ui.MenuOptionHint("2", "APT 策略与开关", "更新频率、重启时间、软件包清理、邮件报告")
@@ -70,6 +78,9 @@ func (service manager) menu(view *ui.UI) error {
 			fmt.Println()
 			ui.MenuSection("快捷操作")
 			ui.MenuShortcutStatusHint("a", toggleLabel, ui.SoftwareBadge(toggleStatus, toggleStatus == "已配置"), toggleHint)
+			if canRetry {
+				ui.MenuShortcutHint("t", "重试启动定时器", "启用并启动尚未就绪的定时器")
+			}
 			ui.MenuShortcutHint("c", "查看生效配置", "")
 			ui.MenuShortcutHint("r", "刷新状态", "")
 			fmt.Println()
@@ -102,7 +113,9 @@ func (service manager) menu(view *ui.UI) error {
 			case "simulate", "run":
 				return service.runUpdate(view, choice == "simulate")
 			case "logs":
-				return service.showLog()
+				return service.logMenu(view)
+			case "retry-timers":
+				return service.retryTimers(view)
 			case "scope":
 				return service.scopeMenu(view)
 			case "reset":
@@ -119,22 +132,6 @@ func (service manager) menu(view *ui.UI) error {
 			return nil
 		})
 	}
-}
-
-func (service manager) showLog() error {
-	output, err := service.query("apt-config", "shell", "LOG_DIR", "Unattended-Upgrade::LogDir/d")
-	if err != nil {
-		return err
-	}
-	dir := assignments(output)["LOG_DIR"]
-	if dir == "" {
-		dir = "/var/log/unattended-upgrades"
-	}
-	path := strings.TrimRight(dir, "/") + "/unattended-upgrades.log"
-	showPage("最近更新日志")
-	ui.PrintInfoCard("日志来源", ui.CardField{Label: "文件", Value: path}, ui.CardField{Label: "范围", Value: "最近 60 行"})
-	fmt.Println()
-	return service.run("tail", "-n", "60", "--", path)
 }
 
 func (service manager) showEffective() error {

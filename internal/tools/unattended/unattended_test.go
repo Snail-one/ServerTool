@@ -82,6 +82,7 @@ Unattended-Upgrade::Origins-Pattern:: "origin=Debian,codename=${distro_codename}
 		"软件包：[未安装]", "APT 周期任务总开关：开启（默认）", "定时自动安装：关闭", "保存的更新频率：每 7 天",
 		"系统定时器\n│ 索引刷新：未生效 · 索引刷新策略未开启",
 		"自动更新：未生效 · 定时安装策略未开启",
+		"最近更新结果", "最近一次定时服务：暂无执行记录",
 		"定时器：已启用 · 已启动 · 下次唤醒：2026-11-24 18:36:09 PST",
 		"周期与调度", "关闭 · 已保存每 7 天", "系统单元：apt-daily.timer", "补跑错过的任务：开启",
 		"APT::Periodic::Unattended-Upgrade \"0\";", "\n\n  0/q 返回系统工具",
@@ -168,6 +169,8 @@ func TestApplyAutomaticUpdates(t *testing.T) {
 		commands                    []string
 	}{
 		{name: "enable", enable: true, want: map[string]string{upgradeKey: "1", refreshKey: "1"}, commands: []string{"systemctl enable --now apt-daily-upgrade.timer"}},
+		{name: "enable with refresh explicitly off", enable: true, previous: managedHeader + `APT::Periodic::Update-Package-Lists "0";` + "\n",
+			want: map[string]string{upgradeKey: "1", refreshKey: "1"}, commands: []string{"systemctl enable --now apt-daily-upgrade.timer"}},
 		{name: "install then enable", enable: true, install: true, want: map[string]string{upgradeKey: "1", refreshKey: "1"}, commands: []string{
 			"apt-get update", "apt-get install -y unattended-upgrades", "systemctl enable --now apt-daily-upgrade.timer",
 		}},
@@ -245,7 +248,7 @@ ServerTool::Unattended-Upgrade::InstallOnShutdown "true";
 					t.Fatalf("%s = %q, want %q (configuration %s)", key, got, want, data)
 				}
 			}
-			if scenario.previous != "" && !strings.Contains(string(data), "Unattended-Upgrade::Origins-Pattern") {
+			if strings.Contains(scenario.previous, "Unattended-Upgrade::Origins-Pattern") && !strings.Contains(string(data), "Unattended-Upgrade::Origins-Pattern") {
 				t.Fatal("native policy was lost")
 			}
 			if scenario.overridden && string(data) != scenario.previous {

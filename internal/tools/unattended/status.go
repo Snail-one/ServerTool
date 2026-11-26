@@ -51,7 +51,7 @@ func showPage(title string) {
 	ui.MenuTitle("系统工具", Title, title)
 }
 
-func (service manager) overview(current settings, settingsErr error, installed bool) (policy, timers []ui.CardField) {
+func (service manager) overview(current settings, settingsErr error, installed bool) (policy, timers []ui.CardField, canRetry bool) {
 	policy = []ui.CardField{{Label: "软件包", Value: ui.InstallationBadge(installed)}}
 	refresh, refreshErr := service.timer(refreshTimer)
 	upgrade, upgradeErr := service.timer(upgradeTimer)
@@ -70,7 +70,8 @@ func (service manager) overview(current settings, settingsErr error, installed b
 	return policy, []ui.CardField{
 		refresh.overviewField(refreshTimer, refreshStatus, refreshErr),
 		upgrade.overviewField(upgradeTimer, upgradeStatus, upgradeErr),
-	}
+	}, settingsErr == nil && installed && current.periodic != "0" && current.automaticUpdatesConfigured() &&
+		(refreshErr != nil || upgradeErr != nil || !refresh.running() || !upgrade.running())
 }
 
 func (state timer) overviewField(name, taskStatus string, err error) ui.CardField {
