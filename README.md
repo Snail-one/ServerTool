@@ -14,16 +14,16 @@ ServerTool 是一个面向 Linux 服务器的交互式管理工具，提供 SSH 
 curl -fsSL https://raw.githubusercontent.com/Snail-one/ServerTool/main/scripts/install.sh | sudo sh
 ```
 
-系统没有 curl 时：
-
-```bash
-wget -qO- https://raw.githubusercontent.com/Snail-one/ServerTool/main/scripts/install.sh | sudo sh
-```
-
 安装指定版本（以下以 `v1.2.0` 为例，请替换为需要的 Release 标签）：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Snail-one/ServerTool/main/scripts/install.sh | sudo sh -s -- v1.2.0
+```
+
+系统没有 curl 时：
+
+```bash
+wget -qO- https://raw.githubusercontent.com/Snail-one/ServerTool/main/scripts/install.sh | sudo sh
 ```
 
 安装脚本会自动识别架构，校验 Release 提供的 SHA-256，并安装到 `/usr/local/sbin/snail`。
