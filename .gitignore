@@ -1,28 +1,30 @@
-# Build outputs
+# Build directories
 bin/
-dist/
 build/
+dist/
+
+# Executables and shared libraries
 *.exe
 *.dll
 *.so
 *.dylib
+
+# Standalone ServerTool binaries
 snail_tool
-snail_tool.exe
 snail_tool_linux_amd64
 snail_tool_linux_arm64
 
-# Go tooling
+# Go test binaries and coverage reports
 *.test
 *.out
-coverage.out
 
-# Dependency and workspace caches
+# Vendored dependencies and local caches
 vendor/
 .cache/
+.tmp-go-cache/
 
-# IDE and OS files
+# Editor settings and OS metadata
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
-.tmp-go-cache/
