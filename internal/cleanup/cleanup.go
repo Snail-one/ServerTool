@@ -8,6 +8,7 @@ import (
 	cleanupbackups "snail_tool/internal/cleanup/backups"
 	"snail_tool/internal/cleanup/softwaredata"
 	"snail_tool/internal/cleanup/temps"
+	"snail_tool/internal/cleanup/vscodeserver"
 	"snail_tool/internal/configuration/bash"
 	"snail_tool/internal/configuration/proxy"
 	commontmux "snail_tool/internal/configuration/tmux"
@@ -47,6 +48,7 @@ func runMenu(view *ui.UI, account *system.Account, steps []cleanupStep) error {
 	allChoice := strconv.Itoa(len(steps) + 2)
 	dataChoice := strconv.Itoa(len(steps) + 3)
 	tempChoice := strconv.Itoa(len(steps) + 4)
+	vscodeChoice := strconv.Itoa(len(steps) + 5)
 	for {
 		ui.ClearScreen()
 		ui.MenuTitle("清理本工具配置")
@@ -60,6 +62,7 @@ func runMenu(view *ui.UI, account *system.Account, steps []cleanupStep) error {
 		ui.MenuOptionHint(allChoice, "清理全部本工具配置", "成功后删除整个软件数据目录")
 		ui.MenuOptionHint(dataChoice, "删除软件数据目录", storage.DataDir+"，包含全部备份和隐藏文件")
 		ui.MenuOptionHint(tempChoice, "清理中断临时文件", "临时目录、配置目录、软件数据目录及安装目录中的本工具残留")
+		ui.MenuOptionHint(vscodeChoice, "彻底删除 VS Code Server", "当前配置用户的 Remote-SSH 服务端及其数据")
 		ui.MenuExit("0/q", "返回")
 
 		choice, err := view.Ask("请选择：")
@@ -138,6 +141,10 @@ func runMenu(view *ui.UI, account *system.Account, steps []cleanupStep) error {
 		case tempChoice:
 			ui.RunAction(view, "中断临时文件清理失败，已返回清理配置", func() error {
 				return temps.Run(view)
+			})
+		case vscodeChoice:
+			ui.RunAction(view, "VS Code Server 卸载失败，已返回清理配置", func() error {
+				return vscodeserver.Run(view, account)
 			})
 		default:
 			ui.InvalidChoice()

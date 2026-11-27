@@ -3,6 +3,7 @@ package cleanup
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"snail_tool/internal/system"
@@ -22,6 +23,34 @@ func TestCleanupResultReturnsToCleanupSelection(t *testing.T) {
 	}
 	if next, err := view.Ask("parent"); err != nil || next != "parent-next" {
 		t.Fatalf("cleanup result skipped menu: next=%q err=%v", next, err)
+	}
+}
+
+func TestVSCodeServerUninstallFromCleanupMenu(t *testing.T) {
+	home := t.TempDir()
+	for _, name := range []string{".vscode-server", ".vscode-server-insiders", ".vscode-remote", ".vscode"} {
+		if err := os.MkdirAll(filepath.Join(home, name, "extensions"), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	account := &system.Account{Name: "test", Home: home, UID: os.Getuid()}
+	for _, answer := range []string{"n\n", "y\n\n"} {
+		view := navigationUI(t, "15\n"+answer+"q\nparent-next\n")
+		if err := runMenu(view, account, allCleanupSteps()); !errors.Is(err, ui.ErrReturnToMenu) {
+			t.Fatal(err)
+		}
+		if next, err := view.Ask("parent"); err != nil || next != "parent-next" {
+			t.Fatalf("uninstall did not return through the cleanup menu: next=%q err=%v", next, err)
+		}
+		for _, name := range []string{".vscode-server", ".vscode-server-insiders", ".vscode-remote"} {
+			_, err := os.Stat(filepath.Join(home, name))
+			if answer == "n\n" && err != nil || answer != "n\n" && !os.IsNotExist(err) {
+				t.Fatalf("unexpected state after %q for %s: %v", answer, name, err)
+			}
+		}
+	}
+	if _, err := os.Stat(filepath.Join(home, ".vscode", "extensions")); err != nil {
+		t.Fatal(err)
 	}
 }
 
