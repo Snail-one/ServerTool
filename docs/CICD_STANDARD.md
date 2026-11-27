@@ -172,7 +172,7 @@ jobs:
     go-version-file: go.mod
     cache: true
 
-- run: test -z "$(gofmt -l cmd internal)"
+- run: test -z "$(gofmt -l ./*.go internal)"
 - run: go vet ./...
 - run: go test ./...
 ```
@@ -228,7 +228,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - run: test -z "$(gofmt -l cmd internal)"
+      - run: test -z "$(gofmt -l ./*.go internal)"
       - run: go vet ./...
       - run: go test ./...
 ```
@@ -526,7 +526,7 @@ sudo <COMMAND> update
 | 项目参数 | ServerTool 示例 |
 | --- | --- |
 | Go 模块路径 | `snail_tool` |
-| 主程序入口 | `./cmd/snail_tool` |
+| 主程序入口 | `.` |
 | 版本变量路径 | `snail_tool/internal/version.Version` |
 | 产品文件前缀 | `snailtool` |
 | 安装命令名 | `snail` |

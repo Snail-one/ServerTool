@@ -28,6 +28,7 @@
 | `PRODUCT_ID` | `--version` 第一列的稳定标识 | `snailtool` |
 | `ASSET_PREFIX` | Release 二进制文件前缀 | `snailtool` |
 | `COMMAND_NAME` | 安装后的命令名 | `snail` |
+| `MAIN_PACKAGE` | Go 主程序包的构建路径 | `.` |
 | `INSTALL_DIR` | 系统安装目录 | `/usr/local/sbin` |
 | `VERSION_TAG` | 发布版本 | `v1.2.0` |
 | `SCRIPT_URL` | 仓库安装脚本地址 | `https://raw.githubusercontent.com/Snail-one/ServerTool/main/scripts/install.sh` |
@@ -172,7 +173,7 @@ checksums.txt
     BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     LDFLAGS="-s -w -X example/internal/version.Version=${VERSION} -X example/internal/version.Commit=${COMMIT} -X example/internal/version.BuildDate=${BUILD_DATE}"
     go build -trimpath -ldflags="${LDFLAGS}" \
-      -o "dist/<ASSET_PREFIX>_linux_<ARCH>_${VERSION}" ./cmd/<COMMAND>
+      -o "dist/<ASSET_PREFIX>_linux_<ARCH>_${VERSION}" "<MAIN_PACKAGE>"
 
 - name: Generate checksums
   run: sha256sum <ASSET_PREFIX>_* > checksums.txt
@@ -485,7 +486,7 @@ checksums.txt
 - [ ] 默认安装目录
 - [ ] `InstallScriptURL`
 - [ ] Go 版本包路径和 `-ldflags -X` 路径
-- [ ] GitHub Actions 构建入口 `./cmd/<COMMAND>`
+- [ ] GitHub Actions 构建入口 `MAIN_PACKAGE`
 - [ ] Release 资产矩阵
 - [ ] README 安装、更新和版本查询命令
 

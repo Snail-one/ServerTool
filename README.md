@@ -108,7 +108,7 @@ Go 迁移、PATH、软链接、工具安装状态及无色输出等细节见 [�
 ### 本地构建
 
 ```bash
-go build -o dist/snail ./cmd/snail_tool
+go build -o dist/snail .
 sudo ./dist/snail
 ```
 
@@ -126,7 +126,7 @@ sudo ./dist/snail
 ### 验证
 
 ```bash
-gofmt -l cmd internal
+gofmt -l ./*.go internal
 go vet ./...
 go test ./...
 ```
@@ -139,7 +139,7 @@ go test -tags=integration -exec 'sudo -n' ./internal/firewall/forward -run '^Tes
 
 ### 自动发布
 
-质量检查统一在 [CI 工作流](.github/workflows/ci.yml) 中，所有分支推送和 Pull Request 会自动检查 Go 格式、运行 `go vet ./...`、单元测试和防火墙集成测试，也可手动运行。`gofmt -l cmd internal` 应无输出。
+质量检查统一在 [CI 工作流](.github/workflows/ci.yml) 中，所有分支推送和 Pull Request 会自动检查 Go 格式、运行 `go vet ./...`、单元测试和防火墙集成测试，也可手动运行。`gofmt -l ./*.go internal` 应无输出。
 
 推送 `v*` 标签后，[发布工作流](.github/workflows/release.yml) 会调用同一 CI 工作流，测试通过后再构建 Linux amd64/arm64 二进制并发布到 GitHub Releases，同时提供 `checksums.txt`。
 
@@ -153,7 +153,8 @@ git push origin v1.0.0
 ### 项目结构
 
 ```text
-cmd/snail_tool/           CLI 入口与命令分发
+main.go                   CLI 入口与交互菜单启动
+commands.go               命令行参数解析与分发
 internal/
   app/                    主菜单，含 startup/ 启动报告和 status/ 状态检测
   firewall/               防火墙管理

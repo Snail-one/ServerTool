@@ -372,8 +372,8 @@ go vet ./...
 交叉构建输出写到临时路径：
 
 ```bash
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /tmp/servertool-doctor-amd64 ./cmd/snail_tool
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /tmp/servertool-doctor-arm64 ./cmd/snail_tool
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /tmp/servertool-doctor-amd64 .
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /tmp/servertool-doctor-arm64 .
 ```
 
 人工验收使用测试 VM 或隔离测试环境，不为验收破坏当前工作机。覆盖无容器运行时、Docker、Podman、二者并存、非 systemd 和部分检查失败场景。负载及容器异常以受控样本或临时测试服务验证；磁盘满和 inode 满优先用样本验证。
