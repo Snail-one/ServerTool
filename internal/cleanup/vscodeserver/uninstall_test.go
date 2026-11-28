@@ -1,12 +1,15 @@
 package vscodeserver
 
 import (
+	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"syscall"
 	"testing"
+	"time"
 )
 
 func TestInstallationVerificationRejectsReplacement(t *testing.T) {
@@ -41,15 +44,17 @@ func TestInstallationInspectionRejectsSymlink(t *testing.T) {
 }
 
 func TestStopOnlySignalsExecutablesFromTheTargetInstallation(t *testing.T) {
-	sleep, err := exec.LookPath("sleep")
+	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(sleep)
+	data, err := os.ReadFile(executable)
 	if err != nil {
 		t.Fatal(err)
 	}
 	root := filepath.Join(t.TempDir(), ".vscode-server")
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
 	start := func(path string) *exec.Cmd {
 		t.Helper()
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
@@ -58,7 +63,13 @@ func TestStopOnlySignalsExecutablesFromTheTargetInstallation(t *testing.T) {
 		if err := os.WriteFile(path, data, 0700); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(path, "60")
+		cmd := exec.CommandContext(ctx, path, "-test.run=^TestServerProcessHelper$")
+		cmd.Env = append(os.Environ(), "SERVERTOOL_TEST_VSCODE_SERVER=1")
+		cmd.Stderr = os.Stderr
+		ready, err := cmd.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
 		if err := cmd.Start(); err != nil {
 			t.Fatal(err)
 		}
@@ -66,6 +77,11 @@ func TestStopOnlySignalsExecutablesFromTheTargetInstallation(t *testing.T) {
 			_ = cmd.Process.Kill()
 			_ = cmd.Wait()
 		})
+		// Wait until the child is running from the copied executable before scanning /proc.
+		var started [1]byte
+		if _, err := io.ReadFull(ready, started[:]); err != nil {
+			t.Fatalf("waiting for %s to start: %v", path, err)
+		}
 		return cmd
 	}
 	server := start(filepath.Join(root, "code-server"))
@@ -89,4 +105,14 @@ func TestStopOnlySignalsExecutablesFromTheTargetInstallation(t *testing.T) {
 	if alive, err := otherInstallation.matches(unrelated.Process.Pid); err != nil || !alive {
 		t.Fatalf("unrelated process was stopped: alive=%v err=%v", alive, err)
 	}
+}
+
+func TestServerProcessHelper(t *testing.T) {
+	if os.Getenv("SERVERTOOL_TEST_VSCODE_SERVER") != "1" {
+		return
+	}
+	if _, err := os.Stdout.Write([]byte{1}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Minute)
 }
